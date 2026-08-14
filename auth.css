@@ -1,0 +1,63 @@
+body.auth-pending .sidebar,
+body.auth-pending .app-shell,
+body.auth-denied .sidebar,
+body.auth-denied .app-shell {
+  visibility: hidden;
+}
+
+body.auth-authorized .sidebar,
+body.auth-authorized .app-shell {
+  visibility: visible;
+}
+
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(35, 112, 255, .12), transparent 32%),
+    radial-gradient(circle at 85% 85%, rgba(203, 164, 72, .10), transparent 28%),
+    #05070c;
+}
+
+.auth-overlay.hidden { display: none; }
+
+.auth-card {
+  width: min(440px, 100%);
+  padding: 30px;
+  border: 1px solid var(--border, #1b2637);
+  border-radius: 18px;
+  background: rgba(11, 15, 23, .96);
+  box-shadow: 0 24px 80px rgba(0,0,0,.45);
+}
+
+.auth-card h1 {
+  margin: 10px 0 10px;
+  font-size: 28px;
+}
+
+.auth-card p {
+  margin: 0 0 20px;
+  color: var(--muted, #8492a6);
+  line-height: 1.55;
+}
+
+.auth-card small {
+  display: block;
+  margin-top: 16px;
+  color: var(--muted-2, #627085);
+  line-height: 1.45;
+}
+
+.auth-card .btn {
+  width: 100%;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+#signOutBtn {
+  white-space: nowrap;
+}
