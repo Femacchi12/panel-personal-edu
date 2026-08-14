@@ -88,12 +88,32 @@
             <button id="clearFilters" class="text-btn">Borrar filtros</button>
           </div>
         </div>
-        <div class="filter-grid">
-          <label><span>Año</span><select id="yearFilter"></select></label>
-          <label><span>Mes</span><select id="monthFilter"></select></label>
-          <label><span>Categoría</span><select id="categoryFilter"><option value="">Todas</option></select></label>
-          <label><span>Subcategoría</span><select id="subcategoryFilter"><option value="">Todas</option></select></label>
-          <label><span>Moneda</span><select id="currencyFilter"><option value="">Todas</option><option>COP</option><option>USD</option><option>ARS</option></select></label>
+        <div class="filter-grid" id="globalFilters">
+          <div class="multi-filter" data-filter="year">
+            <div class="filter-label-row"><span>Año</span><button type="button" class="filter-clear-one" data-clear-filter="year">Limpiar</button></div>
+            <button type="button" class="multi-filter-trigger" data-filter-trigger="year" aria-expanded="false"><span data-filter-summary="year">Todos</span><span class="filter-chevron">⌄</span></button>
+            <div class="multi-filter-menu" data-filter-menu="year"><input class="multi-filter-search" data-filter-search="year" placeholder="Buscar año…" autocomplete="off"><div class="multi-filter-options" data-filter-options="year"></div></div>
+          </div>
+          <div class="multi-filter" data-filter="month">
+            <div class="filter-label-row"><span>Mes</span><button type="button" class="filter-clear-one" data-clear-filter="month">Limpiar</button></div>
+            <button type="button" class="multi-filter-trigger" data-filter-trigger="month" aria-expanded="false"><span data-filter-summary="month">Todos</span><span class="filter-chevron">⌄</span></button>
+            <div class="multi-filter-menu" data-filter-menu="month"><input class="multi-filter-search" data-filter-search="month" placeholder="Buscar mes…" autocomplete="off"><div class="multi-filter-options" data-filter-options="month"></div></div>
+          </div>
+          <div class="multi-filter" data-filter="category">
+            <div class="filter-label-row"><span>Categoría</span><button type="button" class="filter-clear-one" data-clear-filter="category">Limpiar</button></div>
+            <button type="button" class="multi-filter-trigger" data-filter-trigger="category" aria-expanded="false"><span data-filter-summary="category">Todas</span><span class="filter-chevron">⌄</span></button>
+            <div class="multi-filter-menu" data-filter-menu="category"><input class="multi-filter-search" data-filter-search="category" placeholder="Buscar categoría…" autocomplete="off"><div class="multi-filter-options" data-filter-options="category"></div></div>
+          </div>
+          <div class="multi-filter" data-filter="subcategory">
+            <div class="filter-label-row"><span>Subcategoría</span><button type="button" class="filter-clear-one" data-clear-filter="subcategory">Limpiar</button></div>
+            <button type="button" class="multi-filter-trigger" data-filter-trigger="subcategory" aria-expanded="false"><span data-filter-summary="subcategory">Todas</span><span class="filter-chevron">⌄</span></button>
+            <div class="multi-filter-menu" data-filter-menu="subcategory"><input class="multi-filter-search" data-filter-search="subcategory" placeholder="Buscar subcategoría…" autocomplete="off"><div class="multi-filter-options" data-filter-options="subcategory"></div></div>
+          </div>
+          <div class="multi-filter" data-filter="currency">
+            <div class="filter-label-row"><span>Moneda</span><button type="button" class="filter-clear-one" data-clear-filter="currency">Limpiar</button></div>
+            <button type="button" class="multi-filter-trigger" data-filter-trigger="currency" aria-expanded="false"><span data-filter-summary="currency">Todas</span><span class="filter-chevron">⌄</span></button>
+            <div class="multi-filter-menu" data-filter-menu="currency"><input class="multi-filter-search" data-filter-search="currency" placeholder="Buscar moneda…" autocomplete="off"><div class="multi-filter-options" data-filter-options="currency"></div></div>
+          </div>
         </div>
       </section>
 
