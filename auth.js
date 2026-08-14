@@ -4,9 +4,9 @@ import {
   GoogleAuthProvider,
   onAuthStateChanged,
   signInWithPopup,
-  signOut,
-  setPersistence,
-  browserLocalPersistence
+  signInWithRedirect,
+  getRedirectResult,
+  signOut
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
 const firebaseConfig = {
@@ -24,7 +24,6 @@ const ALLOWED_EMAILS = new Set([
 ]);
 
 const TOKEN_STORAGE_KEY = "panel-personal-edu.google-oauth";
-const LAST_EMAIL_KEY = "panel-personal-edu.last-email";
 const TOKEN_MAX_AGE_MS = 50 * 60 * 1000;
 
 const app = initializeApp(firebaseConfig);
@@ -32,12 +31,7 @@ const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 provider.addScope("https://www.googleapis.com/auth/spreadsheets.readonly");
 provider.addScope("https://www.googleapis.com/auth/userinfo.email");
-
-try {
-  await setPersistence(auth, browserLocalPersistence);
-} catch (error) {
-  console.warn("No se pudo fijar persistencia local de Firebase:", error);
-}
+provider.setCustomParameters({ prompt: "select_account" });
 
 const authOverlay = document.getElementById("authOverlay");
 const authTitle = document.getElementById("authTitle");
@@ -48,6 +42,7 @@ const signOutButton = document.getElementById("signOutBtn");
 const accountText = document.getElementById("accountText");
 
 let dashboardLoaded = false;
+let redirectHandled = false;
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -57,34 +52,29 @@ function isAuthorizedEmail(value) {
   return ALLOWED_EMAILS.has(normalizeEmail(value));
 }
 
-function rememberEmail(email) {
-  const normalized = normalizeEmail(email);
-  if (isAuthorizedEmail(normalized)) localStorage.setItem(LAST_EMAIL_KEY, normalized);
-}
-
 function saveToken(token) {
   if (!token) return;
-  localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ token, savedAt: Date.now() }));
+  sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ token, savedAt: Date.now() }));
 }
 
 function restoreToken() {
   try {
-    const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
+    const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.token || !parsed?.savedAt || Date.now() - parsed.savedAt > TOKEN_MAX_AGE_MS) {
-      localStorage.removeItem(TOKEN_STORAGE_KEY);
+      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
       return null;
     }
     return parsed.token;
   } catch (_) {
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
     return null;
   }
 }
 
 function clearToken() {
-  localStorage.removeItem(TOKEN_STORAGE_KEY);
+  sessionStorage.removeItem(TOKEN_STORAGE_KEY);
   window.__PANEL_GOOGLE_ACCESS_TOKEN__ = null;
 }
 
@@ -95,8 +85,6 @@ function showLogin(message = "Inicia sesión con una de las dos cuentas autoriza
   authTitle.textContent = "Panel Personal Edu";
   authMessage.textContent = message;
   signInButton.hidden = false;
-  signInButton.disabled = false;
-  signInButton.textContent = "Ingresar con Google";
   changeAccountButton.hidden = true;
 }
 
@@ -131,11 +119,8 @@ function authorize(user, token) {
     showDenied(email);
     return false;
   }
-
-  rememberEmail(email);
   if (!token) {
-    accountText.textContent = email;
-    showLogin("Tu sesión sigue abierta. Pulsa Ingresar con Google para renovar el permiso de lectura de los Sheets.");
+    showLogin("Tu cuenta está autorizada. Confirma nuevamente con Google para habilitar la lectura privada de Finanzas Edu y Salud - Familia.");
     return false;
   }
 
@@ -156,55 +141,59 @@ function captureResult(result) {
   return authorize(result.user, token);
 }
 
-async function startGoogleSignIn({ forceAccountChoice = false } = {}) {
+async function startGoogleSignIn() {
   signInButton.disabled = true;
-  signInButton.textContent = "Abriendo Google…";
-  authMessage.textContent = forceAccountChoice
-    ? "Selecciona la cuenta de Google que quieres utilizar…"
-    : "Abriendo Google para validar el acceso…";
-
-  // En el ingreso normal no enviamos login_hint ni select_account.
-  // Google puede reutilizar la cuenta ya activa del navegador.
-  provider.setCustomParameters(forceAccountChoice ? { prompt: "select_account" } : {});
-
+  authMessage.textContent = "Abriendo Google para validar tu cuenta…";
   try {
     const result = await signInWithPopup(auth, provider);
     captureResult(result);
   } catch (error) {
-    console.error("Error de autenticación:", error);
-    if (error.code === "auth/popup-closed-by-user") {
-      showLogin();
-    } else if (error.code === "auth/popup-blocked") {
-      showLogin("El navegador bloqueó la ventana de Google. Habilita ventanas emergentes para este sitio y vuelve a intentarlo.");
-    } else if (error.code === "auth/cancelled-popup-request") {
-      showLogin("Ya había un inicio de sesión abierto. Espera un momento y vuelve a intentarlo.");
+    const redirectCodes = new Set([
+      "auth/popup-blocked",
+      "auth/cancelled-popup-request",
+      "auth/web-storage-unsupported",
+      "auth/operation-not-supported-in-this-environment"
+    ]);
+    if (redirectCodes.has(error.code)) {
+      await signInWithRedirect(auth, provider);
+      return;
+    }
+    if (error.code !== "auth/popup-closed-by-user") {
+      console.error("Error de autenticación:", error);
+      showLogin("No fue posible iniciar sesión. Inténtalo nuevamente.");
     } else {
-      showLogin("No fue posible abrir Google. Actualiza la página e inténtalo nuevamente.");
+      showLogin();
     }
   } finally {
     signInButton.disabled = false;
-    signInButton.textContent = "Ingresar con Google";
   }
 }
 
-signInButton.addEventListener("click", () => startGoogleSignIn());
-
+signInButton.addEventListener("click", startGoogleSignIn);
 changeAccountButton.addEventListener("click", async () => {
   clearToken();
-  localStorage.removeItem(LAST_EMAIL_KEY);
   await signOut(auth);
-  await startGoogleSignIn({ forceAccountChoice: true });
+  await startGoogleSignIn();
 });
-
 signOutButton?.addEventListener("click", async () => {
   clearToken();
   await signOut(auth);
   location.reload();
 });
 
+try {
+  const redirectResult = await getRedirectResult(auth);
+  redirectHandled = true;
+  if (redirectResult) captureResult(redirectResult);
+} catch (error) {
+  redirectHandled = true;
+  console.error("Error al completar la redirección:", error);
+  showLogin("No fue posible completar el inicio de sesión. Inténtalo nuevamente.");
+}
+
 onAuthStateChanged(auth, async user => {
   if (!user) {
-    showLogin();
+    if (redirectHandled) showLogin();
     return;
   }
 
@@ -216,14 +205,13 @@ onAuthStateChanged(auth, async user => {
     return;
   }
 
-  rememberEmail(email);
-  accountText.textContent = email;
-
   const restored = restoreToken();
   if (restored) {
     authorize(user, restored);
     return;
   }
 
-  showLogin("Tu sesión de Google sigue abierta. Pulsa Ingresar con Google para renovar el permiso de lectura del dashboard.");
+  if (redirectHandled && !dashboardLoaded) {
+    showLogin("Cuenta autorizada. Confirma con Google para cargar los datos privados del dashboard.");
+  }
 });
