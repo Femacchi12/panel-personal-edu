@@ -4,8 +4,6 @@ import {
   GoogleAuthProvider,
   onAuthStateChanged,
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
   signOut,
   setPersistence,
   browserLocalPersistence
@@ -50,7 +48,6 @@ const signOutButton = document.getElementById("signOutBtn");
 const accountText = document.getElementById("accountText");
 
 let dashboardLoaded = false;
-let redirectHandled = false;
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -63,19 +60,6 @@ function isAuthorizedEmail(value) {
 function rememberEmail(email) {
   const normalized = normalizeEmail(email);
   if (isAuthorizedEmail(normalized)) localStorage.setItem(LAST_EMAIL_KEY, normalized);
-}
-
-function rememberedEmail() {
-  const email = normalizeEmail(localStorage.getItem(LAST_EMAIL_KEY));
-  return isAuthorizedEmail(email) ? email : "";
-}
-
-function configureProvider({ forceAccountChoice = false } = {}) {
-  const email = rememberedEmail();
-  const params = {};
-  if (email && !forceAccountChoice) params.login_hint = email;
-  if (forceAccountChoice) params.prompt = "select_account";
-  provider.setCustomParameters(params);
 }
 
 function saveToken(token) {
@@ -111,6 +95,8 @@ function showLogin(message = "Inicia sesión con una de las dos cuentas autoriza
   authTitle.textContent = "Panel Personal Edu";
   authMessage.textContent = message;
   signInButton.hidden = false;
+  signInButton.disabled = false;
+  signInButton.textContent = "Ingresar con Google";
   changeAccountButton.hidden = true;
 }
 
@@ -145,9 +131,11 @@ function authorize(user, token) {
     showDenied(email);
     return false;
   }
+
   rememberEmail(email);
   if (!token) {
-    showLogin("Tu sesión sigue abierta. Pulsa continuar para renovar el acceso de solo lectura a Google Sheets.");
+    accountText.textContent = email;
+    showLogin("Tu sesión sigue abierta. Pulsa Ingresar con Google para renovar el permiso de lectura de los Sheets.");
     return false;
   }
 
@@ -170,61 +158,53 @@ function captureResult(result) {
 
 async function startGoogleSignIn({ forceAccountChoice = false } = {}) {
   signInButton.disabled = true;
+  signInButton.textContent = "Abriendo Google…";
   authMessage.textContent = forceAccountChoice
     ? "Selecciona la cuenta de Google que quieres utilizar…"
-    : "Continuando con tu cuenta de Google…";
-  configureProvider({ forceAccountChoice });
+    : "Abriendo Google para validar el acceso…";
+
+  // En el ingreso normal no enviamos login_hint ni select_account.
+  // Google puede reutilizar la cuenta ya activa del navegador.
+  provider.setCustomParameters(forceAccountChoice ? { prompt: "select_account" } : {});
+
   try {
     const result = await signInWithPopup(auth, provider);
     captureResult(result);
   } catch (error) {
-    const redirectCodes = new Set([
-      "auth/popup-blocked",
-      "auth/cancelled-popup-request",
-      "auth/web-storage-unsupported",
-      "auth/operation-not-supported-in-this-environment"
-    ]);
-    if (redirectCodes.has(error.code)) {
-      await signInWithRedirect(auth, provider);
-      return;
-    }
-    if (error.code !== "auth/popup-closed-by-user") {
-      console.error("Error de autenticación:", error);
-      showLogin("No fue posible iniciar sesión. Inténtalo nuevamente.");
-    } else {
+    console.error("Error de autenticación:", error);
+    if (error.code === "auth/popup-closed-by-user") {
       showLogin();
+    } else if (error.code === "auth/popup-blocked") {
+      showLogin("El navegador bloqueó la ventana de Google. Habilita ventanas emergentes para este sitio y vuelve a intentarlo.");
+    } else if (error.code === "auth/cancelled-popup-request") {
+      showLogin("Ya había un inicio de sesión abierto. Espera un momento y vuelve a intentarlo.");
+    } else {
+      showLogin("No fue posible abrir Google. Actualiza la página e inténtalo nuevamente.");
     }
   } finally {
     signInButton.disabled = false;
+    signInButton.textContent = "Ingresar con Google";
   }
 }
 
 signInButton.addEventListener("click", () => startGoogleSignIn());
+
 changeAccountButton.addEventListener("click", async () => {
   clearToken();
   localStorage.removeItem(LAST_EMAIL_KEY);
   await signOut(auth);
   await startGoogleSignIn({ forceAccountChoice: true });
 });
+
 signOutButton?.addEventListener("click", async () => {
   clearToken();
   await signOut(auth);
   location.reload();
 });
 
-try {
-  const redirectResult = await getRedirectResult(auth);
-  redirectHandled = true;
-  if (redirectResult) captureResult(redirectResult);
-} catch (error) {
-  redirectHandled = true;
-  console.error("Error al completar la redirección:", error);
-  showLogin("No fue posible completar el inicio de sesión. Inténtalo nuevamente.");
-}
-
 onAuthStateChanged(auth, async user => {
   if (!user) {
-    if (redirectHandled) showLogin();
+    showLogin();
     return;
   }
 
@@ -237,14 +217,13 @@ onAuthStateChanged(auth, async user => {
   }
 
   rememberEmail(email);
+  accountText.textContent = email;
+
   const restored = restoreToken();
   if (restored) {
     authorize(user, restored);
     return;
   }
 
-  if (redirectHandled && !dashboardLoaded) {
-    accountText.textContent = email;
-    showLogin("Tu sesión de Google sigue abierta. Pulsa continuar para renovar el permiso de lectura del dashboard.");
-  }
+  showLogin("Tu sesión de Google sigue abierta. Pulsa Ingresar con Google para renovar el permiso de lectura del dashboard.");
 });
