@@ -6,7 +6,9 @@ import {
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
-  signOut
+  signOut,
+  setPersistence,
+  browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
 const firebaseConfig = {
@@ -28,6 +30,12 @@ const TOKEN_MAX_AGE_MS = 50 * 60 * 1000;
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+try {
+  await setPersistence(auth, browserLocalPersistence);
+} catch (error) {
+  console.warn("No se pudo fijar persistencia local de Firebase:", error);
+}
+
 const provider = new GoogleAuthProvider();
 provider.addScope("https://www.googleapis.com/auth/spreadsheets.readonly");
 provider.addScope("https://www.googleapis.com/auth/userinfo.email");
@@ -54,27 +62,27 @@ function isAuthorizedEmail(value) {
 
 function saveToken(token) {
   if (!token) return;
-  sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ token, savedAt: Date.now() }));
+  localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ token, savedAt: Date.now() }));
 }
 
 function restoreToken() {
   try {
-    const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+    const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.token || !parsed?.savedAt || Date.now() - parsed.savedAt > TOKEN_MAX_AGE_MS) {
-      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
       return null;
     }
     return parsed.token;
   } catch (_) {
-    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
     return null;
   }
 }
 
 function clearToken() {
-  sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
   window.__PANEL_GOOGLE_ACCESS_TOKEN__ = null;
 }
 
