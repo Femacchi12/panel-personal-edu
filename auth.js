@@ -6,7 +6,9 @@ import {
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
-  signOut
+  signOut,
+  setPersistence,
+  browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
 const firebaseConfig = {
@@ -24,6 +26,7 @@ const ALLOWED_EMAILS = new Set([
 ]);
 
 const TOKEN_STORAGE_KEY = "panel-personal-edu.google-oauth";
+const LAST_EMAIL_KEY = "panel-personal-edu.last-email";
 const TOKEN_MAX_AGE_MS = 50 * 60 * 1000;
 
 const app = initializeApp(firebaseConfig);
@@ -31,7 +34,12 @@ const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 provider.addScope("https://www.googleapis.com/auth/spreadsheets.readonly");
 provider.addScope("https://www.googleapis.com/auth/userinfo.email");
-provider.setCustomParameters({ prompt: "select_account" });
+
+try {
+  await setPersistence(auth, browserLocalPersistence);
+} catch (error) {
+  console.warn("No se pudo fijar persistencia local de Firebase:", error);
+}
 
 const authOverlay = document.getElementById("authOverlay");
 const authTitle = document.getElementById("authTitle");
@@ -52,29 +60,47 @@ function isAuthorizedEmail(value) {
   return ALLOWED_EMAILS.has(normalizeEmail(value));
 }
 
+function rememberEmail(email) {
+  const normalized = normalizeEmail(email);
+  if (isAuthorizedEmail(normalized)) localStorage.setItem(LAST_EMAIL_KEY, normalized);
+}
+
+function rememberedEmail() {
+  const email = normalizeEmail(localStorage.getItem(LAST_EMAIL_KEY));
+  return isAuthorizedEmail(email) ? email : "";
+}
+
+function configureProvider({ forceAccountChoice = false } = {}) {
+  const email = rememberedEmail();
+  const params = {};
+  if (email && !forceAccountChoice) params.login_hint = email;
+  if (forceAccountChoice) params.prompt = "select_account";
+  provider.setCustomParameters(params);
+}
+
 function saveToken(token) {
   if (!token) return;
-  sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ token, savedAt: Date.now() }));
+  localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ token, savedAt: Date.now() }));
 }
 
 function restoreToken() {
   try {
-    const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+    const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.token || !parsed?.savedAt || Date.now() - parsed.savedAt > TOKEN_MAX_AGE_MS) {
-      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
       return null;
     }
     return parsed.token;
   } catch (_) {
-    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
     return null;
   }
 }
 
 function clearToken() {
-  sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
   window.__PANEL_GOOGLE_ACCESS_TOKEN__ = null;
 }
 
@@ -119,8 +145,9 @@ function authorize(user, token) {
     showDenied(email);
     return false;
   }
+  rememberEmail(email);
   if (!token) {
-    showLogin("Tu cuenta está autorizada. Confirma nuevamente con Google para habilitar la lectura privada de Finanzas Edu y Salud - Familia.");
+    showLogin("Tu sesión sigue abierta. Pulsa continuar para renovar el acceso de solo lectura a Google Sheets.");
     return false;
   }
 
@@ -141,9 +168,12 @@ function captureResult(result) {
   return authorize(result.user, token);
 }
 
-async function startGoogleSignIn() {
+async function startGoogleSignIn({ forceAccountChoice = false } = {}) {
   signInButton.disabled = true;
-  authMessage.textContent = "Abriendo Google para validar tu cuenta…";
+  authMessage.textContent = forceAccountChoice
+    ? "Selecciona la cuenta de Google que quieres utilizar…"
+    : "Continuando con tu cuenta de Google…";
+  configureProvider({ forceAccountChoice });
   try {
     const result = await signInWithPopup(auth, provider);
     captureResult(result);
@@ -169,11 +199,12 @@ async function startGoogleSignIn() {
   }
 }
 
-signInButton.addEventListener("click", startGoogleSignIn);
+signInButton.addEventListener("click", () => startGoogleSignIn());
 changeAccountButton.addEventListener("click", async () => {
   clearToken();
+  localStorage.removeItem(LAST_EMAIL_KEY);
   await signOut(auth);
-  await startGoogleSignIn();
+  await startGoogleSignIn({ forceAccountChoice: true });
 });
 signOutButton?.addEventListener("click", async () => {
   clearToken();
@@ -205,6 +236,7 @@ onAuthStateChanged(auth, async user => {
     return;
   }
 
+  rememberEmail(email);
   const restored = restoreToken();
   if (restored) {
     authorize(user, restored);
@@ -212,6 +244,7 @@ onAuthStateChanged(auth, async user => {
   }
 
   if (redirectHandled && !dashboardLoaded) {
-    showLogin("Cuenta autorizada. Confirma con Google para cargar los datos privados del dashboard.");
+    accountText.textContent = email;
+    showLogin("Tu sesión de Google sigue abierta. Pulsa continuar para renovar el permiso de lectura del dashboard.");
   }
 });
