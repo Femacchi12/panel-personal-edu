@@ -1,4 +1,5 @@
 window.PANEL_CONFIG = {
+  apiBaseUrl: "",
   googleClientId: "",
   authProvider: "firebase-google",
   allowedEmails: [
