@@ -6,9 +6,7 @@ import {
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
-  signOut,
-  setPersistence,
-  browserLocalPersistence
+  signOut
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
 const firebaseConfig = {
@@ -20,6 +18,8 @@ const firebaseConfig = {
   appId: "1:926517595208:web:c1ae62107ee8bacad51c7d"
 };
 
+const cfg = window.PANEL_CONFIG || {};
+const BACKEND_MODE = Boolean(String(cfg.apiBaseUrl || '').trim());
 const ALLOWED_EMAILS = new Set([
   "fernandoemacchi@gmail.com",
   "eduardo@fibrazo.com"
@@ -30,16 +30,18 @@ const TOKEN_MAX_AGE_MS = 50 * 60 * 1000;
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-try {
-  await setPersistence(auth, browserLocalPersistence);
-} catch (error) {
-  console.warn("No se pudo fijar persistencia local de Firebase:", error);
-}
-
 const provider = new GoogleAuthProvider();
-provider.addScope("https://www.googleapis.com/auth/spreadsheets.readonly");
 provider.addScope("https://www.googleapis.com/auth/userinfo.email");
+if (!BACKEND_MODE) {
+  provider.addScope("https://www.googleapis.com/auth/spreadsheets.readonly");
+}
 provider.setCustomParameters({ prompt: "select_account" });
+
+window.__PANEL_GET_ID_TOKEN__ = async (forceRefresh = false) => {
+  const user = auth.currentUser;
+  if (!user) return null;
+  return user.getIdToken(Boolean(forceRefresh));
+};
 
 const authOverlay = document.getElementById("authOverlay");
 const authTitle = document.getElementById("authTitle");
@@ -61,11 +63,12 @@ function isAuthorizedEmail(value) {
 }
 
 function saveToken(token) {
-  if (!token) return;
+  if (!token || BACKEND_MODE) return;
   localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ token, savedAt: Date.now() }));
 }
 
 function restoreToken() {
+  if (BACKEND_MODE) return "backend";
   try {
     const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
     if (!raw) return null;
@@ -108,17 +111,28 @@ function showDenied(email) {
   changeAccountButton.hidden = false;
 }
 
-function loadDashboard() {
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = `${src}?v=${Date.now()}`;
+    script.async = false;
+    script.onload = resolve;
+    script.onerror = reject;
+    document.body.appendChild(script);
+  });
+}
+
+async function loadDashboard() {
   if (dashboardLoaded) return;
   dashboardLoaded = true;
-  const script = document.createElement("script");
-  script.src = `app.js?v=${Date.now()}`;
-  script.async = false;
-  script.onerror = () => {
+  try {
+    if (BACKEND_MODE) await loadScript("data-backend-adapter.js");
+    await loadScript("app.js");
+  } catch (error) {
+    console.error("Error cargando dashboard:", error);
     dashboardLoaded = false;
     showLogin("No fue posible cargar el dashboard. Actualiza la página e inténtalo nuevamente.");
-  };
-  document.body.appendChild(script);
+  }
 }
 
 function authorize(user, token) {
@@ -127,12 +141,13 @@ function authorize(user, token) {
     showDenied(email);
     return false;
   }
-  if (!token) {
+
+  if (!BACKEND_MODE && !token) {
     showLogin("Tu cuenta está autorizada. Confirma nuevamente con Google para habilitar la lectura privada de Finanzas Edu y Salud - Familia.");
     return false;
   }
 
-  window.__PANEL_GOOGLE_ACCESS_TOKEN__ = token;
+  window.__PANEL_GOOGLE_ACCESS_TOKEN__ = BACKEND_MODE ? "backend" : token;
   saveToken(token);
   document.body.classList.remove("auth-pending", "auth-denied");
   document.body.classList.add("auth-authorized");
@@ -144,6 +159,7 @@ function authorize(user, token) {
 
 function captureResult(result) {
   if (!result?.user) return false;
+  if (BACKEND_MODE) return authorize(result.user, "backend");
   const credential = GoogleAuthProvider.credentialFromResult(result);
   const token = credential?.accessToken || null;
   return authorize(result.user, token);
@@ -210,6 +226,11 @@ onAuthStateChanged(auth, async user => {
     clearToken();
     await signOut(auth);
     showDenied(email);
+    return;
+  }
+
+  if (BACKEND_MODE) {
+    authorize(user, "backend");
     return;
   }
 
