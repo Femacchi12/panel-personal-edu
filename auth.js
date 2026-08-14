@@ -104,8 +104,8 @@ function loadDashboard() {
   if (dashboardLoaded) return;
   dashboardLoaded = true;
   const script = document.createElement("script");
-  script.src = `app-loader.js?v=${Date.now()}`;
-  script.defer = true;
+  script.src = `app.js?v=${Date.now()}`;
+  script.async = false;
   script.onerror = () => {
     dashboardLoaded = false;
     showLogin("No fue posible cargar el dashboard. Actualiza la página e inténtalo nuevamente.");
