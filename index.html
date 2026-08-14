@@ -9,17 +9,19 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="auth.css" />
 </head>
-<body>
-  <div id="authOverlay" class="auth-overlay hidden">
+<body class="auth-pending">
+  <div id="authOverlay" class="auth-overlay">
     <div class="auth-card">
       <div class="brand-mark">E</div>
       <span class="eyebrow">PANEL PERSONAL EDU</span>
-      <h1>Acceso privado</h1>
-      <p>Inicia sesión con tu cuenta de Google para consultar en vivo los Sheets de Finanzas y Salud.</p>
-      <button id="googleLoginBtn" class="btn btn-primary">Conectar con Google</button>
-      <button id="demoBtn" class="btn btn-ghost">Ver diseño en modo demo</button>
-      <small>Los datos no se guardan en GitHub. Se consultan desde Google Sheets durante tu sesión.</small>
+      <h1 id="authTitle">Panel Personal Edu</h1>
+      <p id="authMessage">Inicia sesión con una cuenta autorizada para consultar tus datos de Finanzas y Salud.</p>
+      <button id="googleLoginBtn" class="btn btn-primary">Ingresar con Google</button>
+      <button id="changeAccountBtn" class="btn btn-secondary" hidden>Cambiar de cuenta</button>
+      <button id="demoBtn" class="btn btn-ghost" hidden aria-hidden="true">Modo demo</button>
+      <small>Acceso permitido únicamente a las cuentas autorizadas. Los Sheets permanecen privados y se consultan en modo solo lectura.</small>
     </div>
   </div>
 
@@ -75,7 +77,8 @@
           <button class="currency-btn" data-currency="ARS">ARS</button>
         </div>
         <button id="refreshBtn" class="btn btn-secondary">↻ Actualizar</button>
-        <div id="accountChip" class="account-chip"><span class="status-dot"></span><span id="accountText">Modo demo</span></div>
+        <div id="accountChip" class="account-chip"><span class="status-dot"></span><span id="accountText">Google</span></div>
+        <button id="signOutBtn" class="btn btn-secondary">Salir</button>
       </div>
     </header>
 
@@ -125,9 +128,8 @@
     <div class="empty-state"><strong>Sin información para mostrar</strong><span>Los datos aparecerán cuando estén disponibles en el Sheet.</span></div>
   </template>
 
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <script src="config.js"></script>
-  <script src="app-loader.js"></script>
+  <script type="module" src="auth.js"></script>
 </body>
 </html>
