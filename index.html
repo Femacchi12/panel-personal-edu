@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#05070c" />
+  <title>Panel Personal Edu</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="authOverlay" class="auth-overlay hidden">
+    <div class="auth-card">
+      <div class="brand-mark">E</div>
+      <span class="eyebrow">PANEL PERSONAL EDU</span>
+      <h1>Acceso privado</h1>
+      <p>Inicia sesión con tu cuenta de Google para consultar en vivo los Sheets de Finanzas y Salud.</p>
+      <button id="googleLoginBtn" class="btn btn-primary">Conectar con Google</button>
+      <button id="demoBtn" class="btn btn-ghost">Ver diseño en modo demo</button>
+      <small>Los datos no se guardan en GitHub. Se consultan desde Google Sheets durante tu sesión.</small>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-top">
+      <div class="brand">
+        <div class="brand-mark small">E</div>
+        <div class="brand-copy">
+          <strong>Panel Personal</strong>
+          <span>Edu</span>
+        </div>
+      </div>
+      <button id="sidebarToggle" class="icon-btn" aria-label="Contraer menú">‹</button>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-view="general"><span class="nav-icon">⌂</span><span class="nav-label">General</span></button>
+      <div class="nav-group-label">FINANZAS</div>
+      <button class="nav-item" data-view="gastos"><span class="nav-icon">◫</span><span class="nav-label">Gastos diarios</span></button>
+      <button class="nav-item" data-view="flujo"><span class="nav-icon">↗</span><span class="nav-label">Flujo mensual</span></button>
+      <button class="nav-item" data-view="tarjetas"><span class="nav-icon">▣</span><span class="nav-label">Tarjetas de crédito</span></button>
+      <button class="nav-item" data-view="deudas"><span class="nav-icon">◉</span><span class="nav-label">Deudas</span></button>
+      <button class="nav-item" data-view="inversiones"><span class="nav-icon">◆</span><span class="nav-label">Inversiones</span></button>
+      <button class="nav-item" data-view="pension"><span class="nav-icon">◎</span><span class="nav-label">Pensión y cesantías</span></button>
+      <button class="nav-item" data-view="ingresos"><span class="nav-icon">＋</span><span class="nav-label">Ingresos y ahorro</span></button>
+      <button class="nav-item" data-view="servicios"><span class="nav-icon">⌁</span><span class="nav-label">Servicios y referencias</span></button>
+
+      <div class="nav-group-label">SALUD</div>
+      <button class="nav-item" data-view="salud"><span class="nav-icon">♡</span><span class="nav-label">Resumen de salud</span></button>
+      <button class="nav-item" data-view="citas"><span class="nav-icon">▦</span><span class="nav-label">Citas médicas</span></button>
+      <button class="nav-item" data-view="tratamientos"><span class="nav-icon">✚</span><span class="nav-label">Tratamientos</span></button>
+
+      <div class="nav-group-label">VIDA</div>
+      <button class="nav-item" data-view="documentos"><span class="nav-icon">▤</span><span class="nav-label">Documentos</span></button>
+      <button class="nav-item" data-view="viajes"><span class="nav-icon">✈</span><span class="nav-label">Vacaciones y viajes</span></button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sync-indicator"><span id="syncDot" class="sync-dot"></span><span class="nav-label" id="syncText">Sin conectar</span></div>
+    </div>
+  </aside>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <span class="eyebrow" id="viewEyebrow">PANEL PERSONAL</span>
+        <h1 id="viewTitle">Visión general</h1>
+      </div>
+      <div class="topbar-actions">
+        <div class="currency-switch" role="group" aria-label="Moneda principal">
+          <button class="currency-btn active" data-currency="COP">COP</button>
+          <button class="currency-btn" data-currency="USD">USD</button>
+          <button class="currency-btn" data-currency="ARS">ARS</button>
+        </div>
+        <button id="refreshBtn" class="btn btn-secondary">↻ Actualizar</button>
+        <div id="accountChip" class="account-chip"><span class="status-dot"></span><span id="accountText">Modo demo</span></div>
+      </div>
+    </header>
+
+    <main class="main">
+      <section id="filterBar" class="filter-bar">
+        <div class="filter-head">
+          <div><span class="eyebrow">FILTROS</span><strong>Vista del período</strong></div>
+          <div class="filter-actions">
+            <button id="resetCurrentMonth" class="text-btn">Restablecer mes actual</button>
+            <button id="clearFilters" class="text-btn">Borrar filtros</button>
+          </div>
+        </div>
+        <div class="filter-grid">
+          <label><span>Año</span><select id="yearFilter"></select></label>
+          <label><span>Mes</span><select id="monthFilter"></select></label>
+          <label><span>Categoría</span><select id="categoryFilter"><option value="">Todas</option></select></label>
+          <label><span>Subcategoría</span><select id="subcategoryFilter"><option value="">Todas</option></select></label>
+          <label><span>Moneda</span><select id="currencyFilter"><option value="">Todas</option><option>COP</option><option>USD</option><option>ARS</option></select></label>
+        </div>
+      </section>
+
+      <section id="viewRoot" class="view-root"></section>
+    </main>
+  </div>
+
+  <template id="emptyStateTemplate">
+    <div class="empty-state"><strong>Sin información para mostrar</strong><span>Los datos aparecerán cuando estén disponibles en el Sheet.</span></div>
+  </template>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
