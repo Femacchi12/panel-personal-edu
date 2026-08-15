@@ -9,6 +9,12 @@
   let dataPromise = null;
   let cacheUntil = 0;
 
+  const norm = value => String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
   async function getBackendData() {
     const now = Date.now();
     if (dataPromise && now < cacheUntil) return dataPromise;
@@ -43,6 +49,35 @@
     }
   }
 
+  function applySectionFilters(values, range) {
+    const filterState = window.__PANEL_SECTION_FILTERS__;
+    const rules = Array.isArray(filterState?.rules) ? filterState.rules : [];
+    const activeRules = rules.filter(rule => Array.isArray(rule?.values) && rule.values.length && rule?.ranges?.[range]);
+    if (!activeRules.length || !Array.isArray(values) || values.length < 2) return values;
+
+    const header = (values[0] || []).map(v => String(v ?? '').trim());
+    const headerNorm = header.map(norm);
+
+    const compiled = activeRules.map(rule => {
+      const fields = Array.isArray(rule.ranges[range]) ? rule.ranges[range] : [];
+      const indexes = fields
+        .map(field => headerNorm.indexOf(norm(field)))
+        .filter(index => index >= 0);
+      return {
+        indexes,
+        selected: new Set(rule.values.map(norm))
+      };
+    }).filter(rule => rule.indexes.length);
+
+    if (!compiled.length) return values;
+
+    const body = values.slice(1).filter(row => compiled.every(rule => {
+      return rule.indexes.some(index => rule.selected.has(norm(row?.[index])));
+    }));
+
+    return [values[0], ...body];
+  }
+
   window.fetch = async function(input, init) {
     const rawUrl = typeof input === 'string' ? input : input?.url;
     if (!rawUrl || !rawUrl.startsWith('https://sheets.googleapis.com/v4/spreadsheets/')) {
@@ -59,14 +94,16 @@
 
     try {
       const payload = await getBackendData();
-      const values = payload?.sources?.[key];
-      if (!Array.isArray(values)) {
+      const sourceValues = payload?.sources?.[key];
+      if (!Array.isArray(sourceValues)) {
         return new Response(JSON.stringify({ error: { message: `Fuente no permitida: ${range}` } }), {
           status: 404,
           statusText: 'Not Found',
           headers: { 'Content-Type': 'application/json' }
         });
       }
+
+      const values = applySectionFilters(sourceValues, range);
       return new Response(JSON.stringify({
         range,
         majorDimension: 'ROWS',
