@@ -18,6 +18,7 @@ const ALLOWED_EMAILS = new Set([
 const SOURCES = [
   { book: 'finance', range: 'Movimientos!A:Y' },
   { book: 'finance', range: 'Flujo_Mensual!A:J' },
+  { book: 'finance', range: 'Tablas_Flujo!A:T' },
   { book: 'finance', range: 'Tarjetas!A:T' },
   { book: 'finance', range: 'Cuotas!A:T' },
   { book: 'finance', range: 'Resumen_Inversiones!A:N' },
@@ -30,6 +31,7 @@ const SOURCES = [
   { book: 'finance', range: 'Nomina_Colombia!A:AI' },
   { book: 'finance', range: 'Facturas_USD!A:L' },
   { book: 'finance', range: 'Flujo_Ahorro!A:P' },
+  { book: 'finance', range: 'Escenarios_Ahorro!A:X' },
   { book: 'finance', range: 'Servicios!A:O' },
   { book: 'finance', range: 'Cuentas!A:T' },
   { book: 'finance', range: 'Plan_Mensual!A:O' },
@@ -137,7 +139,7 @@ app.get('/health', (req, res) => {
     ok: true,
     service: 'panel-personal-edu-backend',
     sourceCount: SOURCES.length,
-    revision: 'income-docs-2026-08-15'
+    revision: 'flow-savings-2026-08-15'
   });
 });
 
