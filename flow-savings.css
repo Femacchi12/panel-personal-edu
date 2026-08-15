@@ -1,0 +1,90 @@
+/* Mejoras de layout, Flujo mensual y escenarios de ahorro */
+
+/* El contenido siempre ocupa exactamente el espacio libre del sidebar. */
+.app-shell{
+  margin-left:var(--sidebar)!important;
+  width:calc(100vw - var(--sidebar))!important;
+  max-width:none!important;
+  min-width:0;
+  transition:margin-left .2s ease,width .2s ease!important;
+}
+.sidebar.collapsed~.app-shell{
+  margin-left:var(--sidebar-collapsed)!important;
+  width:calc(100vw - var(--sidebar-collapsed))!important;
+  max-width:none!important;
+}
+.topbar,.main{width:100%;max-width:100%}
+
+.flow-extra-stack,.savings-scenario-wrap{display:grid;gap:16px}
+.flow-extra-panel,.savings-scenario-panel{overflow:hidden}
+.flow-extra-panel .table-scroll,.savings-scenario-panel .table-scroll{max-height:620px}
+.flow-detail-table{min-width:560px!important}
+.flow-detail-table th,.flow-detail-table td{min-width:135px}
+.flow-detail-table th:nth-child(2),.flow-detail-table td:nth-child(2){min-width:190px}
+
+.flow-matrix-scroll{position:relative;overflow:auto;max-height:680px;border:1px solid var(--border-soft);border-radius:12px}
+.flow-matrix-table{min-width:1540px!important;width:max-content!important}
+.flow-matrix-table th,.flow-matrix-table td{min-width:105px;text-align:right;font-variant-numeric:tabular-nums}
+.flow-matrix-table th:first-child,.flow-matrix-table td:first-child{
+  position:sticky!important;
+  left:0!important;
+  min-width:220px!important;
+  max-width:220px!important;
+  text-align:left!important;
+  z-index:6;
+  background:#0d1520!important;
+  box-shadow:10px 0 18px rgba(0,0,0,.22);
+}
+.flow-matrix-table tbody tr:not(.flow-summary-row) td:first-child{background:#0b111a!important}
+.flow-matrix-table .flow-summary-row td{font-weight:700;background:#101925;color:#dce7f6}
+.flow-matrix-table .flow-total-row td{background:rgba(23,105,255,.12);color:#dce9ff}
+.flow-matrix-table .flow-financed-row td{color:#f6c844}
+.flow-matrix-table .flow-real-row td{background:rgba(38,208,124,.10);color:#8fe8b7}
+
+.savings-reference-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.savings-reference-card{border:1px solid var(--border-soft);background:#0e1520;border-radius:12px;padding:13px;min-width:0}
+.savings-reference-card span{display:block;color:#6f8199;font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+.savings-reference-card strong{display:block;color:#edf4ff;font-size:18px;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.savings-reference-card small{display:block;color:#64758c;font-size:9px;margin-top:5px;line-height:1.4}
+.savings-scenario-table{min-width:940px!important}
+.savings-scenario-table th,.savings-scenario-table td{text-align:right;min-width:145px}
+.savings-scenario-table th:first-child,.savings-scenario-table td:first-child{text-align:left;min-width:110px;position:sticky;left:0;z-index:5;background:#0d1520}
+.savings-scenario-table tbody td:first-child{background:#0b111a}
+.savings-scenario-table tbody tr:hover td:first-child{background:#0e1723}
+.savings-scenario-note{margin-top:11px;color:#718098;font-size:10px;line-height:1.5}
+.savings-scenario-note strong{color:#9cb8de}
+
+@media(max-width:900px){
+  .savings-reference-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+/* En móvil/tablet el menú expandido también reserva su espacio; nunca se monta sobre el dashboard. */
+@media(max-width:720px){
+  :root{--sidebar:210px;--sidebar-collapsed:76px}
+  .sidebar{width:var(--sidebar)!important}
+  .sidebar.collapsed{width:var(--sidebar-collapsed)!important}
+  .sidebar:not(.collapsed) .brand-copy{display:flex!important}
+  .sidebar:not(.collapsed) .nav-label{display:inline!important}
+  .sidebar:not(.collapsed) .nav-group-label{display:block!important}
+  .sidebar:not(.collapsed) .nav-item{justify-content:flex-start!important;padding:10px 11px!important}
+  .sidebar:not(.collapsed) .sidebar-top{justify-content:space-between!important;padding:0 12px!important}
+  .sidebar:not(.collapsed) .icon-btn{position:static!important;right:auto!important}
+  .app-shell{
+    margin-left:var(--sidebar)!important;
+    width:calc(100vw - var(--sidebar))!important;
+    max-width:none!important;
+  }
+  .sidebar.collapsed~.app-shell{
+    margin-left:var(--sidebar-collapsed)!important;
+    width:calc(100vw - var(--sidebar-collapsed))!important;
+    max-width:none!important;
+  }
+  .main{padding-left:14px!important;padding-right:14px!important}
+  .savings-reference-grid{grid-template-columns:1fr}
+}
+
+@media(max-width:520px){
+  :root{--sidebar:190px;--sidebar-collapsed:58px}
+  .sidebar.collapsed .nav-item{padding-left:8px!important;padding-right:8px!important}
+  .flow-matrix-table th:first-child,.flow-matrix-table td:first-child{min-width:175px!important;max-width:175px!important}
+}
