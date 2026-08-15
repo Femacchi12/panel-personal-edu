@@ -128,6 +128,7 @@ async function loadDashboard() {
   try {
     if (BACKEND_MODE) await loadScript("data-backend-adapter.js");
     await loadScript("app.js");
+    await loadScript("income-doc-enhancements.js");
   } catch (error) {
     console.error("Error cargando dashboard:", error);
     dashboardLoaded = false;
