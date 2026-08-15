@@ -1,5 +1,5 @@
 window.PANEL_CONFIG = {
-  apiBaseUrl: "",
+  apiBaseUrl: "https://panel-personal-edu-api-926517595208.us-east1.run.app",
   googleClientId: "",
   authProvider: "firebase-google",
   allowedEmails: [
