@@ -131,6 +131,7 @@ async function loadDashboard() {
     await loadScript("income-doc-enhancements.js");
     await loadScript("income-chart-filter-fix.js");
     await loadScript("card-specific-filter.js");
+    await loadScript("flow-savings-enhancements.js");
   } catch (error) {
     console.error("Error cargando dashboard:", error);
     dashboardLoaded = false;
