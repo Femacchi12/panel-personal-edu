@@ -1,6 +1,8 @@
 /* Mejoras de layout, Flujo mensual y escenarios de ahorro */
 
 /* El contenido siempre ocupa exactamente el espacio libre del sidebar. */
+.sidebar{z-index:600!important}
+.topbar{z-index:500!important}
 .app-shell{
   margin-left:var(--sidebar)!important;
   width:calc(100vw - var(--sidebar))!important;
