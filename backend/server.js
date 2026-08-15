@@ -133,7 +133,12 @@ async function buildPayload() {
 }
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'panel-personal-edu-backend' });
+  res.json({
+    ok: true,
+    service: 'panel-personal-edu-backend',
+    sourceCount: SOURCES.length,
+    revision: 'income-docs-2026-08-15'
+  });
 });
 
 app.get('/api/data', requireAuthorizedUser, async (req, res) => {
