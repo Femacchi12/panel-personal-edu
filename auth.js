@@ -135,6 +135,9 @@ async function loadDashboard() {
     await loadScript("income-type-filter.js");
     await loadScript("table-date-behavior.js");
     await loadScript("investment-timeline.js");
+    await loadScript("expense-table-advanced.js");
+    await loadScript("flow-matrix-advanced.js");
+    await loadScript("exchange-simulator.js");
   } catch (error) {
     console.error("Error cargando dashboard:", error);
     dashboardLoaded = false;
