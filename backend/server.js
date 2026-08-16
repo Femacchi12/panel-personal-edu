@@ -32,6 +32,7 @@ const SOURCES = [
   { book: 'finance', range: 'Facturas_USD!A:L' },
   { book: 'finance', range: 'Flujo_Ahorro!A:P' },
   { book: 'finance', range: 'Escenarios_Ahorro!A:X' },
+  { book: 'finance', range: 'Simulador_TC!A:J' },
   { book: 'finance', range: 'Servicios!A:O' },
   { book: 'finance', range: 'Cuentas!A:T' },
   { book: 'finance', range: 'Plan_Mensual!A:O' },
@@ -139,7 +140,7 @@ app.get('/health', (req, res) => {
     ok: true,
     service: 'panel-personal-edu-backend',
     sourceCount: SOURCES.length,
-    revision: 'flow-savings-2026-08-15'
+    revision: 'finance-advanced-2026-08-16'
   });
 });
 
