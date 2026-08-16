@@ -12,7 +12,22 @@
     return new Date(year, monthIndex, Math.min(day, lastDay));
   }
 
-  function currentCycle(cutDay, now = new Date()) {
+  function currentCycle(cutDay, now = new Date(), periodEndsDayBeforeCut = false) {
+    if (periodEndsDayBeforeCut) {
+      // Nu: el corte ocurre el día 15, pero el período facturado va del
+      // día 15 del mes anterior al día 14 del mes del corte.
+      let nextCut;
+      if (now.getDate() < cutDay) {
+        nextCut = safeDate(now.getFullYear(), now.getMonth(), cutDay);
+      } else {
+        nextCut = safeDate(now.getFullYear(), now.getMonth() + 1, cutDay);
+      }
+      const previousCut = safeDate(nextCut.getFullYear(), nextCut.getMonth() - 1, cutDay);
+      const end = new Date(nextCut);
+      end.setDate(end.getDate() - 1);
+      return { start: previousCut, end };
+    }
+
     let end;
     if (now.getDate() <= cutDay) {
       end = safeDate(now.getFullYear(), now.getMonth(), cutDay);
@@ -46,7 +61,9 @@
     const cutDay = readCutDay(card);
     if (!cutDay) return;
 
-    const { start, end } = currentCycle(cutDay);
+    const title = (card.querySelector('.credit-brand')?.textContent || card.textContent || '').toLowerCase();
+    const isNu = title.includes('nu');
+    const { start, end } = currentCycle(cutDay, new Date(), isNu);
     const block = document.createElement('div');
     block.className = 'billing-cycle';
     block.innerHTML = `
@@ -55,7 +72,7 @@
         <strong>${formatDate(start)}</strong>
       </div>
       <div class="billing-period">
-        <span>Corte del período</span>
+        <span>Fin del período</span>
         <strong>${formatDate(end)}</strong>
       </div>`;
 
