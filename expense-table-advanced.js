@@ -49,7 +49,7 @@
     let m=desc.match(/\((\d{1,2})[\/\-](\d{1,2})[\/\-](20\d{2})\)/i);
     if(m)return new Date(+m[3],+m[2]-1,+m[1]);
 
-    const baseMonth=String(row['Mes consumo']||'').match(/^(20\d{2})-(\d{1,2})/);
+    const baseMonth=String(row['Mes pago']||row['Mes consumo']||'').match(/^(20\d{2})-(\d{1,2})/);
     const fallback=parseDate(row['Fecha real']||row['Fecha registrada']);
     m=desc.match(/\(\s*d[ií]a\s*(\d{1,2})\s*\)/i);
     if(m){
