@@ -13,7 +13,7 @@
   let sortState={type:'id',dir:'asc',month:null};
   let selectedDetail=null;
 
-  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
+  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   function activeView(){return document.querySelector('.nav-item.active')?.dataset.view||'';}
 
@@ -24,7 +24,8 @@
 
   function monthKey(value){
     const s=norm(value);let m=s.match(/^(20\d{2})-(\d{1,2})/);if(m)return`${m[1]}-${String(+m[2]).padStart(2,'0')}`;
-    m=s.match(/^(ene|feb|mar|abr|may|jun|jul|ago|sept?|oct|nov|dic)\s+(20\d{2})/);if(m){const token=m[1]==='sep'?'sept':m[1];return`${m[2]}-${String(MONTH_NAMES.indexOf(token)+1).padStart(2,'0')}`;}
+    m=s.match(/^(ene|enero|feb|febrero|mar|marzo|abr|abril|may|mayo|jun|junio|jul|julio|ago|agosto|sep|sept|septiembre|oct|octubre|nov|noviembre|dic|diciembre)\s+(20\d{2})/);
+    if(m){const map={ene:1,enero:1,feb:2,febrero:2,mar:3,marzo:3,abr:4,abril:4,may:5,mayo:5,jun:6,junio:6,jul:7,julio:7,ago:8,agosto:8,sep:9,sept:9,septiembre:9,oct:10,octubre:10,nov:11,noviembre:11,dic:12,diciembre:12};return`${m[2]}-${String(map[m[1]]).padStart(2,'0')}`;}
     return'';
   }
   function monthLabel(key){const m=String(key).match(/^(20\d{2})-(\d{2})$/);return m?`${MONTH_NAMES[+m[2]-1]} ${m[1]}`:key;}
@@ -36,7 +37,6 @@
     cache=await r.json();cacheAt=Date.now();return cache;
   }
 
-  function categoryId(cat){const i=ORIGINAL_ORDER.findIndex(x=>norm(x)===norm(cat));return i>=0?i+1:1000+ORIGINAL_ORDER.length;}
   function orderedCategories(rows){
     const set=new Set(rows.filter(r=>norm(r.Tipo)==='categoria').map(r=>String(r.Concepto||'').trim()).filter(Boolean));
     const known=ORIGINAL_ORDER.filter(x=>[...set].some(y=>norm(y)===norm(x)));
@@ -50,9 +50,36 @@
     return [...new Set(rows.filter(r=>norm(r.Tipo)==='categoria').map(r=>monthKey(r.Mes)).filter(k=>k&&k<=limit))].sort();
   }
 
-  function salaryMap(flowRows,conceptRows){
+  function salaryMap(flowRows,conceptRows,payrollRows,incomeSummaryRows){
     const map=new Map(),source=new Map();
-    conceptRows.forEach(r=>{const k=monthKey(r.Mes);if(!k)return;const regular=num(r['Sueldo COP'])+num(r['Sueldo USD (equiv. COP)']);if(regular>0){map.set(k,regular);source.set(k,'Nómina COP + Fibrazo LLC USD');}});
+
+    conceptRows.forEach(r=>{
+      const k=monthKey(r.Mes);if(!k)return;
+      const regular=num(r['Sueldo COP'])+num(r['Sueldo USD (equiv. COP)']);
+      if(regular>0){map.set(k,regular);source.set(k,'Nómina COP + Fibrazo LLC USD');}
+    });
+
+    const payrollByMonth=new Map();
+    payrollRows.forEach(r=>{
+      const k=monthKey(r['Fecha inicio']||r.Periodo);if(!k)return;
+      const total=num(r['Total ingresos']);
+      if(!total)return;
+      const regular=Math.max(0,total-num(r.Salud)-num(r['Pensión'])-num(r.Prima)-num(r['Cesantías'])-num(r['Intereses cesantías']));
+      if(regular>0)payrollByMonth.set(k,regular);
+    });
+
+    const usdByMonth=new Map();
+    incomeSummaryRows.forEach(r=>{
+      const k=monthKey(r.Mes);if(!k)return;
+      usdByMonth.set(k,num(r['Ingresos COP']));
+    });
+
+    payrollByMonth.forEach((regularCop,k)=>{
+      if(map.has(k))return;
+      const regular=regularCop+(usdByMonth.get(k)||0);
+      if(regular>0){map.set(k,regular);source.set(k,'Nómina COP regular + Fibrazo LLC USD histórico');}
+    });
+
     const grouped=new Map();
     flowRows.filter(r=>norm(r.Tipo)==='categoria').forEach(r=>{
       const k=monthKey(r.Mes);if(!k||map.has(k))return;
@@ -60,7 +87,10 @@
       if(fraction>1)fraction/=100;
       if(amount>0&&fraction>.005){if(!grouped.has(k))grouped.set(k,[]);grouped.get(k).push(amount/fraction);}
     });
-    grouped.forEach((values,k)=>{if(!values.length)return;values.sort((a,b)=>a-b);const middle=Math.floor(values.length/2);const median=values.length%2?values[middle]:(values[middle-1]+values[middle])/2;map.set(k,median);source.set(k,'Base histórica reconstruida');});
+    grouped.forEach((values,k)=>{
+      if(!values.length)return;values.sort((a,b)=>a-b);const middle=Math.floor(values.length/2);const median=values.length%2?values[middle]:(values[middle-1]+values[middle])/2;
+      map.set(k,median);source.set(k,'Base histórica reconstruida');
+    });
     return {map,source};
   }
 
@@ -78,7 +108,7 @@
   function effectiveDate(row){
     const desc=[row['Descripción original'],row['Descripción / Comercio']].filter(Boolean).join(' ');
     let m=desc.match(/\((\d{1,2})[\/\-](\d{1,2})[\/\-](20\d{2})\)/i);if(m)return new Date(+m[3],+m[2]-1,+m[1]);
-    const mk=monthKey(row['Mes consumo']);const base=mk?mk.match(/^(\d{4})-(\d{2})$/):null;
+    const mk=monthKey(row['Mes pago']||row['Mes consumo']);const base=mk?mk.match(/^(\d{4})-(\d{2})$/):null;
     m=desc.match(/\(\s*d[ií]a\s*(\d{1,2})\s*\)/i);if(m&&base)return new Date(+base[1],+base[2]-1,+m[1]);
     const raw=String(row['Fecha real']||row['Fecha registrada']||'');let d=raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);return d?new Date(+d[1],+d[2]-1,+d[3]):null;
   }
@@ -105,8 +135,8 @@
   }
 
   function renderInto(host,data){
-    const {flowRows,movements,conceptRows}=data;
-    const monthList=months(flowRows),categories=orderedCategories(flowRows),values=flowMap(flowRows),salary=salaryMap(flowRows,conceptRows);
+    const {flowRows,movements,conceptRows,payrollRows,incomeSummaryRows}=data;
+    const monthList=months(flowRows),categories=orderedCategories(flowRows),values=flowMap(flowRows),salary=salaryMap(flowRows,conceptRows,payrollRows,incomeSummaryRows);
     const ordered=sortedCategories(categories,values);
     const summaries=SUMMARY_ORDER.map(label=>({label,values:monthList.map(m=>values.get(`${m}|${norm(label)}`)||0)}));
     const arrow=(type,month=null)=>sortState.type===type&&(type!=='month'||sortState.month===month)?(sortState.dir==='asc'?' ↑':' ↓'):'';
@@ -135,7 +165,13 @@
     const original=[...root.querySelectorAll('.panel')].find(p=>p.querySelector('.panel-title strong')?.textContent?.trim()==='Matriz mensual por categoría');if(!original)return;
     original.style.display='none';let host=root.querySelector('#flowMatrixAdvanced');if(!host){host=document.createElement('div');host.id='flowMatrixAdvanced';host.className='panel table-panel';original.insertAdjacentElement('afterend',host);const detail=document.createElement('div');detail.id='flowMatrixDetail';detail.className='panel table-panel';detail.hidden=true;host.insertAdjacentElement('afterend',detail);}
     const p=await payload(force).catch(e=>{console.error('Matriz avanzada:',e);return null;});if(!p)return;
-    const data={flowRows:parseRows(p.sources?.[`${financeId}|Flujo_Mensual!A:J`]||[]),movements:parseRows(p.sources?.[`${financeId}|Movimientos!A:Y`]||[]),conceptRows:parseRows(p.sources?.[`${financeId}|Resumen_Conceptos_Ingresos!A:L`]||[])};
+    const data={
+      flowRows:parseRows(p.sources?.[`${financeId}|Flujo_Mensual!A:J`]||[]),
+      movements:parseRows(p.sources?.[`${financeId}|Movimientos!A:Y`]||[]),
+      conceptRows:parseRows(p.sources?.[`${financeId}|Resumen_Conceptos_Ingresos!A:L`]||[]),
+      payrollRows:parseRows(p.sources?.[`${financeId}|Nomina_Colombia!A:AI`]||[]),
+      incomeSummaryRows:parseRows(p.sources?.[`${financeId}|Resumen_Ingresos!A:H`]||[])
+    };
     renderInto(host,data);
   }
   function schedule(force=false,delay=150){clearTimeout(timer);timer=setTimeout(()=>run(force),delay);}
