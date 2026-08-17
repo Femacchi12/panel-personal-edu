@@ -10,7 +10,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDBmVNRqmjy_bt2UovRtmVZNpKrCTyNjLU",
+  apiKey: "AIzaSyDBmVNRqmjy_bt2UovRtmZVNpKrCTyNjLU",
   authDomain: "dashboards-fibrazo.firebaseapp.com",
   projectId: "dashboards-fibrazo",
   storageBucket: "dashboards-fibrazo.firebasestorage.app",
