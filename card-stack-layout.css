@@ -1,0 +1,8 @@
+/* Tarjetas de crédito: lectura vertical fija */
+.credit-grid{
+  grid-template-columns:minmax(0,1fr)!important;
+  gap:12px!important;
+}
+.credit-grid .credit-card:nth-child(1){order:1}
+.credit-grid .credit-card:nth-child(2){order:2}
+.credit-grid .credit-card:nth-child(3){order:3}
