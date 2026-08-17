@@ -21,6 +21,7 @@ const SOURCES = [
   { book: 'finance', range: 'Tablas_Flujo!A:T' },
   { book: 'finance', range: 'Tarjetas!A:T' },
   { book: 'finance', range: 'Cuotas!A:T' },
+  { book: 'finance', range: 'Pagos_Tarjetas!A:T' },
   { book: 'finance', range: 'Resumen_Inversiones!A:N' },
   { book: 'finance', range: 'Posiciones!A:X' },
   { book: 'finance', range: 'Pensiones_Cesantias!A:T' },
@@ -140,7 +141,7 @@ app.get('/health', (req, res) => {
     ok: true,
     service: 'panel-personal-edu-backend',
     sourceCount: SOURCES.length,
-    revision: 'finance-advanced-2026-08-16'
+    revision: 'card-payments-2026-08-17'
   });
 });
 
