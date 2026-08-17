@@ -49,6 +49,21 @@
     }
   }
 
+  function applyMovementStateFilter(values, range) {
+    if (range !== 'Movimientos!A:Y' || !Array.isArray(values) || values.length < 2) return values;
+    const header = (values[0] || []).map(v => String(v ?? '').trim());
+    const statusIndex = header.map(norm).indexOf('estado');
+    if (statusIndex < 0) return values;
+
+    // La lectura estándar del dashboard representa gasto real. Programados y
+    // proyecciones siguen disponibles en /api/data para los módulos de cierre mensual.
+    const body = values.slice(1).filter(row => {
+      const status = norm(row?.[statusIndex]);
+      return status !== 'programado' && status !== 'proyeccion';
+    });
+    return [values[0], ...body];
+  }
+
   function applySectionFilters(values, range) {
     const filterState = window.__PANEL_SECTION_FILTERS__;
     const rules = Array.isArray(filterState?.rules) ? filterState.rules : [];
@@ -103,7 +118,8 @@
         });
       }
 
-      const values = applySectionFilters(sourceValues, range);
+      const actualValues = applyMovementStateFilter(sourceValues, range);
+      const values = applySectionFilters(actualValues, range);
       return new Response(JSON.stringify({
         range,
         majorDimension: 'ROWS',
