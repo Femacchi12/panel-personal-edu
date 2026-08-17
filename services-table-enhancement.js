@@ -121,6 +121,16 @@
     });
   }
 
+  function loadDashboardV2Enhancements() {
+    if (document.querySelector('script[data-dashboard-v2]')) return;
+    const script = document.createElement('script');
+    script.src = `dashboard-v2-enhancements.js?v=${Date.now()}`;
+    script.async = false;
+    script.dataset.dashboardV2 = '1';
+    script.onerror = error => console.error('No fue posible cargar dashboard-v2-enhancements.js', error);
+    document.body.appendChild(script);
+  }
+
   let timer = null;
   function schedule(delay = 60) {
     clearTimeout(timer);
@@ -138,5 +148,6 @@
     new MutationObserver(() => schedule(70)).observe(root, { childList: true, subtree: true });
   }
 
+  loadDashboardV2Enhancements();
   schedule(0);
 })();
