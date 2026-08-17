@@ -10,7 +10,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDBmVNRqmjy_bt2UovRtmZVNpKrCTyNjLU",
+  apiKey: "AIzaSyDBmVNRqmjy_bt2UovRtmVZNpKrCTyNjLU",
   authDomain: "dashboards-fibrazo.firebaseapp.com",
   projectId: "dashboards-fibrazo",
   storageBucket: "dashboards-fibrazo.firebasestorage.app",
@@ -140,6 +140,7 @@ async function loadDashboard() {
     await loadScript("investment-timeline.js");
     await loadScript("expense-table-advanced.js");
     await loadScript("flow-matrix-advanced.js");
+    await loadScript("monthly-projection-control.js");
     await loadScript("exchange-simulator.js");
     await loadScript("movement-type-columns.js");
     await loadScript("services-table-enhancement.js");
