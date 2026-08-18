@@ -1,0 +1,71 @@
+/*
+  Control compacto del último corte.
+  Objetivo móvil: 2 columnas x 3 filas para los seis datos principales.
+  No modifica colores, estados ni contenido financiero.
+*/
+
+@media (max-width: 720px) {
+  .credit-card .card-payment-control {
+    gap: 7px !important;
+    margin-top: 10px !important;
+    padding-top: 10px !important;
+  }
+
+  .credit-card .card-cycle-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+
+  .credit-card .card-cycle-item,
+  .credit-card .card-cycle-item.wide {
+    grid-column: span 1 !important;
+    min-width: 0 !important;
+    min-height: 51px !important;
+    padding: 7px 8px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+  }
+
+  .credit-card .card-cycle-item span {
+    font-size: 7px !important;
+    line-height: 1.2 !important;
+  }
+
+  .credit-card .card-cycle-item strong {
+    margin-top: 4px !important;
+    font-size: 9px !important;
+    line-height: 1.25 !important;
+  }
+
+  /* La fecha efectiva del pago ya queda en Historial de pagos. En la tarjeta
+     resumen mantenemos únicamente los seis datos clave para conservar 3 filas. */
+  .credit-card .card-cycle-grid > .card-cycle-item.wide:nth-child(n+7) {
+    display: none !important;
+  }
+
+  .credit-card .card-payment-head {
+    gap: 7px !important;
+  }
+
+  .credit-card .card-payment-head strong {
+    font-size: 9px !important;
+  }
+
+  .credit-card .payment-state {
+    padding: 4px 7px !important;
+    font-size: 8px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .credit-card .card-cycle-item,
+  .credit-card .card-cycle-item.wide {
+    padding: 6px 7px !important;
+  }
+
+  .credit-card .card-cycle-item strong {
+    font-size: 8.5px !important;
+  }
+}
