@@ -1,0 +1,109 @@
+/*
+  Estándar visual de tarjetas KPI / resumen del Panel Personal Edu.
+  Referencia: bloque "Cierre estimado" de Gastos/Flujo mensual.
+  Este archivo modifica únicamente geometría, tipografía y alineación.
+  No redefine colores, fondos ni estados semánticos.
+*/
+
+/* Misma distribución que el bloque Cierre estimado */
+.kpi-grid,
+.v2-kpis,
+.card-debt-kpis {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 9px !important;
+  align-items: stretch !important;
+}
+
+/* Tarjeta compacta estándar */
+.kpi-grid > .kpi-card,
+.v2-kpis > .v2-kpi,
+.card-debt-kpis > .card-debt-kpi {
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  min-height: 84px !important;
+  height: 100% !important;
+  padding: 11px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+}
+
+/* Etiqueta superior: misma escala del Cierre estimado */
+.kpi-grid > .kpi-card > .kpi-label,
+.v2-kpis > .v2-kpi > span:first-child,
+.card-debt-kpis > .card-debt-kpi > span:first-child {
+  display: block !important;
+  margin: 0 !important;
+  font-size: 8px !important;
+  line-height: 1.25 !important;
+  min-height: 10px !important;
+  max-width: 100% !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: clip !important;
+}
+
+/* Valor principal */
+.kpi-grid > .kpi-card > .kpi-value,
+.v2-kpis > .v2-kpi > strong,
+.card-debt-kpis > .card-debt-kpi > strong {
+  display: block !important;
+  margin: 7px 0 0 !important;
+  font-size: 18px !important;
+  line-height: 1.15 !important;
+  max-width: 100% !important;
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+/* Texto de apoyo */
+.kpi-grid > .kpi-card > .kpi-meta {
+  margin: 5px 0 0 !important;
+  min-height: 11px !important;
+  width: 100% !important;
+}
+.kpi-grid > .kpi-card > .kpi-meta > span,
+.v2-kpis > .v2-kpi > small,
+.card-debt-kpis > .card-debt-kpi > small {
+  display: block !important;
+  margin: 5px 0 0 !important;
+  font-size: 9px !important;
+  line-height: 1.25 !important;
+  max-width: 100% !important;
+  white-space: normal !important;
+}
+.kpi-grid > .kpi-card > .kpi-meta > span {
+  margin-top: 0 !important;
+}
+
+/* Alineación numérica consistente */
+.kpi-grid > .kpi-card,
+.v2-kpis > .v2-kpi,
+.card-debt-kpis > .card-debt-kpi,
+.monthly-kpis > div {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mantener el patrón responsive que ya usa Cierre estimado */
+@media (max-width: 900px) {
+  .kpi-grid,
+  .v2-kpis,
+  .card-debt-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .kpi-grid > .kpi-card,
+  .v2-kpis > .v2-kpi,
+  .card-debt-kpis > .card-debt-kpi {
+    min-height: 80px !important;
+  }
+  .kpi-grid > .kpi-card > .kpi-value,
+  .v2-kpis > .v2-kpi > strong,
+  .card-debt-kpis > .card-debt-kpi > strong {
+    font-size: 15px !important;
+  }
+}
