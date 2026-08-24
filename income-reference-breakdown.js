@@ -44,6 +44,13 @@
     return Number.isFinite(n) ? n : 0;
   }
 
+  function median(values) {
+    const list = values.map(Number).filter(v => Number.isFinite(v) && v > 0).sort((a,b)=>a-b);
+    if (!list.length) return 0;
+    const middle = Math.floor(list.length / 2);
+    return list.length % 2 ? list[middle] : (list[middle - 1] + list[middle]) / 2;
+  }
+
   function monthKey(value) {
     const s = norm(value);
     let m = s.match(/^(20\d{2})-(\d{1,2})/);
@@ -51,6 +58,11 @@
     m = s.match(/^(ene|enero|feb|febrero|mar|marzo|abr|abril|may|mayo|jun|junio|jul|julio|ago|agosto|sep|sept|septiembre|oct|octubre|nov|noviembre|dic|diciembre)\s+(20\d{2})/);
     if (!m) return '';
     return `${m[2]}-${String(MONTHS[m[1]]).padStart(2, '0')}`;
+  }
+
+  function yearOf(key) {
+    const m = String(key || '').match(/^(20\d{2})-/);
+    return m ? m[1] : '';
   }
 
   function parseRows(values) {
@@ -87,58 +99,96 @@
   function buildBases(data) {
     const conceptRows = parseRows(data?.sources?.[`${financeId}|Resumen_Conceptos_Ingresos!A:L`] || []);
     const detailRows = parseRows(data?.sources?.[`${financeId}|Detalle_Ingresos!A:L`] || []);
-    const bases = new Map();
+    const keys = new Set();
+    conceptRows.forEach(row => { const key = monthKey(row.Mes); if (key) keys.add(key); });
+    detailRows.forEach(row => { const key = monthKey(row.Mes); if (key) keys.add(key); });
+
+    const confirmedSalaryByYear = new Map();
+    const confirmedUsdByYear = new Map();
+    const confirmedRateByYear = new Map();
+    const conceptByMonth = new Map();
 
     conceptRows.forEach(row => {
-      const key = monthKey(row.Mes);
-      if (!key) return;
-      const copRegular = num(row['Sueldo COP']);
-      const usdEquiv = num(row['Sueldo USD (equiv. COP)']);
-      const usdRegular = detailRows
-        .filter(detail => monthKey(detail.Mes) === key && norm(detail.Tipo) === 'ingreso laboral' && norm(detail['Moneda original']) === 'usd')
-        .reduce((sum, detail) => sum + num(detail['Valor original']), 0);
+      const key = monthKey(row.Mes); if (!key) return;
+      conceptByMonth.set(key,row);
+      const year = yearOf(key);
+      const salary = num(row['Sueldo COP']);
+      if (salary > 0) {
+        if (!confirmedSalaryByYear.has(year)) confirmedSalaryByYear.set(year,[]);
+        confirmedSalaryByYear.get(year).push(salary);
+      }
+    });
+
+    const usdByMonth = new Map();
+    detailRows.forEach(row => {
+      const key = monthKey(row.Mes); if (!key) return;
+      if (norm(row.Tipo) !== 'ingreso laboral' || norm(row['Moneda original']) !== 'usd') return;
+      usdByMonth.set(key,(usdByMonth.get(key)||0)+num(row['Valor original']));
+    });
+
+    usdByMonth.forEach((amount,key) => {
+      if (amount <= 0) return;
+      const year = yearOf(key);
+      if (!confirmedUsdByYear.has(year)) confirmedUsdByYear.set(year,[]);
+      confirmedUsdByYear.get(year).push(amount);
+      const equiv = num(conceptByMonth.get(key)?.['Sueldo USD (equiv. COP)']);
+      if (equiv > 0) {
+        if (!confirmedRateByYear.has(year)) confirmedRateByYear.set(year,[]);
+        confirmedRateByYear.get(year).push(equiv / amount);
+      }
+    });
+
+    const allSalary = [...confirmedSalaryByYear.values()].flat();
+    const allUsd = [...confirmedUsdByYear.values()].flat();
+    const allRates = [...confirmedRateByYear.values()].flat();
+    const bases = new Map();
+
+    keys.forEach(key => {
+      const year = yearOf(key);
+      const concept = conceptByMonth.get(key) || {};
+      const copActual = num(concept['Sueldo COP']);
+      const usdActual = usdByMonth.get(key) || 0;
+      const usdEquivActual = num(concept['Sueldo USD (equiv. COP)']);
+
+      const salaryEstimate = median(confirmedSalaryByYear.get(year) || []) || median(allSalary);
+      const usdEstimate = median(confirmedUsdByYear.get(year) || []) || median(allUsd) || 1300;
+      const rateEstimate = median(confirmedRateByYear.get(year) || []) || median(allRates) || 3150;
+
+      const copEffective = copActual > 0 ? copActual : salaryEstimate;
+      const usdEffective = usdActual > 0 ? usdActual : usdEstimate;
+      const usdEquivEffective = usdEquivActual > 0 ? usdEquivActual : usdEffective * rateEstimate;
+      const copEstimated = !(copActual > 0) && copEffective > 0;
+      const usdEstimated = !(usdActual > 0 && usdEquivActual > 0) && usdEffective > 0 && usdEquivEffective > 0;
+
       bases.set(key, {
-        copRegular,
-        usdRegular,
-        usdEquiv,
-        total: copRegular + usdEquiv,
-        complete: copRegular > 0 && usdRegular > 0 && usdEquiv > 0
+        copRegular: copEffective,
+        usdRegular: usdEffective,
+        usdEquiv: usdEquivEffective,
+        total: copEffective + usdEquivEffective,
+        complete: copActual > 0 && usdActual > 0 && usdEquivActual > 0,
+        copEstimated,
+        usdEstimated,
+        usable: copEffective > 0 && usdEquivEffective > 0
       });
     });
     return bases;
-  }
-
-  function blankIncompletePercentages(grid, cards, bases) {
-    const incompleteIndexes = cards
-      .map((card, index) => ({ index, key: monthKey(card.querySelector('span')?.textContent) }))
-      .filter(item => item.key && bases.has(item.key) && !bases.get(item.key).complete)
-      .map(item => item.index);
-
-    if (!incompleteIndexes.length) return;
-    const table = document.querySelector('.flow-matrix-advanced');
-    if (!table) return;
-    table.querySelectorAll('tbody tr').forEach(row => {
-      incompleteIndexes.forEach(monthIndex => {
-        const pctCell = row.cells?.[3 + monthIndex * 2];
-        if (pctCell) pctCell.innerHTML = '<span class="matrix-pct pct-white">—</span>';
-      });
-    });
   }
 
   function renderCards(bases) {
     const grid = document.querySelector('.salary-reference-grid');
     if (!grid) return false;
     const cards = [...grid.children];
-    let incomplete = 0;
+    let estimatedCount = 0;
 
     cards.forEach(card => {
       const label = card.querySelector('span')?.textContent || '';
       const key = monthKey(label);
       const base = bases.get(key);
-      if (!base) return;
+      if (!base || !base.usable) return;
 
       if (base.complete) {
         card.dataset.incomeBaseComplete = '1';
+        card.dataset.incomeBaseEstimated = '0';
         card.innerHTML = `
           <span>${esc(label)}</span>
           <strong>${esc(cop(base.total))}</strong>
@@ -146,18 +196,18 @@
           <small class="income-base-breakdown">Fibrazo LLC USD ${esc(usd(base.usdRegular))} · ≈ ${esc(cop(base.usdEquiv))}</small>
           <small class="income-base-status income-base-ok">Base regular confirmada</small>`;
       } else {
-        incomplete += 1;
+        estimatedCount += 1;
         card.dataset.incomeBaseComplete = '0';
+        card.dataset.incomeBaseEstimated = '1';
         card.innerHTML = `
           <span>${esc(label)}</span>
-          <strong>Base incompleta</strong>
-          <small class="income-base-breakdown">Nómina COP ${base.copRegular > 0 ? esc(cop(base.copRegular)) : '· soporte pendiente'}</small>
-          <small class="income-base-breakdown">Fibrazo LLC USD ${base.usdRegular > 0 ? esc(usd(base.usdRegular)) : '· pendiente'}${base.usdEquiv > 0 ? ` · ≈ ${esc(cop(base.usdEquiv))}` : ''}</small>
-          <small class="income-base-status income-base-pending">No se usa para calcular % hasta completar</small>`;
+          <strong>${esc(cop(base.total))}</strong>
+          <small class="income-base-breakdown">Nómina COP ${esc(cop(base.copRegular))}${base.copEstimated ? ' · pendiente soporte' : ' · confirmada'}</small>
+          <small class="income-base-breakdown">Fibrazo LLC USD ${esc(usd(base.usdRegular))} · ≈ ${esc(cop(base.usdEquiv))}${base.usdEstimated ? ' · pendiente soporte' : ' · confirmado'}</small>
+          <small class="income-base-status income-base-estimated">Base estimada · usada para calcular %</small>`;
       }
     });
 
-    blankIncompletePercentages(grid, cards, bases);
     const reference = grid.closest('.salary-reference');
     let note = reference?.querySelector('.income-base-note');
     if (reference) {
@@ -166,8 +216,8 @@
         note.className = 'income-base-note';
         reference.appendChild(note);
       }
-      note.textContent = incomplete
-        ? 'Los meses con base incompleta quedan sin porcentaje hasta contar con ambos componentes regulares.'
+      note.textContent = estimatedCount
+        ? 'Cuando falta un soporte se usa temporalmente el valor regular histórico del mismo año para calcular los porcentajes. Al ingresar el soporte real, el estimado se reemplaza automáticamente.'
         : 'Base regular = nómina COP + Fibrazo LLC USD regular. Extras, primas, cesantías y devoluciones no se incluyen en estos porcentajes.';
     }
     return true;
@@ -202,7 +252,7 @@
       .income-base-breakdown{display:block;line-height:1.35;color:#94a3b8!important}
       .income-base-status{display:block;margin-top:3px;font-weight:700}
       .income-base-ok{color:#26d07c!important}
-      .income-base-pending{color:#f6c844!important}
+      .income-base-estimated{color:#f6c844!important}
       .income-base-note{margin-top:10px;padding-top:9px;border-top:1px solid #162236;color:#8291a6;font-size:10px;line-height:1.4}
     `;
     document.head.appendChild(style);
