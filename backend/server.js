@@ -16,6 +16,7 @@ const ALLOWED_EMAILS = new Set([
 ]);
 
 const SOURCES = [
+  { book: 'finance', range: 'Movimientos!A:Y' },
   { book: 'finance', range: 'Movimientos!A:Z' },
   { book: 'finance', range: 'Flujo_Mensual!A:J' },
   { book: 'finance', range: 'Tablas_Flujo!A:T' },
