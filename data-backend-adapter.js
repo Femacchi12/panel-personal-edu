@@ -15,9 +15,14 @@
     .toLowerCase()
     .trim();
 
-  async function getBackendData() {
+  function invalidateBackendCache() {
+    dataPromise = null;
+    cacheUntil = 0;
+  }
+
+  async function getBackendData(force = false) {
     const now = Date.now();
-    if (dataPromise && now < cacheUntil) return dataPromise;
+    if (!force && dataPromise && now < cacheUntil) return dataPromise;
 
     dataPromise = (async () => {
       const getIdToken = window.__PANEL_GET_ID_TOKEN__;
@@ -43,20 +48,20 @@
     try {
       return await dataPromise;
     } catch (error) {
-      dataPromise = null;
-      cacheUntil = 0;
+      invalidateBackendCache();
       throw error;
     }
   }
 
+  window.__PANEL_GET_BACKEND_DATA__ = getBackendData;
+  window.__PANEL_INVALIDATE_BACKEND_CACHE__ = invalidateBackendCache;
+
   function applyMovementStateFilter(values, range) {
-    if (range !== 'Movimientos!A:Y' || !Array.isArray(values) || values.length < 2) return values;
+    if (!['Movimientos!A:Y','Movimientos!A:Z'].includes(range) || !Array.isArray(values) || values.length < 2) return values;
     const header = (values[0] || []).map(v => String(v ?? '').trim());
     const statusIndex = header.map(norm).indexOf('estado');
     if (statusIndex < 0) return values;
 
-    // La lectura estándar del dashboard representa gasto real. Programados y
-    // proyecciones siguen disponibles en /api/data para los módulos de cierre mensual.
     const body = values.slice(1).filter(row => {
       const status = norm(row?.[statusIndex]);
       return status !== 'programado' && status !== 'proyeccion';
@@ -93,8 +98,27 @@
     return [values[0], ...body];
   }
 
-  window.fetch = async function(input, init) {
+  function jsonResponse(payload,status=200,statusText='OK') {
+    return new Response(JSON.stringify(payload), {
+      status,
+      statusText,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  window.fetch = async function(input, init = {}) {
     const rawUrl = typeof input === 'string' ? input : input?.url;
+    const method = String(init?.method || (typeof input !== 'string' ? input?.method : '') || 'GET').toUpperCase();
+
+    if (rawUrl === `${apiBaseUrl}/api/data` && method === 'GET') {
+      try {
+        const payload = await getBackendData(false);
+        return jsonResponse(payload);
+      } catch (error) {
+        return jsonResponse({error:{message:String(error?.message || error)}},502,'Backend Error');
+      }
+    }
+
     if (!rawUrl || !rawUrl.startsWith('https://sheets.googleapis.com/v4/spreadsheets/')) {
       return originalFetch(input, init);
     }
@@ -108,32 +132,21 @@
     const key = `${spreadsheetId}|${range}`;
 
     try {
-      const payload = await getBackendData();
+      const payload = await getBackendData(false);
       const sourceValues = payload?.sources?.[key];
       if (!Array.isArray(sourceValues)) {
-        return new Response(JSON.stringify({ error: { message: `Fuente no permitida: ${range}` } }), {
-          status: 404,
-          statusText: 'Not Found',
-          headers: { 'Content-Type': 'application/json' }
-        });
+        return jsonResponse({ error: { message: `Fuente no permitida: ${range}` } },404,'Not Found');
       }
 
       const actualValues = applyMovementStateFilter(sourceValues, range);
       const values = applySectionFilters(actualValues, range);
-      return new Response(JSON.stringify({
-        range,
-        majorDimension: 'ROWS',
-        values
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonResponse({range,majorDimension:'ROWS',values});
     } catch (error) {
-      return new Response(JSON.stringify({ error: { message: String(error?.message || error) } }), {
-        status: 502,
-        statusText: 'Backend Error',
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonResponse({ error: { message: String(error?.message || error) } },502,'Backend Error');
     }
   };
+
+  document.addEventListener('click',event=>{
+    if (event.target.closest('#refreshBtn')) invalidateBackendCache();
+  },true);
 })();
