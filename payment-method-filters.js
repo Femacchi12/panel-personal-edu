@@ -4,9 +4,12 @@
   const cfg = window.PANEL_CONFIG || {};
   const FINANCE_ID = cfg.financeSpreadsheetId;
   const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-  let rows = [];
-  let loadedAt = 0;
-  const state = { gastos:{account:'',method:'',payment:''}, flujo:{account:'',method:'',payment:''} };
+  const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let rows = [], loadedAt = 0, syncing = false;
+  const state = {
+    gastos:{account:[],method:[],payment:[]},
+    flujo:{account:[],method:[],payment:[]}
+  };
 
   function parseRows(values){
     if(!Array.isArray(values)||values.length<2)return [];
@@ -46,20 +49,19 @@
 
   function payment(row){
     const a=account(row), m=method(row);
-    if(a==='Efectivo'&&m==='Efectivo') return 'Efectivo';
-    if(a==='Sin especificar') return m;
-    if(m==='Sin especificar') return a;
+    if(a==='Efectivo'&&m==='Efectivo')return 'Efectivo';
+    if(a==='Sin especificar')return m;
+    if(m==='Sin especificar')return a;
     return `${a} · ${m}`;
   }
 
   async function load(){
     if(rows.length && Date.now()-loadedAt<60000)return rows;
     if(!FINANCE_ID)return [];
-    const getIdToken=window.__PANEL_GET_ID_TOKEN__;
     const backend=String(cfg.apiBaseUrl||'').replace(/\/$/,'');
-    if(backend && typeof getIdToken==='function'){
+    if(backend && typeof window.__PANEL_GET_ID_TOKEN__==='function'){
       try{
-        const token=await getIdToken(false);
+        const token=await window.__PANEL_GET_ID_TOKEN__(false);
         const res=await fetch(`${backend}/api/data`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});
         if(res.ok){
           const data=await res.json();
@@ -78,16 +80,21 @@
   }
 
   function activeView(){return document.querySelector('.nav-item.active')?.dataset.view||'';}
-  function supported(){return ['gastos','flujo'].includes(activeView());}
-  function globalSelected(key){return [...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)].map(x=>x.dataset.value);}
-  function parseDate(s){const m=String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})/);return m?new Date(+m[1],+m[2]-1,+m[3]):null;}
+  function supported(view=activeView()){return view==='gastos'||view==='flujo';}
+  function globalSelected(key){return [...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)].map(x=>String(x.dataset.value||''));}
+  function parseDate(s){
+    const v=String(s||'').trim();
+    let m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if(m)return new Date(+m[1],+m[2]-1,+m[3]);
+    m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(m)return new Date(+m[3],+m[2]-1,+m[1]);
+    return null;
+  }
 
   function periodMatch(row){
     const d=parseDate(row['Fecha real']||row['Fecha registrada']); if(!d)return false;
     const ys=globalSelected('year'), ms=globalSelected('month'), cs=globalSelected('category');
     if(ys.length&&!ys.includes(String(d.getFullYear())))return false;
     if(ms.length&&!ms.includes(String(d.getMonth()+1)))return false;
-    if(cs.length&&!cs.includes(row['Categoría']||''))return false;
+    if(cs.length&&!cs.includes(String(row['Categoría']||'')))return false;
     return true;
   }
 
@@ -95,72 +102,151 @@
     if(document.getElementById('paymentFilterCompactStyle'))return;
     const style=document.createElement('style'); style.id='paymentFilterCompactStyle';
     style.textContent=`
-      #filterBar.payment-filters-active #globalFilters{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-      .payment-native-filter{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:11px;color:#8fa0b7}
-      .payment-native-filter>span{font-size:10px;text-transform:uppercase;letter-spacing:.06em}
-      .payment-native-filter select{width:100%;min-height:38px;border-radius:9px;border:1px solid #1b293a;background:#09111d;color:#dce6f3;padding:0 10px;font:inherit}
-      .payment-filter-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;grid-column:1/-1;border-top:1px solid #172233;padding-top:10px;margin-top:2px}
-      @media(max-width:720px){#filterBar.payment-filters-active #globalFilters{grid-template-columns:repeat(3,minmax(0,1fr))}.payment-filter-row{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.payment-native-filter select{font-size:11px;padding:0 7px}}
+      #filterBar.payment-filters-active #globalFilters{grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+      #paymentFilterRow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;grid-column:1/-1;border-top:1px solid #172233;padding-top:9px;margin-top:1px}
+      #paymentFilterRow .multi-filter{min-width:0}
+      #paymentFilterRow .multi-filter-menu{z-index:80}
+      #paymentFilterRow .multi-filter-option span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      @media(max-width:720px){#filterBar.payment-filters-active #globalFilters,#paymentFilterRow{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}#paymentFilterRow .multi-filter-trigger{padding-left:8px;padding-right:8px}.filter-label-row span{font-size:9px}}
     `; document.head.appendChild(style);
   }
 
-  function ensureUI(){
-    const view=activeView();
+  function forceGlobalLayout(view){
     const global=document.getElementById('filterBar');
-    const grid=document.getElementById('globalFilters');
-    if(!supported()){
+    if(!global)return;
+    if(!supported(view)){global.classList.remove('payment-filters-active');return;}
+    global.classList.add('payment-filters-active');
+    const cat=document.querySelector('#globalFilters .multi-filter[data-filter="category"]');
+    const sub=document.querySelector('#globalFilters .multi-filter[data-filter="subcategory"]');
+    if(cat){cat.hidden=false;cat.removeAttribute('hidden');cat.style.display='';}
+    if(sub){sub.hidden=true;sub.setAttribute('hidden','');sub.style.display='none';}
+  }
+
+  function makeFilter(key,label,allLabel){
+    return `<div class="multi-filter payment-multi-filter" data-pay-filter="${key}">
+      <div class="filter-label-row"><span>${esc(label)}</span></div>
+      <button type="button" class="multi-filter-trigger" data-pay-trigger aria-expanded="false"><span data-pay-summary>${esc(allLabel)}</span><span class="filter-chevron">⌄</span></button>
+      <div class="multi-filter-menu"><input class="multi-filter-search" data-pay-search placeholder="Buscar…" autocomplete="off"><div class="multi-filter-options" data-pay-options></div></div>
+    </div>`;
+  }
+
+  function ensureUI(){
+    const view=activeView(), grid=document.getElementById('globalFilters');
+    if(!supported(view)){
       document.getElementById('paymentFilterRow')?.remove();
-      global?.classList.remove('payment-filters-active');
+      forceGlobalLayout(view);
       return;
     }
-    ensureStyle(); global?.classList.add('payment-filters-active');
-    document.querySelector('.multi-filter[data-filter="subcategory"]')?.setAttribute('hidden','');
-    if(document.getElementById('paymentFilterRow'))return;
-    const row=document.createElement('div'); row.id='paymentFilterRow'; row.className='payment-filter-row';
-    row.innerHTML=`
-      <label class="payment-native-filter"><span>Cuenta / medio</span><select data-pay-account><option value="">Todos</option></select></label>
-      <label class="payment-native-filter"><span>Modalidad</span><select data-pay-method><option value="">Todas</option></select></label>
-      <label class="payment-native-filter"><span>Medio de pago</span><select data-pay-payment><option value="">Todos</option></select></label>`;
-    grid?.appendChild(row);
-    row.querySelector('[data-pay-account]').addEventListener('change',e=>{state[view].account=e.target.value;apply();});
-    row.querySelector('[data-pay-method]').addEventListener('change',e=>{state[view].method=e.target.value;apply();});
-    row.querySelector('[data-pay-payment]').addEventListener('change',e=>{state[view].payment=e.target.value;apply();});
-    populate();
+    ensureStyle(); forceGlobalLayout(view);
+    let row=document.getElementById('paymentFilterRow');
+    if(!row){
+      row=document.createElement('div'); row.id='paymentFilterRow';
+      row.innerHTML=makeFilter('account','Cuenta / medio','Todos')+makeFilter('method','Modalidad','Todas')+makeFilter('payment','Medio de pago','Todos');
+      grid?.appendChild(row);
+      bindPaymentUI(row);
+    }
+    row.dataset.view=view;
+  }
+
+  function bindPaymentUI(row){
+    row.querySelectorAll('[data-pay-filter]').forEach(root=>{
+      root.querySelector('[data-pay-trigger]')?.addEventListener('click',e=>{
+        e.stopPropagation();
+        const opening=!root.classList.contains('open');
+        row.querySelectorAll('.payment-multi-filter.open').forEach(x=>{x.classList.remove('open');x.querySelector('[data-pay-trigger]')?.setAttribute('aria-expanded','false');});
+        if(opening){root.classList.add('open');root.querySelector('[data-pay-trigger]')?.setAttribute('aria-expanded','true');const input=root.querySelector('[data-pay-search]');if(input){input.value='';filterOptions(root,'');setTimeout(()=>input.focus(),0);}}
+      });
+      root.querySelector('[data-pay-search]')?.addEventListener('input',e=>filterOptions(root,e.target.value));
+      root.querySelector('[data-pay-search]')?.addEventListener('click',e=>e.stopPropagation());
+    });
+  }
+
+  function filterOptions(root,q){
+    const query=norm(q);
+    root.querySelectorAll('.multi-filter-option').forEach(btn=>btn.hidden=!!query&&!norm(btn.dataset.label||btn.dataset.value).includes(query));
+  }
+
+  function valuesFor(key,data){
+    const fn=key==='account'?account:key==='method'?method:payment;
+    return [...new Set(data.map(fn).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true,sensitivity:'base'}));
+  }
+
+  function renderOne(root,key,options,view){
+    const selected=state[view][key];
+    const box=root.querySelector('[data-pay-options]');
+    box.innerHTML=options.length?options.map(value=>{
+      const on=selected.includes(value);
+      return `<button type="button" class="multi-filter-option${on?' selected':''}" data-value="${esc(value)}" data-label="${esc(value)}" aria-pressed="${on}"><span class="multi-filter-check">${on?'✓':''}</span><span>${esc(value)}</span></button>`;
+    }).join(''):'<div class="multi-filter-empty">Sin opciones</div>';
+    box.querySelectorAll('.multi-filter-option').forEach(btn=>btn.addEventListener('click',e=>{
+      e.stopPropagation();
+      const list=state[view][key], value=btn.dataset.value, i=list.indexOf(value);
+      if(i>=0)list.splice(i,1); else list.push(value);
+      renderOne(root,key,options,view);
+      apply();
+    }));
+    const summary=root.querySelector('[data-pay-summary]');
+    const allLabel=key==='method'?'Todas':'Todos';
+    summary.textContent=!selected.length?allLabel:selected.length===1?selected[0]:`${selected.length} seleccionados`;
+    root.classList.toggle('has-selection',selected.length>0);
   }
 
   async function populate(){
-    const view=activeView(); if(!supported())return;
+    const view=activeView(); if(!supported(view))return;
     const data=await load(); if(activeView()!==view)return;
-    const st=state[view];
-    const a=document.querySelector('[data-pay-account]'),m=document.querySelector('[data-pay-method]'),p=document.querySelector('[data-pay-payment]'); if(!a||!m||!p)return;
     const filtered=data.filter(periodMatch);
-    const accounts=[...new Set(filtered.map(account).filter(Boolean))].sort((x,y)=>x.localeCompare(y,'es'));
-    const methods=[...new Set(filtered.map(method).filter(Boolean))].sort((x,y)=>x.localeCompare(y,'es'));
-    const payments=[...new Set(filtered.map(payment).filter(Boolean))].sort((x,y)=>x.localeCompare(y,'es'));
-    a.innerHTML='<option value="">Todos</option>'+accounts.map(v=>`<option value="${esc(v)}"${v===st.account?' selected':''}>${esc(v)}</option>`).join('');
-    m.innerHTML='<option value="">Todas</option>'+methods.map(v=>`<option value="${esc(v)}"${v===st.method?' selected':''}>${esc(v)}</option>`).join('');
-    p.innerHTML='<option value="">Todos</option>'+payments.map(v=>`<option value="${esc(v)}"${v===st.payment?' selected':''}>${esc(v)}</option>`).join('');
+    document.querySelectorAll('#paymentFilterRow [data-pay-filter]').forEach(root=>{
+      const key=root.dataset.payFilter;
+      renderOne(root,key,valuesFor(key,filtered),view);
+    });
   }
 
-  function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-  async function apply(){
-    const view=activeView(); if(!supported())return;
+  function matchesSelections(row,view){
     const st=state[view];
-    const data=(await load()).filter(r=>periodMatch(r)&&(!st.account||account(r)===st.account)&&(!st.method||method(r)===st.method)&&(!st.payment||payment(r)===st.payment));
+    return (!st.account.length||st.account.includes(account(row)))&&(!st.method.length||st.method.includes(method(row)))&&(!st.payment.length||st.payment.includes(payment(row)));
+  }
+
+  function formatAmountOriginal(v){
+    const s=String(v??'').trim(); if(!s)return '';
+    let n=Number(s.replace(/\./g,'').replace(',','.').replace(/[^\d.-]/g,''));
+    if(!Number.isFinite(n))return s;
+    return '$'+new Intl.NumberFormat('es-CO',{maximumFractionDigits:2}).format(n);
+  }
+
+  async function apply(){
+    const view=activeView(); if(!supported(view))return;
+    const data=(await load()).filter(r=>periodMatch(r)&&matchesSelections(r,view));
     window.__PAYMENT_FILTERED_MOVEMENTS__=data;
+    window.__PAYMENT_FILTER_STATE__={view,account:[...state[view].account],method:[...state[view].method],payment:[...state[view].payment]};
+    window.dispatchEvent(new CustomEvent('panel:payment-filters-change',{detail:window.__PAYMENT_FILTER_STATE__}));
+
     if(view==='gastos'){
-      const panels=[...document.querySelectorAll('#viewRoot .panel')];
-      const panel=panels.find(p=>p.querySelector('.panel-title strong')?.textContent?.trim()==='Movimientos');
+      const panel=[...document.querySelectorAll('#viewRoot .panel')].find(p=>p.querySelector('.panel-title strong')?.textContent?.trim()==='Movimientos');
       const table=panel?.querySelector('table'); if(!table)return;
       const headers=['Fecha real','Tipo','Categoría','Descripción / Comercio','Monto original','Moneda original','Cuenta / Tarjeta','Titular','Modalidad de pago','Cuotas','N° cuota','Estado','Monto COP','Monto ARS','Monto USD'];
       table.querySelector('thead').innerHTML='<tr>'+headers.map(h=>`<th>${esc(h)}</th>`).join('')+'</tr>';
-      table.querySelector('tbody').innerHTML=data.map(r=>'<tr>'+headers.map(h=>`<td>${esc(h==='Modalidad de pago'?method(r):(r[h]??''))}</td>`).join('')+'</tr>').join('');
-      const subtitle=panel.querySelector('.panel-title span'); if(subtitle)subtitle.textContent=`${data.length} movimientos según filtros de pago`;
+      table.querySelector('tbody').innerHTML=data.map(r=>'<tr>'+headers.map(h=>`<td>${h==='Monto original'?esc(formatAmountOriginal(r[h])):esc(h==='Modalidad de pago'?method(r):(r[h]??''))}</td>`).join('')+'</tr>').join('');
+      const subtitle=panel.querySelector('.panel-title span'); if(subtitle)subtitle.textContent=`${data.length} movimientos según filtros`;
     }
   }
 
-  async function sync(){ensureUI(); if(supported()){await populate();setTimeout(apply,100);}}
-  document.addEventListener('click',e=>{if(e.target.closest('.nav-item')||e.target.closest('.multi-filter-option')||e.target.closest('#resetCurrentMonth')||e.target.closest('#clearFilters'))setTimeout(sync,180);});
-  const root=document.getElementById('viewRoot'); if(root)new MutationObserver(()=>setTimeout(sync,100)).observe(root,{childList:true,subtree:false});
-  const start=()=>setTimeout(sync,700); if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
+  function clearCustom(){
+    ['gastos','flujo'].forEach(v=>{state[v].account=[];state[v].method=[];state[v].payment=[];});
+  }
+
+  async function sync(){
+    if(syncing)return; syncing=true;
+    try{ensureUI();if(supported()){await populate();await apply();}}finally{syncing=false;}
+  }
+
+  document.addEventListener('click',e=>{
+    if(!e.target.closest('#paymentFilterRow .payment-multi-filter'))document.querySelectorAll('#paymentFilterRow .payment-multi-filter.open').forEach(x=>{x.classList.remove('open');x.querySelector('[data-pay-trigger]')?.setAttribute('aria-expanded','false');});
+    if(e.target.closest('.nav-item')||e.target.closest('.multi-filter-option')||e.target.closest('#resetCurrentMonth'))setTimeout(sync,160);
+    if(e.target.closest('#clearFilters')){clearCustom();setTimeout(sync,160);}
+  },true);
+
+  const root=document.getElementById('viewRoot');
+  if(root)new MutationObserver(()=>setTimeout(sync,100)).observe(root,{childList:true,subtree:false});
+  const start=()=>setTimeout(sync,650);
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
