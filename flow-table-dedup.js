@@ -37,14 +37,10 @@
   function cleanUpperProjectionSuite(root) {
     const suite = root.querySelector('#monthlyProjectionSuite');
     if (!suite) return;
-
-    // El suite superior conserva Cierre estimado y KPIs, pero no debe repetir
-    // las tablas que ya existen al final de Gastos diarios / Flujo mensual.
     suite.querySelectorAll('.monthly-programmed-panel, .monthly-comparison-panel').forEach(hide);
   }
 
   function cleanComparisonColumnEverywhere(root) {
-    // No dependemos de clases ni del origen de la tabla: buscamos el encabezado real.
     root.querySelectorAll('table').forEach(table => {
       const headers = [...table.querySelectorAll('thead th')].map(th => norm(th.textContent));
       if (headers.includes('faltante incluido') && headers.includes('comparacion')) {
@@ -79,8 +75,14 @@
 
   const root = document.getElementById('viewRoot');
   if (root) new MutationObserver(() => schedule(110)).observe(root, { childList: true, subtree: true });
-
-  // Varias capas del dashboard terminan de inyectarse de forma asíncrona.
-  // Repetimos la limpieza en ventanas cortas para cubrir el render inicial sin loops permanentes.
   [350, 700, 1200, 2200].forEach(ms => setTimeout(apply, ms));
+})();
+
+// Corrección única de porcentajes: siempre usa ingreso mensual regular sin extras/primas.
+(() => {
+  if (document.querySelector('script[data-regular-income-percentage-fix]')) return;
+  const script = document.createElement('script');
+  script.src = 'flow-regular-income-percentage-fix.js?v=20260823-2115';
+  script.dataset.regularIncomePercentageFix = '1';
+  document.head.appendChild(script);
 })();
