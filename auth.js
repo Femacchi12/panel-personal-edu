@@ -145,6 +145,7 @@ async function loadDashboard() {
     await loadScript("movement-type-columns.js");
     await loadScript("payment-method-filters.js");
     await loadScript("services-table-enhancement.js");
+    await loadScript("flow-percentage-base-fix.js");
   } catch (error) {
     console.error("Error cargando dashboard:", error);
     dashboardLoaded = false;
