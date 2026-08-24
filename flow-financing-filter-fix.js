@@ -13,7 +13,7 @@
   let applying = false;
 
   const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-  const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
 
   function parseNumber(value) {
     if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -107,6 +107,8 @@
   }
 
   function movementMatches(row, view) {
+    const status = norm(row.Estado);
+    if (status === 'programado' || status === 'proyeccion') return false;
     const d = parseDate(row['Fecha real'] || row['Fecha registrada']);
     const years = selectedGlobal('year'), months = selectedGlobal('month'), cats = selectedGlobal('category'), subs = selectedGlobal('subcategory');
     if (years.length && (!d || !years.includes(String(d.getFullYear())))) return false;
@@ -260,7 +262,8 @@
       if (view!=='gastos' && view!=='flujo') return;
       tidyPaymentFilters();
       const data=await payload(); if(!data)return;
-      const mov = sourceRows(data,'Movimientos!A:Z').length ? sourceRows(data,'Movimientos!A:Z') : sourceRows(data,'Movimientos!A:Y');
+      const extended=sourceRows(data,'Movimientos!A:Z');
+      const mov=extended.length ? extended : sourceRows(data,'Movimientos!A:Y');
       const filtered=mov.filter(r=>movementMatches(r,view));
       if(view==='gastos'){
         removeExpenseKpis();
