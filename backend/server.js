@@ -16,7 +16,7 @@ const ALLOWED_EMAILS = new Set([
 ]);
 
 const SOURCES = [
-  { book: 'finance', range: 'Movimientos!A:Y' },
+  { book: 'finance', range: 'Movimientos!A:Z' },
   { book: 'finance', range: 'Flujo_Mensual!A:J' },
   { book: 'finance', range: 'Tablas_Flujo!A:T' },
   { book: 'finance', range: 'Tarjetas!A:T' },
@@ -141,7 +141,7 @@ app.get('/health', (req, res) => {
     ok: true,
     service: 'panel-personal-edu-backend',
     sourceCount: SOURCES.length,
-    revision: 'card-payments-2026-08-17'
+    revision: 'payment-modality-2026-08-24'
   });
 });
 
@@ -161,5 +161,5 @@ app.get('/api/data', requireAuthorizedUser, async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Panel Personal backend listening on ${PORT}`);
+  console.log(`Panel Personal Edu backend listening on ${PORT}`);
 });
