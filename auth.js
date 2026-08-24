@@ -143,6 +143,7 @@ async function loadDashboard() {
     await loadScript("monthly-projection-control.js");
     await loadScript("exchange-simulator.js");
     await loadScript("movement-type-columns.js");
+    await loadScript("payment-method-filters.js");
     await loadScript("services-table-enhancement.js");
   } catch (error) {
     console.error("Error cargando dashboard:", error);
