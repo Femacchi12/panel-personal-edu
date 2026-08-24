@@ -144,6 +144,7 @@ async function loadDashboard() {
     await loadScript("exchange-simulator.js");
     await loadScript("movement-type-columns.js");
     await loadScript("payment-method-filters.js");
+    await loadScript("flow-financing-filter-fix.js");
     await loadScript("services-table-enhancement.js");
     await loadScript("flow-percentage-base-fix.js");
   } catch (error) {
