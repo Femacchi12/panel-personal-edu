@@ -15,14 +15,9 @@
     .toLowerCase()
     .trim();
 
-  function invalidateBackendCache() {
-    dataPromise = null;
-    cacheUntil = 0;
-  }
-
-  async function getBackendData(force = false) {
+  async function getBackendData() {
     const now = Date.now();
-    if (!force && dataPromise && now < cacheUntil) return dataPromise;
+    if (dataPromise && now < cacheUntil) return dataPromise;
 
     dataPromise = (async () => {
       const getIdToken = window.__PANEL_GET_ID_TOKEN__;
@@ -48,16 +43,14 @@
     try {
       return await dataPromise;
     } catch (error) {
-      invalidateBackendCache();
+      dataPromise = null;
+      cacheUntil = 0;
       throw error;
     }
   }
 
-  window.__PANEL_GET_BACKEND_DATA__ = getBackendData;
-  window.__PANEL_INVALIDATE_BACKEND_CACHE__ = invalidateBackendCache;
-
   function applyMovementStateFilter(values, range) {
-    if (!['Movimientos!A:Y','Movimientos!A:Z'].includes(range) || !Array.isArray(values) || values.length < 2) return values;
+    if (range !== 'Movimientos!A:Y' || !Array.isArray(values) || values.length < 2) return values;
     const header = (values[0] || []).map(v => String(v ?? '').trim());
     const statusIndex = header.map(norm).indexOf('estado');
     if (statusIndex < 0) return values;
@@ -98,27 +91,8 @@
     return [values[0], ...body];
   }
 
-  function jsonResponse(payload,status=200,statusText='OK') {
-    return new Response(JSON.stringify(payload), {
-      status,
-      statusText,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-
-  window.fetch = async function(input, init = {}) {
+  window.fetch = async function(input, init) {
     const rawUrl = typeof input === 'string' ? input : input?.url;
-    const method = String(init?.method || (typeof input !== 'string' ? input?.method : '') || 'GET').toUpperCase();
-
-    if (rawUrl === `${apiBaseUrl}/api/data` && method === 'GET') {
-      try {
-        const payload = await getBackendData(false);
-        return jsonResponse(payload);
-      } catch (error) {
-        return jsonResponse({error:{message:String(error?.message || error)}},502,'Backend Error');
-      }
-    }
-
     if (!rawUrl || !rawUrl.startsWith('https://sheets.googleapis.com/v4/spreadsheets/')) {
       return originalFetch(input, init);
     }
@@ -132,21 +106,32 @@
     const key = `${spreadsheetId}|${range}`;
 
     try {
-      const payload = await getBackendData(false);
+      const payload = await getBackendData();
       const sourceValues = payload?.sources?.[key];
       if (!Array.isArray(sourceValues)) {
-        return jsonResponse({ error: { message: `Fuente no permitida: ${range}` } },404,'Not Found');
+        return new Response(JSON.stringify({ error: { message: `Fuente no permitida: ${range}` } }), {
+          status: 404,
+          statusText: 'Not Found',
+          headers: { 'Content-Type': 'application/json' }
+        });
       }
 
       const actualValues = applyMovementStateFilter(sourceValues, range);
       const values = applySectionFilters(actualValues, range);
-      return jsonResponse({range,majorDimension:'ROWS',values});
+      return new Response(JSON.stringify({
+        range,
+        majorDimension: 'ROWS',
+        values
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
     } catch (error) {
-      return jsonResponse({ error: { message: String(error?.message || error) } },502,'Backend Error');
+      return new Response(JSON.stringify({ error: { message: String(error?.message || error) } }), {
+        status: 502,
+        statusText: 'Backend Error',
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
   };
-
-  document.addEventListener('click',event=>{
-    if (event.target.closest('#refreshBtn')) invalidateBackendCache();
-  },true);
 })();
