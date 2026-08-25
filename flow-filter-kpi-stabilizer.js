@@ -12,7 +12,6 @@
   let applying = false;
 
   const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-  const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   function activeView(){ return document.querySelector('.nav-item.active')?.dataset.view || ''; }
   function activeCurrency(){ return document.querySelector('.currency-btn.active')?.dataset.currency || 'COP'; }
@@ -28,13 +27,11 @@
     else if(d>=0){ const p=s.split('.'); if(p.length>2||(p.length===2&&p[1].length===3))s=s.replace(/\./g,''); }
     const n=Number(s); return Number.isFinite(n)?n:0;
   }
-
   function parseRows(values){
     if(!Array.isArray(values)||values.length<2)return[];
     const h=(values[0]||[]).map(v=>String(v??'').trim());
     return values.slice(1).filter(r=>r?.some(v=>String(v??'').trim()!=='')).map(r=>Object.fromEntries(h.map((k,i)=>[k||`Col ${i+1}`,r?.[i]??''])));
   }
-
   function monthKey(value){
     const s=norm(value);
     let m=s.match(/^(20\d{2})-(\d{1,2})/); if(m)return`${m[1]}-${String(+m[2]).padStart(2,'0')}`;
@@ -42,13 +39,11 @@
     m=s.match(/^(ene|enero|feb|febrero|mar|marzo|abr|abril|may|mayo|jun|junio|jul|julio|ago|agosto|sep|sept|septiembre|oct|octubre|nov|noviembre|dic|diciembre)\s+(20\d{2})/);
     return m?`${m[2]}-${String(map[m[1]]).padStart(2,'0')}`:'';
   }
-
   function median(values){
     const list=values.map(parseNumber).filter(v=>v>0).sort((a,b)=>a-b);
     if(!list.length)return 0;
     const i=Math.floor(list.length/2); return list.length%2?list[i]:(list[i-1]+list[i])/2;
   }
-
   async function payload(force=false){
     if(!force&&cache&&Date.now()-cacheAt<45000)return cache;
     const token=await window.__PANEL_GET_ID_TOKEN__?.(false); if(!token)return null;
@@ -56,7 +51,6 @@
     if(!res.ok)return null;
     cache=await res.json(); cacheAt=Date.now(); return cache;
   }
-
   function sourceRows(data,range){ return parseRows(data?.sources?.[`${FINANCE_ID}|${range}`]||[]); }
 
   function ensureFilters(){
@@ -66,17 +60,17 @@
     const sub=document.querySelector('#globalFilters .multi-filter[data-filter="subcategory"]');
     const paymentBar=document.getElementById('paymentMethodFilterBar');
     if(filterBar){ filterBar.hidden=false; filterBar.style.display=''; }
-    if(category){ category.hidden=false; category.removeAttribute('hidden'); category.style.display=''; }
-    if(sub){ sub.hidden=true; sub.setAttribute('hidden',''); sub.style.display='none'; }
+    if(category){ category.hidden=false; category.style.display=''; }
+    if(sub){ sub.hidden=true; sub.style.display='none'; }
     if(paymentBar){
-      paymentBar.hidden=false; paymentBar.removeAttribute('hidden'); paymentBar.style.display='';
-      const grid=paymentBar.querySelector('.section-filter-grid'); if(grid)grid.style.gridTemplateColumns='repeat(2,minmax(0,1fr))';
+      paymentBar.hidden=false; paymentBar.style.display='';
+      const grid=paymentBar.querySelector('.section-filter-grid');
+      if(grid)grid.style.gridTemplateColumns='repeat(2,minmax(0,1fr))';
     }
   }
 
   function rowMonth(row){ return monthKey(row['Mes consumo']||row['Mes pago']||row['Fecha real']||row['Fecha registrada']); }
   function isActual(row){ const s=norm(row.Estado); return norm(row.Tipo)==='gasto' && s!=='programado' && s!=='proyeccion'; }
-
   function account(row){
     const raw=String(row['Cuenta / Tarjeta']||'').trim(), n=norm(raw), holder=norm(row.Titular);
     if(n.includes('efectivo'))return'Efectivo';
@@ -89,7 +83,6 @@
     }
     return raw||'Sin especificar';
   }
-
   function method(row){
     const explicit=String(row['Modalidad de pago']||'').trim(); if(explicit)return explicit;
     const raw=norm(row['Cuenta / Tarjeta']);
@@ -100,11 +93,10 @@
     const q=parseNumber(row.Cuotas); if(q>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';
     return'Sin especificar';
   }
-
   function movementMatches(row){
     if(!isActual(row))return false;
     const years=selectedGlobal('year'), months=selectedGlobal('month'), cats=selectedGlobal('category');
-    const mk=rowMonth(row); const ym=mk.match(/^(20\d{2})-(\d{2})$/);
+    const mk=rowMonth(row), ym=mk.match(/^(20\d{2})-(\d{2})$/);
     if(years.length&&(!ym||!years.includes(ym[1])))return false;
     if(months.length&&(!ym||!months.includes(String(+ym[2]))))return false;
     if(cats.length&&!cats.includes(String(row['Categoría']||'')))return false;
@@ -113,15 +105,13 @@
     if(st.method?.length&&!st.method.includes(method(row)))return false;
     return true;
   }
-
   function selectedMonthKey(concepts){
     const ys=selectedGlobal('year'), ms=selectedGlobal('month');
     if(ys.length===1&&ms.length===1)return`${ys[0]}-${String(+ms[0]).padStart(2,'0')}`;
     const keys=concepts.map(r=>monthKey(r.Mes)).filter(Boolean).sort(); return keys[keys.length-1]||'';
   }
-
   function incomeReference(concepts){
-    const key=selectedMonthKey(concepts); const year=key.slice(0,4);
+    const key=selectedMonthKey(concepts), year=key.slice(0,4);
     const row=concepts.find(r=>monthKey(r.Mes)===key)||{};
     const sameYear=concepts.filter(r=>monthKey(r.Mes).startsWith(`${year}-`));
     const copActual=parseNumber(row['Sueldo COP']);
@@ -131,18 +121,15 @@
     const missing=[]; if(!copActual)missing.push('Nómina COP'); if(!usdActual)missing.push('Fibrazo LLC');
     return {cop:copRegular+usdRegular,meta:missing.length?`Regular · falta soporte: ${missing.join(' + ')}`:'Nómina COP + Fibrazo LLC · soportado'};
   }
-
   function currencyFactor(rows,currency){
     if(currency==='COP')return 1;
     const ratios=rows.map(r=>{const cop=parseNumber(r['Monto COP']);const other=parseNumber(r[currency==='USD'?'Monto USD':'Monto ARS']);return cop>0&&other>0?other/cop:0;}).filter(v=>v>0);
     return median(ratios)||(currency==='USD'?1/3150:1/2.1);
   }
-
   function formatMoney(value,currency){
     const digits=currency==='USD'?2:0;
     return new Intl.NumberFormat('es-CO',{style:'currency',currency,minimumFractionDigits:digits,maximumFractionDigits:digits}).format(Number(value)||0);
   }
-
   function setCard(card,label,value,meta){
     if(!card)return;
     const l=card.querySelector('.kpi-label'),v=card.querySelector('.kpi-value'),m=card.querySelector('.kpi-meta span');
@@ -150,7 +137,6 @@
     if(v&&v.textContent!==value)v.textContent=value;
     if(m&&m.textContent!==meta)m.textContent=meta;
   }
-
   function primaryCards(){
     const root=document.getElementById('viewRoot'); if(!root)return null;
     const grid=[...root.querySelectorAll('.kpi-grid')].find(g=>{
@@ -171,10 +157,10 @@
     if(applying||activeView()!=='flujo')return;
     applying=true;
     try{
-      ensureFilters();
       const data=await payload(force); if(!data)return;
       ensureFilters();
-      const movements=(()=>{const z=sourceRows(data,'Movimientos!A:Z');return z.length?z:sourceRows(data,'Movimientos!A:Y');})();
+      const z=sourceRows(data,'Movimientos!A:Z');
+      const movements=z.length?z:sourceRows(data,'Movimientos!A:Y');
       const concepts=sourceRows(data,'Resumen_Conceptos_Ingresos!A:L');
       const filtered=movements.filter(movementMatches);
       const ref=incomeReference(concepts);
@@ -197,11 +183,12 @@
   function schedule(force=false,delay=260){ clearTimeout(timer); timer=setTimeout(()=>apply(force),delay); }
 
   document.addEventListener('click',event=>{
-    if(event.target.closest('.nav-item')){[260,700,1300].forEach(ms=>setTimeout(()=>apply(false),ms));return;}
+    if(event.target.closest('.nav-item')){setTimeout(()=>apply(false),650);return;}
     if(event.target.closest('.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters,.currency-btn'))schedule(false,320);
-    if(event.target.closest('#refreshBtn')){cache=null;cacheAt=0;schedule(true,700);}
+    if(event.target.closest('#refreshBtn')){cache=null;cacheAt=0;schedule(true,650);}
   },true);
   document.addEventListener('panel:payment-filters-changed',()=>schedule(false,180));
-  document.addEventListener('panel:filters-updated',()=>schedule(false,220));
-  [900,1700,3000].forEach(ms=>setTimeout(()=>apply(false),ms));
+
+  const start=()=>setTimeout(()=>apply(false),900);
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
