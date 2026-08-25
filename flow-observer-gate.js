@@ -1,97 +1,79 @@
 (() => {
   'use strict';
 
-  if (window.__PANEL_FLOW_OBSERVER_GATE__) return;
-  window.__PANEL_FLOW_OBSERVER_GATE__ = true;
+  // The previous version of this file overrode MutationObserver globally for
+  // Flujo. That stopped a loop, but it also prevented some later Flow modules
+  // from completing their normal render sequence. The real loop source was the
+  // payment filter observer on #viewRoot and that observer has already been
+  // removed. Native MutationObserver behavior is therefore left untouched here.
 
-  const BaseObserver = window.MutationObserver;
-  if (typeof BaseObserver !== 'function') return;
-
-  let generation = 0;
-  let lastInteractionAt = Date.now();
-
+  let timer = null;
   const activeView = () => document.querySelector('.nav-item.active')?.dataset.view || '';
-  const bump = () => {
-    generation += 1;
-    lastInteractionAt = Date.now();
-  };
 
-  function ensureFlowFiltersVisible() {
+  function normalizeFlowFilters() {
     if (activeView() !== 'flujo') return;
+
     const filterBar = document.getElementById('filterBar');
     const category = document.querySelector('#globalFilters .multi-filter[data-filter="category"]');
     const subcategory = document.querySelector('#globalFilters .multi-filter[data-filter="subcategory"]');
+    const paymentBar = document.getElementById('paymentMethodFilterBar');
+
     if (filterBar) filterBar.hidden = false;
-    if (category) category.hidden = false;
-    if (subcategory) subcategory.hidden = true;
+
+    // Exact Flow filter set requested: Año, Mes, Categoría, Cuenta/medio, Modalidad.
+    if (category) {
+      category.hidden = false;
+      category.removeAttribute('hidden');
+      category.style.display = '';
+    }
+    if (subcategory) {
+      subcategory.hidden = true;
+      subcategory.setAttribute('hidden', '');
+      subcategory.style.display = 'none';
+    }
+
+    if (paymentBar) {
+      paymentBar.hidden = false;
+      const combined = paymentBar.querySelector('[data-pay-key="payment"]');
+      if (combined) combined.remove();
+      const grid = paymentBar.querySelector('.section-filter-grid');
+      if (grid) grid.style.gridTemplateColumns = 'repeat(2,minmax(0,1fr))';
+    }
   }
 
-  function ensurePaymentFilterModule() {
-    if (document.querySelector('script[data-payment-method-filters]')) return;
-    const script = document.createElement('script');
-    script.src = 'payment-method-filters.js?v=20260824-2235';
-    script.dataset.paymentMethodFilters = '1';
-    document.head.appendChild(script);
+  function requestPaymentFilters() {
+    if (activeView() !== 'flujo') return;
+    // payment-method-filters.js listens to this explicit event. No DOM observer is
+    // needed, which keeps the filter bar stable.
+    document.dispatchEvent(new CustomEvent('panel:filters-updated', {detail:{view:'flujo'}}));
+  }
+
+  function repair(delay = 180) {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (activeView() !== 'flujo') return;
+      normalizeFlowFilters();
+      requestPaymentFilters();
+      // The payment options are loaded asynchronously; normalize once more after
+      // they have been inserted.
+      setTimeout(normalizeFlowFilters, 320);
+    }, delay);
   }
 
   document.addEventListener('click', event => {
-    if (event.target.closest?.('.nav-item,.multi-filter-option,[data-clear-filter],.currency-btn,#refreshBtn,#clearFilters,#resetCurrentMonth,#monthlyProjectionToggle,.local-option')) {
-      bump();
-    }
-    if (event.target.closest?.('.nav-item')) {
-      setTimeout(ensureFlowFiltersVisible, 80);
-      setTimeout(ensureFlowFiltersVisible, 260);
-    }
+    if (event.target.closest('.nav-item')) repair(220);
+    if (event.target.closest('.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters')) repair(180);
   }, true);
-  document.addEventListener('change', event => {
-    if (event.target.closest?.('#monthlyProjectionToggle,select,input')) bump();
-  }, true);
-  document.addEventListener('panel:payment-filters-changed', bump, true);
-  document.addEventListener('panel:monthly-projection-change', bump, true);
-  document.addEventListener('panel:filters-updated', () => setTimeout(ensureFlowFiltersVisible, 50), true);
 
-  class FlowStableMutationObserver {
-    constructor(callback) {
-      this.callback = callback;
-      this.observer = null;
-      this.isRootObserver = false;
-      this.lastGeneration = -1;
-      this.lastRunAt = 0;
-    }
+  document.addEventListener('panel:payment-filters-changed', () => {
+    if (activeView() === 'flujo') setTimeout(normalizeFlowFilters, 40);
+  });
 
-    observe(target, options = {}) {
-      this.isRootObserver = target?.id === 'viewRoot' && Boolean(options?.childList);
-      const wrapped = (records, nativeObserver) => {
-        if (!this.isRootObserver || activeView() !== 'flujo') {
-          this.callback(records, this);
-          return;
-        }
+  document.addEventListener('panel:filters-updated', () => {
+    if (activeView() === 'flujo') setTimeout(normalizeFlowFilters, 80);
+  });
 
-        const now = Date.now();
-        const currentGeneration = generation;
-        const initialGrace = this.lastGeneration < 0 && now - lastInteractionAt < 2500;
-        if (!initialGrace && this.lastGeneration === currentGeneration) return;
-        if (now - this.lastRunAt < 80) return;
-        this.lastGeneration = currentGeneration;
-        this.lastRunAt = now;
-        this.callback(records, this);
-      };
-
-      this.observer?.disconnect();
-      this.observer = new BaseObserver(wrapped);
-      this.observer.observe(target, options);
-    }
-
-    disconnect() { this.observer?.disconnect(); }
-    takeRecords() { return this.observer?.takeRecords() || []; }
-  }
-
-  window.MutationObserver = FlowStableMutationObserver;
-
-  const start = () => {
-    ensurePaymentFilterModule();
-    setTimeout(ensureFlowFiltersVisible, 700);
-  };
+  const start = () => repair(900);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, {once:true});
   else start();
 })();
