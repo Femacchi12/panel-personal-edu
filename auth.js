@@ -148,6 +148,7 @@ async function loadDashboard() {
     await loadScript("monthly-filter-card-sync.js");
     await loadScript("services-table-enhancement.js");
     await loadScript("flow-percentage-base-fix.js");
+    await loadScript("flow-filter-kpi-stabilizer.js");
   } catch (error) {
     console.error("Error cargando dashboard:", error);
     dashboardLoaded = false;
