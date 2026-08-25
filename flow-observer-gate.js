@@ -1,11 +1,38 @@
 (() => {
   'use strict';
 
-  // The previous version of this file overrode MutationObserver globally for
-  // Flujo. That stopped a loop, but it also prevented some later Flow modules
-  // from completing their normal render sequence. The real loop source was the
-  // payment filter observer on #viewRoot and that observer has already been
-  // removed. Native MutationObserver behavior is therefore left untouched here.
+  // Flujo has several independent enhancement modules. Each already has explicit
+  // navigation/filter/currency/refresh listeners and an initial scheduled render.
+  // Their additional MutationObservers on #viewRoot are therefore redundant and
+  // can wake one another indefinitely as panels are inserted or rewritten.
+  // Keep native MutationObserver everywhere else, but suppress callbacks from
+  // observers attached directly to #viewRoot while Flujo is the active view.
+  if (!window.__PANEL_FLOW_ROOT_OBSERVER_GUARD__) {
+    window.__PANEL_FLOW_ROOT_OBSERVER_GUARD__ = true;
+    const NativeMutationObserver = window.MutationObserver;
+    if (typeof NativeMutationObserver === 'function') {
+      class FlowAwareMutationObserver {
+        constructor(callback) {
+          this.callback = callback;
+          this.native = null;
+          this.targetIsViewRoot = false;
+        }
+        observe(target, options) {
+          this.targetIsViewRoot = target?.id === 'viewRoot';
+          this.native?.disconnect();
+          this.native = new NativeMutationObserver((records) => {
+            const active = document.querySelector('.nav-item.active')?.dataset.view || '';
+            if (this.targetIsViewRoot && active === 'flujo') return;
+            this.callback(records, this);
+          });
+          this.native.observe(target, options);
+        }
+        disconnect() { this.native?.disconnect(); }
+        takeRecords() { return this.native?.takeRecords() || []; }
+      }
+      window.MutationObserver = FlowAwareMutationObserver;
+    }
+  }
 
   let timer = null;
   const activeView = () => document.querySelector('.nav-item.active')?.dataset.view || '';
@@ -20,7 +47,6 @@
 
     if (filterBar) filterBar.hidden = false;
 
-    // Exact Flow filter set requested: Año, Mes, Categoría, Cuenta/medio, Modalidad.
     if (category) {
       category.hidden = false;
       category.removeAttribute('hidden');
@@ -43,8 +69,6 @@
 
   function requestPaymentFilters() {
     if (activeView() !== 'flujo') return;
-    // payment-method-filters.js listens to this explicit event. No DOM observer is
-    // needed, which keeps the filter bar stable.
     document.dispatchEvent(new CustomEvent('panel:filters-updated', {detail:{view:'flujo'}}));
   }
 
@@ -54,8 +78,6 @@
       if (activeView() !== 'flujo') return;
       normalizeFlowFilters();
       requestPaymentFilters();
-      // The payment options are loaded asynchronously; normalize once more after
-      // they have been inserted.
       setTimeout(normalizeFlowFilters, 320);
     }, delay);
   }
