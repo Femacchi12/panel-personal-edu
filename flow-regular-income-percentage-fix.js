@@ -38,6 +38,22 @@
     return cards.map(card=>parseMoney(card.querySelector('strong')?.textContent));
   }
 
+  function setPctCell(cell, share) {
+    const text=pct(share), cls=pctClass(share);
+    let span=cell.querySelector('.matrix-pct');
+    if(!span){
+      cell.textContent='';
+      span=document.createElement('span');
+      span.className=`matrix-pct ${cls}`;
+      span.textContent=text;
+      cell.appendChild(span);
+      return;
+    }
+    if(span.textContent!==text) span.textContent=text;
+    const next=`matrix-pct ${cls}`;
+    if(span.className!==next) span.className=next;
+  }
+
   function fixMatrix() {
     const table=document.querySelector('.flow-matrix-advanced');
     if(!table)return false;
@@ -50,12 +66,14 @@
         const pctCell=row.cells?.[3 + index*2];
         if(!amountCell || !pctCell || !(base>0))return;
         const amount=parseMoney(amountCell.textContent);
-        const share=amount/base;
-        pctCell.innerHTML=`<span class="matrix-pct ${pctClass(share)}">${pct(share)}</span>`;
+        setPctCell(pctCell,amount/base);
       });
     });
     return true;
   }
+
+  const formatCop=value=>new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(value);
+  function setTextIfChanged(cell,value){if(cell&&cell.textContent!==value)cell.textContent=value;}
 
   function fixSavingsTable() {
     const table=[...document.querySelectorAll('table')].find(t=>{
@@ -84,9 +102,9 @@
       if(!(base>0))return;
       const expenses=parseMoney(cells[expenseIndex]?.textContent);
       const savings=base-expenses;
-      if(incomeIndex>=0)cells[incomeIndex].textContent=new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(base);
-      if(savingsIndex>=0)cells[savingsIndex].textContent=new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(savings);
-      cells[rateIndex].textContent=pct(savings/base);
+      if(incomeIndex>=0)setTextIfChanged(cells[incomeIndex],formatCop(base));
+      if(savingsIndex>=0)setTextIfChanged(cells[savingsIndex],formatCop(savings));
+      setTextIfChanged(cells[rateIndex],pct(savings/base));
     });
   }
 
@@ -97,8 +115,13 @@
   }
 
   function schedule(delay=350){clearTimeout(timer);timer=setTimeout(apply,delay);}
-  const root=document.getElementById('viewRoot');
-  if(root)new MutationObserver(()=>schedule(300)).observe(root,{childList:true,subtree:true,characterData:true});
-  document.addEventListener('click',e=>{if(e.target.closest('[data-view="flujo"],#refreshBtn,.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters'))schedule(650);});
-  schedule(900);
+
+  // Sin MutationObserver: este módulo se ejecuta únicamente ante acciones reales.
+  // Observar characterData/subtree hacía que sus propias escrituras reactivaran
+  // el módulo indefinidamente.
+  document.addEventListener('click',e=>{
+    if(e.target.closest('[data-view="flujo"],#refreshBtn,.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters,.currency-btn'))schedule(500);
+  });
+  document.addEventListener('panel:payment-filters-changed',()=>schedule(350));
+  [700,1400,2400].forEach(ms=>setTimeout(apply,ms));
 })();
