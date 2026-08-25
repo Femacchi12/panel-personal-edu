@@ -20,7 +20,6 @@ const firebaseConfig = {
 
 const cfg = window.PANEL_CONFIG || {};
 const BACKEND_MODE = Boolean(String(cfg.apiBaseUrl || '').trim());
-const ASSET_VERSION = String(cfg.assetVersion || '20260824-2');
 const ALLOWED_EMAILS = new Set([
   "fernandoemacchi@gmail.com",
   "eduardo@fibrazo.com"
@@ -113,20 +112,11 @@ function showDenied(email) {
 }
 
 function loadScript(src) {
-  const existing = [...document.scripts].find(script => script.dataset.panelSrc === src);
-  if (existing) return existing.dataset.loaded === '1'
-    ? Promise.resolve()
-    : new Promise((resolve,reject)=>{
-        existing.addEventListener('load',resolve,{once:true});
-        existing.addEventListener('error',reject,{once:true});
-      });
-
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.dataset.panelSrc = src;
-    script.src = `${src}${src.includes('?') ? '&' : '?'}v=${encodeURIComponent(ASSET_VERSION)}`;
-    script.async = true;
-    script.onload = () => { script.dataset.loaded = '1'; resolve(); };
+    script.src = `${src}?v=${Date.now()}`;
+    script.async = false;
+    script.onload = resolve;
     script.onerror = reject;
     document.body.appendChild(script);
   });
@@ -138,31 +128,26 @@ async function loadDashboard() {
   try {
     if (BACKEND_MODE) await loadScript("data-backend-adapter.js");
     await loadScript("app.js");
-
-    const enhancements = [
-      "income-doc-enhancements.js",
-      "income-chart-filter-fix.js",
-      "card-specific-filter.js",
-      "card-payment-control.js",
-      "card-chart-personal-limit.js",
-      "card-payments-installments.js",
-      "flow-savings-enhancements.js",
-      "income-type-filter.js",
-      "table-date-behavior.js",
-      "investment-timeline.js",
-      "expense-table-advanced.js",
-      "flow-matrix-advanced.js",
-      "monthly-projection-control.js",
-      "exchange-simulator.js",
-      "movement-type-columns.js",
-      "payment-method-filters.js",
-      "flow-financing-filter-fix.js",
-      "monthly-filter-card-sync.js",
-      "services-table-enhancement.js",
-      "flow-percentage-base-fix.js"
-    ];
-
-    await Promise.all(enhancements.map(loadScript));
+    await loadScript("income-doc-enhancements.js");
+    await loadScript("income-chart-filter-fix.js");
+    await loadScript("card-specific-filter.js");
+    await loadScript("card-payment-control.js");
+    await loadScript("card-chart-personal-limit.js");
+    await loadScript("card-payments-installments.js");
+    await loadScript("flow-savings-enhancements.js");
+    await loadScript("income-type-filter.js");
+    await loadScript("table-date-behavior.js");
+    await loadScript("investment-timeline.js");
+    await loadScript("expense-table-advanced.js");
+    await loadScript("flow-matrix-advanced.js");
+    await loadScript("monthly-projection-control.js");
+    await loadScript("exchange-simulator.js");
+    await loadScript("movement-type-columns.js");
+    await loadScript("payment-method-filters.js");
+    await loadScript("flow-financing-filter-fix.js");
+    await loadScript("monthly-filter-card-sync.js");
+    await loadScript("services-table-enhancement.js");
+    await loadScript("flow-percentage-base-fix.js");
   } catch (error) {
     console.error("Error cargando dashboard:", error);
     dashboardLoaded = false;
