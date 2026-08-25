@@ -246,8 +246,9 @@
 
   document.addEventListener('panel:filters-updated',()=>schedule(100,true));
 
-  const root=document.getElementById('viewRoot');
-  if(root)new MutationObserver(()=>schedule(120,false)).observe(root,{childList:true,subtree:false});
+  // Importante: no observar viewRoot. Los módulos de Flujo modifican ese DOM durante
+  // su render y eso reconstruía estos filtros una y otra vez. La sincronización queda
+  // limitada a navegación, cambios reales de filtros y eventos explícitos.
 
   const start=()=>{ensureStyle();ensureBar();schedule(500,true);};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
