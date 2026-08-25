@@ -8,6 +8,7 @@
 
   const MONTHS = {ene:1,enero:1,feb:2,febrero:2,mar:3,marzo:3,abr:4,abril:4,may:5,mayo:5,jun:6,junio:6,jul:7,julio:7,ago:8,agosto:8,sep:9,sept:9,septiembre:9,oct:10,octubre:10,nov:11,noviembre:11,dic:12,diciembre:12};
   let cache=null, cacheAt=0, timer=null, applying=false;
+  const retryTimers=[];
 
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   function num(value){
@@ -44,27 +45,45 @@
     details.forEach(row=>{const key=monthKey(row.Mes);if(!key)return;keys.add(key);if(norm(row.Tipo)!=='ingreso laboral'||norm(row['Moneda original'])!=='usd')return;usdByMonth.set(key,(usdByMonth.get(key)||0)+num(row['Valor original']));});
     usdByMonth.forEach((amount,key)=>{if(!(amount>0))return;const y=yearOf(key);if(!usdAmountsByYear.has(y))usdAmountsByYear.set(y,[]);usdAmountsByYear.get(y).push(amount);const equiv=num(conceptByMonth.get(key)?.['Sueldo USD (equiv. COP)']);if(equiv>0){if(!ratesByYear.has(y))ratesByYear.set(y,[]);ratesByYear.get(y).push(equiv/amount);}});
     const allSalary=[...salariesByYear.values()].flat(),allUsd=[...usdAmountsByYear.values()].flat(),allRates=[...ratesByYear.values()].flat(),bases=new Map();
-    keys.forEach(key=>{const y=yearOf(key),concept=conceptByMonth.get(key)||{},copActual=num(concept['Sueldo COP']),usdActual=usdByMonth.get(key)||0,usdEquivActual=num(concept['Sueldo USD (equiv. COP)']);const copEstimate=median(salariesByYear.get(y)||[])||median(allSalary),usdEstimate=median(usdAmountsByYear.get(y)||[])||median(allUsd)||1300,rateEstimate=median(ratesByYear.get(y)||[])||median(allRates)||3150;const copRegular=copActual>0?copActual:copEstimate,usdRegular=usdActual>0?usdActual:usdEstimate,usdEquiv=usdEquivActual>0?usdEquivActual:usdRegular*rateEstimate,copEstimated=!(copActual>0)&&copRegular>0,usdEstimated=!(usdActual>0&&usdEquivActual>0)&&usdRegular>0&&usdEquiv>0,total=copRegular+usdEquiv;if(total>0)bases.set(key,{total,copRegular,usdRegular,usdEquiv,copEstimated,usdEstimated,complete:!copEstimated&&!usdEstimated});});
+    keys.forEach(key=>{
+      const y=yearOf(key),concept=conceptByMonth.get(key)||{};
+      const copActual=num(concept['Sueldo COP']),usdActual=usdByMonth.get(key)||0,usdEquivActual=num(concept['Sueldo USD (equiv. COP)']);
+      const copEstimate=median(salariesByYear.get(y)||[])||median(allSalary);
+      const usdEstimate=median(usdAmountsByYear.get(y)||[])||median(allUsd)||1300;
+      const rateEstimate=median(ratesByYear.get(y)||[])||median(allRates)||3150;
+      const copRegular=copActual>0?copActual:copEstimate;
+      const usdRegular=usdActual>0?usdActual:usdEstimate;
+      const usdEquiv=usdEquivActual>0?usdEquivActual:usdRegular*rateEstimate;
+      const copEstimated=!(copActual>0)&&copRegular>0;
+      const usdEstimated=!(usdActual>0&&usdEquivActual>0)&&usdRegular>0&&usdEquiv>0;
+      const total=copRegular+usdEquiv;
+      if(total>0)bases.set(key,{total,copRegular,usdRegular,usdEquiv,copEstimated,usdEstimated,complete:!copEstimated&&!usdEstimated});
+    });
     return bases;
   }
 
-  function setSmall(card,className,text){let el=card.querySelector(`small.${className}`);if(!el){el=document.createElement('small');el.className=className;card.appendChild(el);}if(el.textContent!==text)el.textContent=text;}
   function updateCards(bases){
     document.querySelectorAll('.salary-reference-grid > div').forEach(card=>{
       const key=monthKey(card.querySelector('span')?.textContent||''),base=bases.get(key);if(!base)return;
       const strong=card.querySelector('strong'),total=money(base.total);if(strong&&strong.textContent!==total)strong.textContent=total;
-      card.querySelectorAll('small:not(.income-base-breakdown):not(.income-base-status)').forEach(el=>el.remove());
-      const breakdowns=card.querySelectorAll('small.income-base-breakdown');if(breakdowns.length>2)[...breakdowns].slice(2).forEach(el=>el.remove());
-      let s1=card.querySelectorAll('small.income-base-breakdown')[0];if(!s1){s1=document.createElement('small');s1.className='income-base-breakdown';card.appendChild(s1);}const t1=`Nómina COP ${money(base.copRegular)}${base.copEstimated?' · pendiente soporte':''}`;if(s1.textContent!==t1)s1.textContent=t1;
-      let s2=card.querySelectorAll('small.income-base-breakdown')[1];if(!s2){s2=document.createElement('small');s2.className='income-base-breakdown';card.appendChild(s2);}const t2=`Fibrazo LLC USD ${usd(base.usdRegular)} · ≈ ${money(base.usdEquiv)}${base.usdEstimated?' · pendiente soporte':''}`;if(s2.textContent!==t2)s2.textContent=t2;
-      let status=card.querySelector('small.income-base-status');if(!status){status=document.createElement('small');card.appendChild(status);}const cls=`income-base-status ${base.complete?'income-base-ok':'income-base-estimated'}`,st=base.complete?'Base regular confirmada':'Base estimada · usada para calcular %';if(status.className!==cls)status.className=cls;if(status.textContent!==st)status.textContent=st;
+      card.querySelectorAll('small').forEach(el=>el.remove());
+      const s1=document.createElement('small');s1.className='income-base-breakdown';s1.textContent=`Nómina COP ${money(base.copRegular)}${base.copEstimated?' · pendiente soporte':''}`;
+      const s2=document.createElement('small');s2.className='income-base-breakdown';s2.textContent=`Fibrazo LLC USD ${usd(base.usdRegular)} · ≈ ${money(base.usdEquiv)}${base.usdEstimated?' · pendiente soporte':''}`;
+      const status=document.createElement('small');status.className=`income-base-status ${base.complete?'income-base-ok':'income-base-estimated'}`;status.textContent=base.complete?'Base regular confirmada':'Base estimada · usada para calcular %';
+      card.append(s1,s2,status);
     });
   }
 
   function updateMatrix(bases){
     const table=document.querySelector('.flow-matrix-advanced');if(!table)return;
     const monthKeys=[...table.querySelectorAll('thead tr:first-child th[data-flow-sort-month]')].map(th=>th.dataset.flowSortMonth||monthKey(th.textContent));
-    table.querySelectorAll('tbody tr').forEach(row=>monthKeys.forEach((key,i)=>{const base=bases.get(key)?.total;if(!(base>0))return;const amountCell=row.cells?.[2+i*2],pctCell=row.cells?.[3+i*2];if(!amountCell||!pctCell)return;const share=num(amountCell.textContent)/base,next=pct(share),cls=`matrix-pct ${pctClass(share)}`;let span=pctCell.querySelector('.matrix-pct');if(!span){pctCell.textContent='';span=document.createElement('span');pctCell.appendChild(span);}if(span.textContent!==next)span.textContent=next;if(span.className!==cls)span.className=cls;}));
+    table.querySelectorAll('tbody tr').forEach(row=>monthKeys.forEach((key,i)=>{
+      const base=bases.get(key)?.total;if(!(base>0))return;
+      const amountCell=row.cells?.[2+i*2],pctCell=row.cells?.[3+i*2];if(!amountCell||!pctCell)return;
+      const share=num(amountCell.textContent)/base,next=pct(share),cls=`matrix-pct ${pctClass(share)}`;
+      let span=pctCell.querySelector('.matrix-pct');if(!span){pctCell.textContent='';span=document.createElement('span');pctCell.appendChild(span);}
+      if(span.textContent!==next)span.textContent=next;if(span.className!==cls)span.className=cls;
+    }));
   }
 
   function updateNote(){
@@ -78,18 +97,30 @@
     if(applying||document.querySelector('.nav-item.active')?.dataset.view!=='flujo')return;
     if(!document.querySelector('.flow-matrix-advanced')||!document.querySelector('.salary-reference-grid'))return;
     applying=true;
-    try{const data=await getPayload(force);if(!data)return;const bases=buildBases(data);window.__PANEL_REGULAR_INCOME_BASES__=bases;updateCards(bases);updateMatrix(bases);updateNote();}
-    catch(error){console.error('Base regular unificada:',error);}finally{applying=false;}
+    try{
+      const data=await getPayload(force);if(!data)return;
+      const bases=buildBases(data);
+      window.__PANEL_REGULAR_INCOME_BASES__=bases;
+      updateCards(bases);updateMatrix(bases);updateNote();
+      document.dispatchEvent(new CustomEvent('panel:regular-income-base-applied'));
+    }catch(error){console.error('Base regular unificada:',error);}finally{applying=false;}
   }
 
   function schedule(force=false,delay=220){clearTimeout(timer);timer=setTimeout(()=>apply(force),delay);}
+  function reconcileSeries(force=false){
+    retryTimers.splice(0).forEach(clearTimeout);
+    [350,900,1700,3000,4800,7000,10000].forEach((ms,index)=>{
+      retryTimers.push(setTimeout(()=>apply(force&&index===0),ms));
+    });
+  }
 
-  // Event-driven only. The old subtree/characterData MutationObserver watched the
-  // same nodes this module rewrote, creating an endless self-triggered render loop.
+  // Sin MutationObserver: reconciliación acotada tras acciones reales para que la
+  // matriz no vuelva a sobrescribir agosto con solo Fibrazo LLC después del render.
   document.addEventListener('click',event=>{
-    if(event.target.closest('#refreshBtn')){cache=null;cacheAt=0;schedule(true,500);return;}
-    if(event.target.closest('.nav-item,.multi-filter-option,.currency-btn,#resetCurrentMonth,#clearFilters,[data-clear-filter]'))schedule(false,450);
+    if(event.target.closest('#refreshBtn')){cache=null;cacheAt=0;reconcileSeries(true);return;}
+    if(event.target.closest('.nav-item,.multi-filter-option,.currency-btn,#resetCurrentMonth,#clearFilters,[data-clear-filter]'))reconcileSeries(false);
   },true);
-  document.addEventListener('panel:payment-filters-changed',()=>schedule(false,320));
-  [800,1600,2800].forEach(ms=>setTimeout(()=>apply(false),ms));
+  document.addEventListener('panel:payment-filters-changed',()=>reconcileSeries(false));
+  document.addEventListener('panel:monthly-projection-change',()=>reconcileSeries(false));
+  reconcileSeries(false);
 })();
