@@ -10,8 +10,8 @@
   let loadedAt = 0;
   let reconcileTimer = null;
   const state = {
-    gastos:{account:[],method:[],payment:[]},
-    flujo:{account:[],method:[],payment:[]}
+    gastos:{account:[],method:[]},
+    flujo:{account:[],method:[]}
   };
 
   function parseRows(values){
@@ -28,7 +28,7 @@
     if(n.includes('nequi')) return holder.includes('ro')?'Nequi Ro':'Nequi Edu';
     if(n.includes('arq')) return 'ARQ Edu';
     if(n.includes('nu')) {
-      if(n.includes(' ro')||n.endsWith('ro')||holder.includes('rocio')) return 'Nu Ro';
+      if(n.includes(' ro')||n.endsWith('ro')||holder.includes('rocio')||holder==='ro') return 'Nu Ro';
       if(n.includes('edu')||holder.includes('edu')) return 'Nu Edu';
       return 'Nu';
     }
@@ -48,14 +48,6 @@
     const q=Number(String(row.Cuotas||'').replace(/[^\d]/g,''));
     if(q>0&&(raw.includes('nu')||raw.includes('arq')))return 'Crédito';
     return 'Sin especificar';
-  }
-
-  function payment(row){
-    const a=account(row), m=method(row);
-    if(a==='Efectivo'&&m==='Efectivo')return 'Efectivo';
-    if(a==='Sin especificar')return m;
-    if(m==='Sin especificar')return a;
-    return `${a} · ${m}`;
   }
 
   async function load(){
@@ -109,11 +101,11 @@
       #paymentMethodFilterBar{margin-top:-1px!important;border-top:0!important;border-top-left-radius:0!important;border-top-right-radius:0!important;padding-top:0!important}
       #paymentMethodFilterBar>.filter-head{display:none!important}
       #paymentMethodFilterBar::before{content:"";display:block;height:1px;background:var(--border-soft);margin:0 0 10px}
-      #paymentMethodFilterBar .section-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+      #paymentMethodFilterBar .section-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
       #paymentMethodFilterBar .multi-filter{min-width:0}
       .main>#filterBar:not([hidden]):has(+ #paymentMethodFilterBar:not([hidden])){margin-bottom:0!important;border-bottom-left-radius:0!important;border-bottom-right-radius:0!important;border-bottom-color:transparent!important;padding-bottom:10px!important}
       #paymentMethodFilterBar[hidden]{display:none!important}
-      @media(max-width:720px){#paymentMethodFilterBar .section-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}#paymentMethodFilterBar .multi-filter-trigger{padding-left:8px;padding-right:8px;font-size:11px}.multi-filter-menu{min-width:180px}}
+      @media(max-width:720px){#paymentMethodFilterBar .section-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}#paymentMethodFilterBar .multi-filter-trigger{padding-left:8px;padding-right:8px;font-size:11px}.multi-filter-menu{min-width:180px}}
     `;document.head.appendChild(style);
   }
 
@@ -132,8 +124,7 @@
   }
 
   function filterDef(key,label,getter){return {key,label,getter};}
-  const defs=[filterDef('account','Cuenta / medio',account),filterDef('method','Modalidad',method),filterDef('payment','Medio de pago',payment)];
-
+  const defs=[filterDef('account','Cuenta / medio',account),filterDef('method','Modalidad',method)];
   function selected(view,key){return state[view]?.[key]||[];}
 
   function renderFilter(def,options,view){
@@ -205,13 +196,13 @@
 
   function rowMatchesPayment(row,view){
     const st=state[view];
-    return (!st.account.length||st.account.includes(account(row)))&&(!st.method.length||st.method.includes(method(row)))&&(!st.payment.length||st.payment.includes(payment(row)));
+    return (!st.account.length||st.account.includes(account(row)))&&(!st.method.length||st.method.includes(method(row)));
   }
 
   async function apply(view){
     if(!supported(view))return;
     const data=(await load()).filter(r=>periodMatch(r)&&rowMatchesPayment(r,view));
-    window.__PAYMENT_FILTER_STATE__={view,account:[...state[view].account],method:[...state[view].method],payment:[...state[view].payment]};
+    window.__PAYMENT_FILTER_STATE__={view,account:[...state[view].account],method:[...state[view].method]};
     window.__PAYMENT_FILTERED_MOVEMENTS__=data;
 
     if(view==='gastos'){
@@ -245,10 +236,6 @@
   },true);
 
   document.addEventListener('panel:filters-updated',()=>schedule(100,true));
-
-  // Importante: no observar viewRoot. Los módulos de Flujo modifican ese DOM durante
-  // su render y eso reconstruía estos filtros una y otra vez. La sincronización queda
-  // limitada a navegación, cambios reales de filtros y eventos explícitos.
 
   const start=()=>{ensureStyle();ensureBar();schedule(500,true);};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
