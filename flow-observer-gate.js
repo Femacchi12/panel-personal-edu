@@ -16,11 +16,31 @@
     lastInteractionAt = Date.now();
   };
 
-  // Una interacción real habilita una nueva ronda de render. Las mutaciones
-  // producidas por esa misma ronda no deben iniciar otra cadena de renders.
+  function ensureFlowFiltersVisible() {
+    if (activeView() !== 'flujo') return;
+    const filterBar = document.getElementById('filterBar');
+    const category = document.querySelector('#globalFilters .multi-filter[data-filter="category"]');
+    const subcategory = document.querySelector('#globalFilters .multi-filter[data-filter="subcategory"]');
+    if (filterBar) filterBar.hidden = false;
+    if (category) category.hidden = false;
+    if (subcategory) subcategory.hidden = true;
+  }
+
+  function ensurePaymentFilterModule() {
+    if (document.querySelector('script[data-payment-method-filters]')) return;
+    const script = document.createElement('script');
+    script.src = 'payment-method-filters.js?v=20260824-2235';
+    script.dataset.paymentMethodFilters = '1';
+    document.head.appendChild(script);
+  }
+
   document.addEventListener('click', event => {
     if (event.target.closest?.('.nav-item,.multi-filter-option,[data-clear-filter],.currency-btn,#refreshBtn,#clearFilters,#resetCurrentMonth,#monthlyProjectionToggle,.local-option')) {
       bump();
+    }
+    if (event.target.closest?.('.nav-item')) {
+      setTimeout(ensureFlowFiltersVisible, 80);
+      setTimeout(ensureFlowFiltersVisible, 260);
     }
   }, true);
   document.addEventListener('change', event => {
@@ -28,6 +48,7 @@
   }, true);
   document.addEventListener('panel:payment-filters-changed', bump, true);
   document.addEventListener('panel:monthly-projection-change', bump, true);
+  document.addEventListener('panel:filters-updated', () => setTimeout(ensureFlowFiltersVisible, 50), true);
 
   class FlowStableMutationObserver {
     constructor(callback) {
@@ -46,14 +67,10 @@
           return;
         }
 
-        // Para cada interacción, cada observer de #viewRoot puede ejecutarse una
-        // sola vez. Se concede además una ronda inicial al entrar/cargar Flujo.
         const now = Date.now();
         const currentGeneration = generation;
         const initialGrace = this.lastGeneration < 0 && now - lastInteractionAt < 2500;
         if (!initialGrace && this.lastGeneration === currentGeneration) return;
-
-        // Protección adicional ante ráfagas de MutationObserver del mismo frame.
         if (now - this.lastRunAt < 80) return;
         this.lastGeneration = currentGeneration;
         this.lastRunAt = now;
@@ -70,4 +87,11 @@
   }
 
   window.MutationObserver = FlowStableMutationObserver;
+
+  const start = () => {
+    ensurePaymentFilterModule();
+    setTimeout(ensureFlowFiltersVisible, 700);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, {once:true});
+  else start();
 })();
