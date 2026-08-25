@@ -1,39 +1,9 @@
 (() => {
   'use strict';
 
-  // Flujo has several independent enhancement modules. Each already has explicit
-  // navigation/filter/currency/refresh listeners and an initial scheduled render.
-  // Their additional MutationObservers on #viewRoot are therefore redundant and
-  // can wake one another indefinitely as panels are inserted or rewritten.
-  // Keep native MutationObserver everywhere else, but suppress callbacks from
-  // observers attached directly to #viewRoot while Flujo is the active view.
-  if (!window.__PANEL_FLOW_ROOT_OBSERVER_GUARD__) {
-    window.__PANEL_FLOW_ROOT_OBSERVER_GUARD__ = true;
-    const NativeMutationObserver = window.MutationObserver;
-    if (typeof NativeMutationObserver === 'function') {
-      class FlowAwareMutationObserver {
-        constructor(callback) {
-          this.callback = callback;
-          this.native = null;
-          this.targetIsViewRoot = false;
-        }
-        observe(target, options) {
-          this.targetIsViewRoot = target?.id === 'viewRoot';
-          this.native?.disconnect();
-          this.native = new NativeMutationObserver((records) => {
-            const active = document.querySelector('.nav-item.active')?.dataset.view || '';
-            if (this.targetIsViewRoot && active === 'flujo') return;
-            this.callback(records, this);
-          });
-          this.native.observe(target, options);
-        }
-        disconnect() { this.native?.disconnect(); }
-        takeRecords() { return this.native?.takeRecords() || []; }
-      }
-      window.MutationObserver = FlowAwareMutationObserver;
-    }
-  }
-
+  // Estabilizador liviano de Flujo mensual.
+  // No modifica MutationObserver globalmente: los bucles reales se corrigen en
+  // los módulos que reescribían su propio DOM. Aquí solo normalizamos filtros.
   let timer = null;
   const activeView = () => document.querySelector('.nav-item.active')?.dataset.view || '';
 
