@@ -17,21 +17,25 @@
     el.style.display = 'none';
   }
 
-  function removeColumnFromTable(table, wantedHeader) {
-    if (!table) return;
-    const wanted = norm(wantedHeader);
-    const headers = [...table.querySelectorAll('thead th')];
-    const index = headers.findIndex(th => norm(th.textContent) === wanted);
-    if (index < 0) return;
-    headers[index]?.remove();
-    table.querySelectorAll('tbody tr').forEach(row => row.cells[index]?.remove());
-    table.querySelectorAll('tfoot tr').forEach(row => row.cells[index]?.remove());
-  }
-
   function isTargetView() {
     const active = document.querySelector('.nav-item.active')?.dataset.view || '';
     const title = norm(document.getElementById('viewTitle')?.textContent || '');
     return active === 'gastos' || active === 'flujo' || title === 'gastos diarios' || title === 'flujo mensual';
+  }
+
+  function injectStableComparisonStyles() {
+    if (document.getElementById('flowComparisonStableStyles')) return;
+    const style = document.createElement('style');
+    style.id = 'flowComparisonStableStyles';
+    style.textContent = `
+      /* “Faltante incluido” fue eliminado del diseño. Se oculta por CSS para que
+         los re-renders de monthly-projection-control no puedan hacerlo reaparecer. */
+      .monthly-comparison-panel .monthly-planning-table th:nth-child(5),
+      .monthly-comparison-panel .monthly-planning-table td:nth-child(5) {
+        display: none !important;
+      }
+    `;
+    document.head.appendChild(style);
   }
 
   function cleanUpperProjectionSuite(root) {
@@ -40,23 +44,14 @@
     suite.querySelectorAll('.monthly-programmed-panel, .monthly-comparison-panel').forEach(hide);
   }
 
-  function cleanComparisonColumnEverywhere(root) {
-    root.querySelectorAll('table').forEach(table => {
-      const headers = [...table.querySelectorAll('thead th')].map(th => norm(th.textContent));
-      if (headers.includes('faltante incluido') && headers.includes('comparacion')) {
-        removeColumnFromTable(table, 'Faltante incluido');
-      }
-    });
-  }
-
   function apply() {
     if (applying || !isTargetView()) return;
     applying = true;
     try {
+      injectStableComparisonStyles();
       const root = document.getElementById('viewRoot');
       if (!root) return;
       cleanUpperProjectionSuite(root);
-      cleanComparisonColumnEverywhere(root);
     } finally {
       applying = false;
     }
@@ -73,6 +68,7 @@
     }
   }, true);
 
+  injectStableComparisonStyles();
   const root = document.getElementById('viewRoot');
   if (root) new MutationObserver(() => schedule(110)).observe(root, { childList: true, subtree: true });
   [350, 700, 1200, 2200].forEach(ms => setTimeout(apply, ms));
@@ -82,7 +78,7 @@
 (() => {
   if (document.querySelector('script[data-regular-income-percentage-fix]')) return;
   const script = document.createElement('script');
-  script.src = 'flow-regular-income-percentage-fix.js?v=20260823-2115';
+  script.src = 'flow-regular-income-percentage-fix.js?v=20260825-1625';
   script.dataset.regularIncomePercentageFix = '1';
   document.head.appendChild(script);
 })();
