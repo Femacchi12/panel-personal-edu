@@ -1,22 +1,12 @@
 (() => {
   'use strict';
 
+  // Este módulo quedó dedicado exclusivamente a los escenarios de ahorro de
+  // Ingresos. La matriz de Flujo mensual vive únicamente en flow-matrix-v3.js.
   const cfg = window.PANEL_CONFIG || {};
   const apiBaseUrl = String(cfg.apiBaseUrl || '').replace(/\/$/, '');
   const financeId = String(cfg.financeSpreadsheetId || '');
   if (!apiBaseUrl || !financeId) return;
-
-  const MONTH_LABELS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sept','Oct','Nov','Dic'];
-  const SUMMARY_ROWS = [
-    ['Total gastado por categorías','__CATEGORY_TOTAL__','flow-total-row'],
-    ['Gasto fijo','Fijo','flow-summary-row'],
-    ['Gasto fijo + supermercado','Fijo + Super','flow-summary-row'],
-    ['Gasto variable','Variable','flow-summary-row'],
-    ['Gasto variable - supermercado','Variable - Super','flow-summary-row'],
-    ['Pagado / egresos efectivos','Egresos efectivos','flow-summary-row'],
-    ['Financiado en cuotas','Egresos Financiados','flow-summary-row flow-financed-row'],
-    ['Total real del mes (pagado + financiado)','Egresos TOTALES','flow-summary-row flow-real-row']
-  ];
 
   let payloadPromise = null;
   let cacheUntil = 0;
@@ -25,7 +15,6 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
   }[c]));
-  const norm = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 
   function parseNumber(value) {
     if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -87,28 +76,12 @@
     return parseRows(matrix(payload,range));
   }
 
-  function selectedValues(key) {
-    return [...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)]
-      .map(el => String(el.dataset.value || '').trim())
-      .filter(Boolean);
-  }
-
   function activeView() {
     return document.querySelector('.nav-item.active')?.dataset.view || '';
   }
 
   function activeCurrency() {
     return document.querySelector('.currency-btn.active')?.dataset.currency || 'COP';
-  }
-
-  function monthParts(value) {
-    const match = String(value || '').trim().match(/^(\d{4})-(\d{1,2})$/);
-    return match ? {year:Number(match[1]), month:Number(match[2])} : null;
-  }
-
-  function monthLabel(value) {
-    const p = monthParts(value);
-    return p ? `${MONTH_LABELS[p.month-1]} ${p.year}` : String(value || '—');
   }
 
   function median(values) {
@@ -154,119 +127,6 @@
     return new Intl.NumberFormat('es-CO',{
       style:'currency',currency,minimumFractionDigits:digits,maximumFractionDigits:digits
     }).format(Number(value)||0);
-  }
-
-  function periodFilteredCategoryRows(flowRows) {
-    const years = selectedValues('year');
-    const months = selectedValues('month');
-    return flowRows.filter(row => {
-      if (norm(row.Tipo) !== 'categoria') return false;
-      const parts = monthParts(row.Mes);
-      if (!parts) return false;
-      if (years.length && !years.includes(String(parts.year))) return false;
-      if (months.length && !months.includes(String(parts.month))) return false;
-      return true;
-    }).sort((a,b)=>String(a.Mes).localeCompare(String(b.Mes)) || String(a.Concepto).localeCompare(String(b.Concepto),'es'));
-  }
-
-  function matrixYear(flowRows) {
-    const yearsSelected = selectedValues('year').map(Number).filter(Number.isFinite);
-    if (yearsSelected.length) return Math.max(...yearsSelected);
-    const years = flowRows.map(r=>monthParts(r.Mes)?.year).filter(Number.isFinite);
-    return years.length ? Math.max(...years) : new Date().getFullYear();
-  }
-
-  function flowValueMap(flowRows,year) {
-    const map = new Map();
-    flowRows.forEach(row => {
-      const parts = monthParts(row.Mes);
-      if (!parts || parts.year !== year) return;
-      map.set(`${parts.month}|${row.Concepto}`,parseNumber(row['Total COP']));
-    });
-    return map;
-  }
-
-  function categoryOrder(flowRows,year) {
-    const seen = new Set(), out = [];
-    flowRows.forEach(row => {
-      const parts = monthParts(row.Mes);
-      if (!parts || parts.year !== year || norm(row.Tipo) !== 'categoria') return;
-      const category = String(row.Concepto || '').trim();
-      if (category && !seen.has(category)) { seen.add(category); out.push(category); }
-    });
-    return out;
-  }
-
-  function renderFlowTableOne(categoryRows,ref,currency) {
-    const body = categoryRows.map(row => `
-      <tr>
-        <td>${esc(monthLabel(row.Mes))}</td>
-        <td>${esc(row.Concepto)}</td>
-        <td class="money">${esc(formatMoney(convertCop(parseNumber(row['Total COP']),currency,ref),currency))}</td>
-      </tr>`).join('');
-    return `<div class="panel flow-extra-panel">
-      <div class="panel-header"><div class="panel-title"><strong>Gasto mensual por categoría</strong><span>Mes · categoría · total gastado, respetando los filtros de período</span></div></div>
-      <div class="table-scroll"><table class="flow-detail-table"><thead><tr><th>Mes</th><th>Categoría</th><th>Total gastado ${esc(currency)}</th></tr></thead><tbody>${body || '<tr><td colspan="3">Sin datos para el período seleccionado</td></tr>'}</tbody></table></div>
-    </div>`;
-  }
-
-  function renderFlowMatrix(flowRows,ref,currency) {
-    const year = matrixYear(flowRows);
-    const categories = categoryOrder(flowRows,year);
-    const valueMap = flowValueMap(flowRows,year);
-    const monthHeaders = MONTH_LABELS.map((label,index)=>`<th>${label} ${year}</th>`).join('');
-    const categoryBody = categories.map(category => {
-      const cells = Array.from({length:12},(_,index)=>{
-        const cop = valueMap.get(`${index+1}|${category}`) || 0;
-        return `<td>${esc(formatMoney(convertCop(cop,currency,ref),currency))}</td>`;
-      }).join('');
-      return `<tr><td>${esc(category)}</td>${cells}</tr>`;
-    }).join('');
-
-    const summaryBody = SUMMARY_ROWS.map(([label,key,className]) => {
-      const cells = Array.from({length:12},(_,index)=>{
-        let cop;
-        if (key === '__CATEGORY_TOTAL__') {
-          cop = categories.reduce((sum,category)=>sum+(valueMap.get(`${index+1}|${category}`)||0),0);
-        } else {
-          cop = valueMap.get(`${index+1}|${key}`) || 0;
-        }
-        return `<td>${esc(formatMoney(convertCop(cop,currency,ref),currency))}</td>`;
-      }).join('');
-      return `<tr class="${className}"><td>${esc(label)}</td>${cells}</tr>`;
-    }).join('');
-
-    return `<div class="panel flow-extra-panel">
-      <div class="panel-header"><div class="panel-title"><strong>Matriz mensual por categoría</strong><span>Año ${year} · la primera columna queda fija al desplazarte horizontalmente</span></div></div>
-      <div class="flow-matrix-scroll"><table class="flow-matrix-table"><thead><tr><th>Categoría</th>${monthHeaders}</tr></thead><tbody>${categoryBody}${summaryBody}</tbody></table></div>
-    </div>`;
-  }
-
-  async function enhanceFlow() {
-    if (activeView() !== 'flujo') return;
-    const root = document.getElementById('viewRoot');
-    if (!root || root.querySelector('#flowExtraBoards') || root.dataset.flowExtraLoading === '1') return;
-    root.dataset.flowExtraLoading = '1';
-    try {
-      const payload = await getPayload();
-      if (activeView() !== 'flujo') return;
-      const flowRows = rows(payload,'Flujo_Mensual!A:J');
-      const ref = scenarioReference(payload);
-      const currency = activeCurrency();
-      const filtered = periodFilteredCategoryRows(flowRows);
-      const host = document.createElement('div');
-      host.id = 'flowExtraBoards';
-      host.className = 'flow-extra-stack';
-      host.innerHTML = renderFlowTableOne(filtered,ref,currency) + renderFlowMatrix(flowRows,ref,currency);
-
-      const existingTable = [...root.querySelectorAll('.panel')].find(panel => norm(panel.querySelector('.panel-title strong')?.textContent).includes('flujo y ahorro mensual'));
-      if (existingTable) existingTable.insertAdjacentElement('beforebegin',host);
-      else root.appendChild(host);
-    } catch (error) {
-      console.error('No se pudieron cargar los tableros adicionales de Flujo mensual:',error);
-    } finally {
-      delete root.dataset.flowExtraLoading;
-    }
   }
 
   function scenarioRows(ref,currency) {
@@ -316,19 +176,21 @@
     </div>`;
   }
 
-  async function enhanceSavings() {
+  async function enhanceSavings(force = false) {
     if (activeView() !== 'ingresos') return;
     const root = document.getElementById('viewRoot');
-    if (!root || root.querySelector('#savingsScenarioPanel') || root.dataset.savingsScenarioLoading === '1') return;
+    if (!root || root.dataset.savingsScenarioLoading === '1') return;
     const incomeComplete = root.querySelector('[data-income-complete]');
     if (!incomeComplete) return;
+
     root.dataset.savingsScenarioLoading = '1';
     try {
-      const payload = await getPayload();
+      const payload = await getPayload(force);
       if (activeView() !== 'ingresos') return;
       const ref = scenarioReference(payload);
       if (!ref.regularCop) return;
       const currency = activeCurrency();
+      root.querySelector('#savingsScenarioPanel')?.remove();
       const temp = document.createElement('div');
       temp.innerHTML = savingsPanelHtml(ref,currency);
       const panel = temp.firstElementChild;
@@ -342,31 +204,20 @@
     }
   }
 
-  function removeAndRerenderForCurrentView() {
-    const root = document.getElementById('viewRoot');
-    if (!root) return;
-    if (activeView() === 'flujo') root.querySelector('#flowExtraBoards')?.remove();
-    if (activeView() === 'ingresos') root.querySelector('#savingsScenarioPanel')?.remove();
-    schedule();
-  }
-
-  function run() {
-    if (activeView() === 'flujo') enhanceFlow();
-    if (activeView() === 'ingresos') enhanceSavings();
-  }
-
-  function schedule(delay=70) {
+  function schedule(delay=120,force=false) {
     clearTimeout(timer);
-    timer = setTimeout(run,delay);
+    timer = setTimeout(()=>enhanceSavings(force),delay);
   }
 
   document.addEventListener('click',event=>{
-    if (event.target.closest('.nav-item')) setTimeout(()=>schedule(100),30);
-    if (event.target.closest('.currency-btn')) setTimeout(removeAndRerenderForCurrentView,80);
-    if (event.target.closest('.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters')) setTimeout(removeAndRerenderForCurrentView,100);
-  });
+    if (event.target.closest('.nav-item')) schedule(220,false);
+    if (event.target.closest('.currency-btn')) schedule(120,false);
+    if (event.target.closest('#refreshBtn')) {
+      payloadPromise = null;
+      cacheUntil = 0;
+      schedule(650,true);
+    }
+  },true);
 
-  const root = document.getElementById('viewRoot');
-  if (root) new MutationObserver(()=>schedule(90)).observe(root,{childList:true,subtree:false});
-  schedule();
+  schedule(500,false);
 })();
