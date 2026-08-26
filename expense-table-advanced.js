@@ -63,6 +63,10 @@
   function dateKey(row){return effectiveDate(row)?.getTime()||0;}
   function dateLabel(row){const d=effectiveDate(row);return d?`${d.getFullYear()} ${MONTHS[d.getMonth()]} ${String(d.getDate()).padStart(2,'0')}`:'—';}
   function expenseType(row){return /^(si|sí|true|1)$/i.test(String(row['Es fijo']||'').trim())?'Fijo':'Variable';}
+  function isRealExpense(row){
+    if(norm(row.Tipo)!=='gasto' && row.Tipo)return false;
+    return !/proyecc|programad|proyectad/.test(norm(row.Estado));
+  }
 
   function selectedGlobal(key){
     return [...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)]
@@ -75,7 +79,7 @@
     const cats=selectedGlobal('category');
     const subs=selectedGlobal('subcategory');
     return rows.filter(row=>{
-      if(norm(row.Tipo)!=='gasto' && row.Tipo)return false;
+      if(!isRealExpense(row))return false;
       const d=effectiveDate(row);
       if(years.length&&(!d||!years.includes(String(d.getFullYear()))))return false;
       if(months.length&&(!d||!months.includes(d.getMonth()+1)))return false;
@@ -105,7 +109,7 @@
     return String(valueFor(a,col)).localeCompare(String(valueFor(b,col)),'es',{numeric:true,sensitivity:'base'});
   }
 
-  const columns=['Fecha real','Tipo de gasto','Tipo','Categoría','Subcategoría','Descripción / Comercio','Monto original','Moneda original','Cuenta / Tarjeta','Titular','Cuotas','N° cuota','Estado','Monto COP','Monto ARS','Monto USD'];
+  const columns=['Fecha real','Tipo de gasto','Tipo','Categoría','Subcategoría','Descripción / Comercio','Monto original','Moneda original','Cuenta / Tarjeta','Modalidad de pago','Titular','Cuotas','N° cuota','Estado','Monto COP','Monto ARS','Monto USD'];
 
   function renderTable(host,rows){
     let data=rows.slice();
@@ -113,7 +117,7 @@
     data.sort((a,b)=>compare(a,b,sort.col)*(sort.dir==='desc'?-1:1));
     const visible=expanded?data:data.slice(0,15);
     host.innerHTML=`
-      <div class="panel-header"><div class="panel-title"><strong>Movimientos</strong><span>${data.length} de ${rows.length} registros · fecha efectiva prioriza el día indicado entre paréntesis</span></div>
+      <div class="panel-header"><div class="panel-title"><strong>Movimientos</strong><span>${data.length} de ${rows.length} gastos realizados · fuente Movimientos A:Z</span></div>
         <div class="table-toolbar"><input id="expenseAdvancedSearch" class="search-input" placeholder="Buscar en la tabla…" value="${esc(query)}"></div></div>
       <div class="table-scroll${expanded?' expanded':''}"><table class="date-first-table expense-advanced-table"><thead><tr>${columns.map(c=>`<th data-expense-sort="${esc(c)}">${esc(c)}${sort.col===c?(sort.dir==='asc'?' ↑':' ↓'):''}</th>`).join('')}</tr></thead>
       <tbody>${visible.map(r=>`<tr>${columns.map(c=>`<td data-date-sort="${c==='Fecha real'?dateKey(r):''}">${esc(valueFor(r,c))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
@@ -140,7 +144,7 @@
     let host=root.querySelector('#expenseAdvancedPanel');
     if(!host){host=document.createElement('div');host.id='expenseAdvancedPanel';host.className='panel table-panel';original.insertAdjacentElement('afterend',host);}
     const p=await payload(force).catch(error=>{console.error('Tabla avanzada de gastos:',error);return null;});if(!p)return;
-    const rows=parseRows(p.sources?.[`${financeId}|Movimientos!A:Y`]||[]);
+    const rows=parseRows(p.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
     renderTable(host,filteredRows(rows));
   }
 
