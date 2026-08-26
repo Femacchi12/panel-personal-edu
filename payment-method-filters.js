@@ -61,7 +61,7 @@
         const res=await fetch(`${backend}/api/data`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});
         if(res.ok){
           const data=await res.json();
-          const matrix=data?.sources?.[`${FINANCE_ID}|Movimientos!A:Z`]||data?.sources?.[`${FINANCE_ID}|Movimientos!A:Y`];
+          const matrix=data?.sources?.[`${FINANCE_ID}|Movimientos!A:Z`];
           if(matrix){rows=parseRows(matrix);loadedAt=Date.now();return rows;}
         }
       }catch(_){ }
@@ -126,6 +126,14 @@
   function filterDef(key,label,getter){return {key,label,getter};}
   const defs=[filterDef('account','Cuenta / medio',account),filterDef('method','Modalidad',method)];
   function selected(view,key){return state[view]?.[key]||[];}
+  function clearPaymentState(view){
+    if(!state[view])return;
+    state[view].account=[];
+    state[view].method=[];
+    if(window.__PAYMENT_FILTER_STATE__?.view===view){
+      window.__PAYMENT_FILTER_STATE__={view,account:[],method:[]};
+    }
+  }
 
   function renderFilter(def,options,view){
     const values=selected(view,def.key);
@@ -231,8 +239,14 @@
 
   document.addEventListener('click',event=>{
     if(!event.target.closest('.stable-payment-filter'))document.querySelectorAll('.stable-payment-filter.open').forEach(x=>{x.classList.remove('open');x.querySelector('.pay-trigger')?.setAttribute('aria-expanded','false')});
+    const view=activeView();
+    if(event.target.closest('#resetCurrentMonth')||event.target.closest('#clearFilters')){
+      clearPaymentState(view);
+      schedule(180,true);
+      return;
+    }
     if(event.target.closest('.nav-item'))schedule(140,true);
-    if(event.target.closest('.multi-filter-option')||event.target.closest('#resetCurrentMonth')||event.target.closest('#clearFilters'))schedule(140,true);
+    if(event.target.closest('.multi-filter-option'))schedule(140,true);
   },true);
 
   document.addEventListener('panel:filters-updated',()=>schedule(100,true));
