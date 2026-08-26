@@ -140,6 +140,7 @@ async function loadDashboard() {
     await loadScript("investment-timeline.js");
     await loadScript("expense-table-advanced.js");
     await loadScript("flow-matrix-advanced.js");
+    await loadScript("flow-matrix-migration.js");
     await loadScript("monthly-projection-control.js");
     await loadScript("exchange-simulator.js");
     await loadScript("movement-type-columns.js");
