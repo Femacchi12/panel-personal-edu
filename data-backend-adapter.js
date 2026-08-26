@@ -49,14 +49,20 @@
     }
   }
 
+  function isMovementsRange(range) {
+    return range === 'Movimientos!A:Z' || range === 'Movimientos!A:Y';
+  }
+
   function applyMovementStateFilter(values, range) {
-    if (range !== 'Movimientos!A:Y' || !Array.isArray(values) || values.length < 2) return values;
+    if (!isMovementsRange(range) || !Array.isArray(values) || values.length < 2) return values;
     const header = (values[0] || []).map(v => String(v ?? '').trim());
     const statusIndex = header.map(norm).indexOf('estado');
     if (statusIndex < 0) return values;
 
     const body = values.slice(1).filter(row => {
       const status = norm(row?.[statusIndex]);
+      // Real views only. “Programado” remains accepted here solely as legacy compatibility
+      // while the canonical future-expense label is now “Proyección”.
       return status !== 'programado' && status !== 'proyeccion';
     });
     return [values[0], ...body];
@@ -91,6 +97,20 @@
     return [values[0], ...body];
   }
 
+  function resolveSourceValues(payload, spreadsheetId, range) {
+    const sources = payload?.sources || {};
+    const direct = sources[`${spreadsheetId}|${range}`];
+    if (Array.isArray(direct)) return direct;
+
+    // Migration compatibility: A:Z is the canonical Movimientos payload.
+    // Older modules that still request A:Y receive a 25-column projection of A:Z.
+    if (range === 'Movimientos!A:Y') {
+      const canonical = sources[`${spreadsheetId}|Movimientos!A:Z`];
+      if (Array.isArray(canonical)) return canonical.map(row => Array.isArray(row) ? row.slice(0, 25) : row);
+    }
+    return null;
+  }
+
   window.fetch = async function(input, init) {
     const rawUrl = typeof input === 'string' ? input : input?.url;
     if (!rawUrl || !rawUrl.startsWith('https://sheets.googleapis.com/v4/spreadsheets/')) {
@@ -103,11 +123,10 @@
 
     const spreadsheetId = decodeURIComponent(match[1]);
     const range = decodeURIComponent(match[2]);
-    const key = `${spreadsheetId}|${range}`;
 
     try {
       const payload = await getBackendData();
-      const sourceValues = payload?.sources?.[key];
+      const sourceValues = resolveSourceValues(payload, spreadsheetId, range);
       if (!Array.isArray(sourceValues)) {
         return new Response(JSON.stringify({ error: { message: `Fuente no permitida: ${range}` } }), {
           status: 404,
