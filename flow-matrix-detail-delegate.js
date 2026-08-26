@@ -13,6 +13,16 @@
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
   const money = v => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(Number(v) || 0);
 
+  function ensureStyle() {
+    if (document.getElementById('flowMatrixDetailDelegateStyles')) return;
+    const style = document.createElement('style');
+    style.id = 'flowMatrixDetailDelegateStyles';
+    style.textContent = `
+      #flowMatrixV3 .flow-matrix-advanced thead tr:first-child th[data-sort-month]{text-align:center!important}
+    `;
+    document.head.appendChild(style);
+  }
+
   function num(value) {
     if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
     let s = String(value ?? '').trim().replace(/[^\d,.\-]/g, '');
@@ -165,6 +175,8 @@
     host.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
+  ensureStyle();
+
   document.addEventListener('click', async e => {
     const close = e.target.closest('[data-close-flow-detail]');
     if (close) {
@@ -190,8 +202,7 @@
       const snap = filterSnapshot();
       const p = await payload();
       if (!p) return;
-      const z = rowsFor(p, 'Movimientos!A:Z');
-      const movements = z.length ? z : rowsFor(p, 'Movimientos!A:Y');
+      const movements = rowsFor(p, 'Movimientos!A:Z');
       const rows = movements
         .filter(r => matchesSnapshot(r, snap) && norm(r['Categoría']) === norm(cat) && monthKey(r['Mes consumo']) === key)
         .sort((a, b) => (effectiveDate(a)?.getTime() || 0) - (effectiveDate(b)?.getTime() || 0));
