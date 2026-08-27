@@ -1,0 +1,139 @@
+name: Consolidate movement status logic
+
+on:
+  push:
+    paths:
+      - '.github/workflows/consolidate-movement-status.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Wire canonical Realizado / Proyección status logic
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path, old, new, required=True):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if old not in text:
+                  if required:
+                      raise SystemExit(f'Expected pattern not found in {path}: {old[:100]!r}')
+                  return False
+              p.write_text(text.replace(old, new), encoding='utf-8')
+              return True
+
+          # Load the shared status core before all dashboard logic.
+          replace_exact(
+              'index.html',
+              '  <script src="config.js"></script>\n  <script src="observer-safety.js"></script>',
+              '  <script src="config.js"></script>\n  <script src="movement-status-core.js?v=20260827-1450"></script>\n  <script src="observer-safety.js"></script>'
+          )
+
+          # Adapter: Google-Sheets-style reads must expose only realized movements.
+          replace_exact(
+              'data-backend-adapter.js',
+              "    const body = values.slice(1).filter(row => {\n      const status = norm(row?.[statusIndex]);\n      // Real views only: future expenses live in Estado = Proyección.\n      return status !== 'programado' && status !== 'proyeccion';\n    });",
+              "    const body = values.slice(1).filter(row => {\n      const status = row?.[statusIndex];\n      return window.MovementStatusCore?.isActual(status) ?? !/proyecc|proyect|programad/.test(norm(status));\n    });"
+          )
+
+          # Direct-backend card trend: never mix projections into real usage/history.
+          replace_exact(
+              'dashboard-enhancements.js',
+              "      if (!isExpense(row)) return false;\n      const d = parseDate(pick(row,['Fecha real','Fecha registrada','Fecha','Mes consumo']));",
+              "      if (!isExpense(row)) return false;\n      if (!(window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado)))) return false;\n      const d = parseDate(pick(row,['Fecha real','Fecha registrada','Fecha','Mes consumo']));"
+          )
+
+          # Reliability redraw uses raw backend too; apply the same canonical rule.
+          replace_exact(
+              'dashboard-reliability-fixes.js',
+              "      if(!isExpense(row))return false;\n      const d=parseDate(pick(row,['Fecha real','Fecha registrada','Fecha','Mes consumo']));",
+              "      if(!isExpense(row))return false;\n      if(!(window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado))))return false;\n      const d=parseDate(pick(row,['Fecha real','Fecha registrada','Fecha','Mes consumo']));"
+          )
+
+          # Payment-method filters read the raw A:Z payload directly.
+          replace_exact(
+              'payment-method-filters.js',
+              "  function periodMatch(row){\n    const d=parseDate(row['Fecha real']||row['Fecha registrada']);if(!d)return false;",
+              "  function periodMatch(row){\n    if(!(window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado))))return false;\n    const d=parseDate(row['Fecha real']||row['Fecha registrada']);if(!d)return false;"
+          )
+
+          # Movement type lookup is descriptive metadata for realized expenses only.
+          replace_exact(
+              'movement-type-columns.js',
+              "      rows.filter(row=>!row.Tipo||norm(row.Tipo)==='gasto').forEach(row=>{",
+              "      rows.filter(row=>(!row.Tipo||norm(row.Tipo)==='gasto')&&(window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado)))).forEach(row=>{"
+          )
+
+          # Existing modules that already distinguish statuses now delegate to one core.
+          replace_exact(
+              'expense-table-advanced.js',
+              "  function isRealExpense(row){\n    if(norm(row.Tipo)!=='gasto' && row.Tipo)return false;\n    return !/proyecc|programad|proyectad/.test(norm(row.Estado));\n  }",
+              "  function isRealExpense(row){\n    if(norm(row.Tipo)!=='gasto' && row.Tipo)return false;\n    return window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado));\n  }"
+          )
+
+          replace_exact(
+              'flow-matrix-v3.js',
+              "  function isReal(row){\n    if(norm(row.Tipo)!=='gasto')return false;\n    const s=norm(row.Estado);\n    return !/proyecc|programad|proyectad/.test(s);\n  }",
+              "  function isReal(row){\n    if(norm(row.Tipo)!=='gasto')return false;\n    return window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado));\n  }"
+          )
+
+          replace_exact(
+              'flow-filter-kpi-stabilizer.js',
+              "  function isActual(row){return norm(row.Tipo)==='gasto'&&!/proyecc|programad|proyectad/.test(norm(row.Estado));}",
+              "  function isActual(row){return norm(row.Tipo)==='gasto'&&(window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado)));}"
+          )
+
+          replace_exact(
+              'flow-financing-filter-fix.js',
+              "    const status=norm(row.Estado); if(status==='programado'||status==='proyeccion')return false;",
+              "    if(!(window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado))))return false;"
+          )
+
+          replace_exact(
+              'monthly-projection-control.js',
+              "  function status(row){return norm(row.Estado);}\n  function isActual(row){return norm(row.Tipo)==='gasto'&&!/proyecc|programad|proyectad/.test(status(row));}\n  function isProjection(row){return norm(row.Tipo)==='gasto'&&/proyecc|programad|proyectad/.test(status(row));}",
+              "  function status(row){return norm(row.Estado);}\n  function isActual(row){return norm(row.Tipo)==='gasto'&&(window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(status(row)));}\n  function isProjection(row){return norm(row.Tipo)==='gasto'&&(window.MovementStatusCore?.isProjection(row.Estado) ?? /proyecc|proyect|programad/.test(status(row)));}"
+          )
+
+          replace_exact(
+              'flow-matrix-detail-delegate.js',
+              "  function isReal(row) {\n    if (norm(row.Tipo) !== 'gasto') return false;\n    return !/proyecc|programad|proyectad/.test(norm(row.Estado));\n  }",
+              "  function isReal(row) {\n    if (norm(row.Tipo) !== 'gasto') return false;\n    return window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado));\n  }"
+          )
+
+          # Verification: core must be loaded and every targeted raw-backend path must call it.
+          required = {
+              'index.html': 'movement-status-core.js',
+              'data-backend-adapter.js': 'MovementStatusCore?.isActual',
+              'dashboard-enhancements.js': 'MovementStatusCore?.isActual(row.Estado)',
+              'dashboard-reliability-fixes.js': 'MovementStatusCore?.isActual(row.Estado)',
+              'payment-method-filters.js': 'MovementStatusCore?.isActual(row.Estado)',
+              'movement-type-columns.js': 'MovementStatusCore?.isActual(row.Estado)',
+              'monthly-projection-control.js': 'MovementStatusCore?.isProjection(row.Estado)'
+          }
+          for path, needle in required.items():
+              if needle not in Path(path).read_text(encoding='utf-8'):
+                  raise SystemExit(f'Verification failed: {needle!r} missing from {path}')
+          PY
+
+          if git diff --quiet; then
+            echo "Movement status logic already consolidated."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html data-backend-adapter.js dashboard-enhancements.js dashboard-reliability-fixes.js payment-method-filters.js movement-type-columns.js expense-table-advanced.js flow-matrix-v3.js flow-filter-kpi-stabilizer.js flow-financing-filter-fix.js monthly-projection-control.js flow-matrix-detail-delegate.js
+          git commit -m "Unify Realizado and Proyección movement status logic"
+          git push
