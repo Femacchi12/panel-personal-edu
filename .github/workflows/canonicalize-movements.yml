@@ -1,0 +1,40 @@
+name: Canonicalize Movimientos source
+
+on:
+  push:
+    paths:
+      - '.github/workflows/canonicalize-movements.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  canonicalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Replace legacy Movimientos A:Y consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            if [[ "$file" == "./data-backend-adapter.js" ]]; then
+              continue
+            fi
+            sed -i 's/Movimientos!A:Y/Movimientos!A:Z/g' "$file"
+          done < <(find . -type f -name '*.js' -print0)
+
+          if git diff --quiet; then
+            echo "No legacy A:Y consumers found."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- '*.js'
+          git commit -m "Canonicalize Movimientos consumers on A:Z"
+          git push
