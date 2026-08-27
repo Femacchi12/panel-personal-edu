@@ -10,7 +10,11 @@ window.PANEL_CONFIG = {
   healthSpreadsheetId: "1I7Z93rrr6J-0-sP9QuBtZrMuu_t1As3lik0_WK8xqMk",
   autoRefreshMinutes: 5,
   timezone: "America/Bogota",
-  primaryCurrency: "COP"
+  primaryCurrency: "COP",
+  regularIncome: {
+    fibrazoLlcUsdBase: 1300,
+    usdCopReference: 3150
+  }
 };
 
 (() => {
