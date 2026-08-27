@@ -8,6 +8,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 8080);
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'https://femacchi12.github.io';
 const FINANCE_SPREADSHEET_ID = process.env.FINANCE_SPREADSHEET_ID || '1ff_dT8kHhiy1THTq1hRHGx2z2VElUQjyq_A4AL_nm4g';
+const DOCUMENTS_SPREADSHEET_ID = process.env.DOCUMENTS_SPREADSHEET_ID || '1P8_zNStHg9v5Xm1loYvT_95TgfRWVUCOY341tyJXDV0';
 const HEALTH_SPREADSHEET_ID = process.env.HEALTH_SPREADSHEET_ID || '1I7Z93rrr6J-0-sP9QuBtZrMuu_t1As3lik0_WK8xqMk';
 
 const ALLOWED_EMAILS = new Set([
@@ -39,11 +40,12 @@ const SOURCES = [
   { book: 'finance', range: 'Cuentas!A:T' },
   { book: 'finance', range: 'Plan_Mensual!A:O' },
   { book: 'finance', range: 'Patrimonio_Mensual!A:X' },
-  { book: 'finance', range: 'Documentos_Financieros!A:L' },
-  { book: 'finance', range: 'Documentos_Identidad!A:N' },
-  { book: 'finance', range: 'Documentos_Laborales!A:L' },
-  { book: 'finance', range: 'Documentos_Tributarios!A:L' },
-  { book: 'finance', range: 'Documentos_Personales!A:L' },
+  { book: 'documents', range: 'Documentos_Financieros!A:L' },
+  { book: 'documents', range: 'Documentos_Identidad!A:N' },
+  { book: 'documents', range: 'Documentos_Laborales!A:L' },
+  { book: 'documents', range: 'Documentos_Tributarios!A:L' },
+  { book: 'documents', range: 'Documentos_Pension_Cesantias!A:L' },
+  { book: 'documents', range: 'Documentos_Personales!A:L' },
   { book: 'finance', range: 'Vacaciones_Viajes!A:T' },
   { book: 'health', range: 'Pacientes!A:X' },
   { book: 'health', range: 'Citas_Medicas!A:N' },
@@ -113,16 +115,21 @@ async function buildPayload() {
   if (cache.payload && now < cache.expiresAt) return cache.payload;
 
   const financeSources = SOURCES.filter(s => s.book === 'finance');
+  const documentSources = SOURCES.filter(s => s.book === 'documents');
   const healthSources = SOURCES.filter(s => s.book === 'health');
 
-  const [financeValues, healthValues] = await Promise.all([
+  const [financeValues, documentValues, healthValues] = await Promise.all([
     readWorkbook(FINANCE_SPREADSHEET_ID, financeSources),
+    readWorkbook(DOCUMENTS_SPREADSHEET_ID, documentSources),
     readWorkbook(HEALTH_SPREADSHEET_ID, healthSources)
   ]);
 
   const sources = {};
   financeSources.forEach((src, index) => {
     sources[`${FINANCE_SPREADSHEET_ID}|${src.range}`] = financeValues[index]?.values || [];
+  });
+  documentSources.forEach((src, index) => {
+    sources[`${DOCUMENTS_SPREADSHEET_ID}|${src.range}`] = documentValues[index]?.values || [];
   });
   healthSources.forEach((src, index) => {
     sources[`${HEALTH_SPREADSHEET_ID}|${src.range}`] = healthValues[index]?.values || [];
@@ -142,7 +149,7 @@ app.get('/health', (req, res) => {
     ok: true,
     service: 'panel-personal-edu-backend',
     sourceCount: SOURCES.length,
-    revision: 'payment-modality-2026-08-24'
+    revision: 'documents-sheet-separation-2026-08-26'
   });
 });
 
