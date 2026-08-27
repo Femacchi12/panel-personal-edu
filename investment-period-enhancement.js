@@ -53,8 +53,7 @@
       const bounds=periodBounds(),snapshot=latestPerPlatformAsOf(raw,bounds.end),currency=currentCurrency(),rates=investmentRates(),timeline=buildTimeline(raw,currency,bounds);
       const summary=latestSummaryAsOf(summaryAll.filter(summaryMatchesPlatform),bounds.end);
       const categoryFilters=selectedLocal('invClass').length||selectedLocal('invCategory').length||selectedLocal('invSubcategory').length;
-      const valueMode=selectedLocal('investmentValueMode')[0]||'all';
-      const effectiveMode=valueMode==='all'?'total':valueMode;
+      const effectiveMode=selectedLocal('investmentValueMode')[0]||'total';
       const modeLabel=effectiveMode==='capital'?'Capital aportado':effectiveMode==='result'?'Ganancia / pérdida':'Capital + ganancia/pérdida';
       let byPlatform,total,rowsHtml,tableTitle,tableSub;
       if(effectiveMode==='total'){

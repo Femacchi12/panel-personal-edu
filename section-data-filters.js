@@ -21,7 +21,6 @@
   function filter(key, label, sources = [], config = {}) { return {key, label, sources, ...config}; }
 
   const INVESTMENT_VALUE_OPTIONS = [
-    {value:'all', label:'Todos'},
     {value:'capital', label:'Solo capital'},
     {value:'result', label:'Ganancia / pérdida'},
     {value:'total', label:'Capital + ganancia/pérdida'}
@@ -47,7 +46,7 @@
       filter('investmentValueMode','Valor a mostrar',[],{
         options: INVESTMENT_VALUE_OPTIONS,
         single: true,
-        defaultValues: ['all']
+        defaultValues: ['total']
       })
     ]},
     pension: { global:['year','month'], local:[] },
