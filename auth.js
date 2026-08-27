@@ -126,7 +126,6 @@ async function loadDashboard() {
     await loadScript("movement-type-columns.js");
     await loadScript("payment-method-filters.js");
     await loadScript("flow-financing-filter-fix.js");
-    await loadScript("monthly-filter-card-sync.js");
     await loadScript("services-table-enhancement.js");
     await loadScript("flow-percentage-base-fix.js");
     await loadScript("flow-filter-kpi-stabilizer.js");
