@@ -139,7 +139,7 @@
 
   function injectStyles(){
     if(document.getElementById('flowMatrixV3Styles'))return;
-    const style=document.createElement('style');style.id='flowMatrixV3Styles';style.textContent=`#flowMatrixV3{margin-top:0}.flow-matrix-scroll{overflow:auto;max-width:100%;border:1px solid var(--line,#172335);border-radius:12px}.flow-matrix-advanced{border-collapse:separate;border-spacing:0;min-width:max-content;width:100%;font-size:11px}.flow-matrix-advanced th,.flow-matrix-advanced td{white-space:nowrap;padding:9px 10px;border-bottom:1px solid #142031;border-right:1px solid #101b29;text-align:right}.flow-matrix-advanced th{background:#0d1520;color:#76a9ff;font-size:9px;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;position:sticky;top:0;z-index:4}.flow-matrix-advanced thead tr:nth-child(2) th{top:32px}.flow-matrix-advanced .sticky-id{position:sticky;left:0;z-index:7!important;background:#0b131e!important;text-align:center;min-width:42px}.flow-matrix-advanced .sticky-cat{position:sticky;left:42px;z-index:6!important;background:#0b131e!important;text-align:left;min-width:150px;box-shadow:8px 0 14px rgba(0,0,0,.16)}.matrix-amount-btn{border:0;background:transparent;color:#e6edf7;font:inherit;font-weight:600;cursor:pointer;padding:0}.matrix-amount-btn:hover{color:#4f91ff;text-decoration:underline}.matrix-pct{font-weight:800;padding:2px 5px;border-radius:5px}.matrix-pct.pct-white{color:#f4f7fb}.matrix-pct.pct-green{color:#26d07c}.matrix-pct.pct-yellow{color:#f6c844}.matrix-pct.pct-red{color:#ff667a}.matrix-total-row td{font-weight:800;background:#0d1a2b}.matrix-summary-row td{font-weight:700;background:#0a121c}.salary-reference{margin-top:16px;border:1px solid var(--line,#172335);border-radius:12px;padding:14px}.salary-reference-grid{display:flex;gap:8px;overflow-x:auto;margin-top:10px}.salary-reference-grid>div{min-width:145px;padding:9px 10px;border-radius:9px;background:#0a121c;display:flex;flex-direction:column;gap:3px}.salary-reference-grid span,.salary-reference-grid small{font-size:10px;color:#7f8ea3}.matrix-color-legend{display:flex;gap:15px;flex-wrap:wrap;margin-top:10px;color:#8998ac;font-size:10px}`;document.head.appendChild(style);
+    const style=document.createElement('style');style.id='flowMatrixV3Styles';style.textContent=`#flowMatrixV3{margin-top:0}.flow-matrix-scroll{overflow:auto;max-width:100%;border:1px solid var(--line,#172335);border-radius:12px}.flow-matrix-advanced{border-collapse:separate;border-spacing:0;min-width:max-content;width:100%;font-size:11px}.flow-matrix-advanced th,.flow-matrix-advanced td{white-space:nowrap;padding:9px 10px;border-bottom:1px solid #142031;border-right:1px solid #101b29;text-align:right}.flow-matrix-advanced th{background:#0d1520;color:#76a9ff;font-size:9px;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;position:sticky;top:0;z-index:4}.flow-matrix-advanced thead tr:nth-child(2) th{top:32px}.flow-matrix-advanced thead tr:first-child th[colspan="2"]{text-align:center}.flow-matrix-advanced .sticky-id{position:sticky;left:0;z-index:7!important;background:#0b131e!important;text-align:center;min-width:42px}.flow-matrix-advanced .sticky-cat{position:sticky;left:42px;z-index:6!important;background:#0b131e!important;text-align:left;min-width:150px;box-shadow:8px 0 14px rgba(0,0,0,.16)}.matrix-amount-btn{border:0;background:transparent;color:#e6edf7;font:inherit;font-weight:600;cursor:pointer;padding:0}.matrix-amount-btn:hover{color:#4f91ff;text-decoration:underline}.matrix-pct{font-weight:800;padding:2px 5px;border-radius:5px}.matrix-pct.pct-white{color:#f4f7fb}.matrix-pct.pct-green{color:#26d07c}.matrix-pct.pct-yellow{color:#f6c844}.matrix-pct.pct-red{color:#ff667a}.matrix-total-row td{font-weight:800;background:#0d1a2b}.matrix-summary-row td{font-weight:700;background:#0a121c}.salary-reference{margin-top:16px;border:1px solid var(--line,#172335);border-radius:12px;padding:14px}.salary-reference-grid{display:flex;gap:8px;overflow-x:auto;margin-top:10px}.salary-reference-grid>div{min-width:145px;padding:9px 10px;border-radius:9px;background:#0a121c;display:flex;flex-direction:column;gap:3px}.salary-reference-grid span,.salary-reference-grid small{font-size:10px;color:#7f8ea3}.matrix-color-legend{display:flex;gap:15px;flex-wrap:wrap;margin-top:10px;color:#8998ac;font-size:10px}`;document.head.appendChild(style);
   }
 
   function sortedCategories(categories,values){const rows=categories.map((cat,index)=>({cat,id:index+1}));const dir=sortState.dir==='desc'?-1:1;if(sortState.type==='category')rows.sort((a,b)=>a.cat.localeCompare(b.cat,'es',{numeric:true,sensitivity:'base'})*dir);else if(sortState.type==='month'&&sortState.month)rows.sort((a,b)=>((values.get(`${sortState.month}|${norm(a.cat)}`)||0)-(values.get(`${sortState.month}|${norm(b.cat)}`)||0))*dir||a.id-b.id);else rows.sort((a,b)=>(a.id-b.id)*dir);return rows;}
@@ -160,18 +160,38 @@
     if(selectedDetail)renderDetail(detail,data.movements,selectedDetail.cat,selectedDetail.month);
   }
 
-  function findBasePanel(){const root=document.getElementById('viewRoot');if(!root)return null;return [...root.querySelectorAll('.panel')].find(p=>norm(p.querySelector('.panel-title strong')?.textContent||p.querySelector('strong')?.textContent)==='matriz mensual por categoria')||null;}
+  function baseMatrixPanel(root){
+    return [...root.querySelectorAll('.panel')].find(p=>norm(p.querySelector('.panel-title strong')?.textContent||p.querySelector('strong')?.textContent)==='matriz mensual por categoria')||null;
+  }
+  function ensureHosts(root){
+    let host=root.querySelector('#flowMatrixV3'),detail=root.querySelector('#flowMatrixDetailV3');
+    if(host&&detail)return{host,detail};
+    const base=baseMatrixPanel(root);
+    if(!host){
+      host=document.createElement('div');host.id='flowMatrixV3';host.className='panel table-panel';
+      if(base)base.insertAdjacentElement('afterend',host);
+      else{
+        const evolution=[...root.querySelectorAll('.panel')].find(p=>norm(p.querySelector('.panel-title strong')?.textContent||'')==='evolucion mensual');
+        const savings=[...root.querySelectorAll('.panel')].find(p=>norm(p.querySelector('.panel-title strong')?.textContent||'').includes('flujo y ahorro mensual'));
+        if(evolution)evolution.insertAdjacentElement('afterend',host);
+        else if(savings)savings.insertAdjacentElement('beforebegin',host);
+        else root.appendChild(host);
+      }
+    }
+    if(!detail){detail=document.createElement('div');detail.id='flowMatrixDetailV3';detail.className='panel table-panel';detail.hidden=true;host.insertAdjacentElement('afterend',detail);}
+    if(base)base.style.display='none';
+    return{host,detail};
+  }
+
   async function run(force=false){
     if(applying||activeView()!=='flujo')return; applying=true;
     try{
       const root=document.getElementById('viewRoot'); if(!root)return;
-      const base=findBasePanel(); let host=root.querySelector('#flowMatrixV3'),detail=root.querySelector('#flowMatrixDetailV3');
-      if(!host){ if(!base)return; host=document.createElement('div');host.id='flowMatrixV3';host.className='panel table-panel';base.insertAdjacentElement('afterend',host); detail=document.createElement('div');detail.id='flowMatrixDetailV3';detail.className='panel table-panel';detail.hidden=true;host.insertAdjacentElement('afterend',detail); }
-      if(base)base.style.display='none';
+      const {host,detail}=ensureHosts(root);
       root.querySelector('#flowMatrixV2')?.remove(); root.querySelector('#flowMatrixDetailV2')?.remove(); root.querySelector('#flowMatrixAdvanced')?.remove(); root.querySelector('#flowMatrixMigrationDetail')?.remove();
       const p=await payload(force); if(!p)return;
-      const z=rowsFor(p,'Movimientos!A:Z');
-      const data={flowRows:rowsFor(p,'Flujo_Mensual!A:J'),movements:z.length?z:rowsFor(p,'Movimientos!A:Y'),concepts:rowsFor(p,'Resumen_Conceptos_Ingresos!A:L')};
+      const movements=rowsFor(p,'Movimientos!A:Z');
+      const data={flowRows:rowsFor(p,'Flujo_Mensual!A:J'),movements,concepts:rowsFor(p,'Resumen_Conceptos_Ingresos!A:L')};
       render(host,detail,data);
       document.dispatchEvent(new CustomEvent('panel:flow-matrix-v3-rendered'));
     }catch(e){console.error('Matriz Flujo v3:',e);}finally{applying=false;}
@@ -186,5 +206,12 @@
   },true);
   document.addEventListener('panel:filters-updated',()=>schedule(false,320));
   document.addEventListener('panel:payment-filters-changed',()=>schedule(false,320));
-  [500,1100,1900].forEach(ms=>setTimeout(()=>run(false),ms));
+
+  // Único guard del renderer: si app.js reconstruye la vista, reponer la matriz v3 directamente.
+  const root=document.getElementById('viewRoot');
+  if(root)new MutationObserver(()=>{
+    if(activeView()==='flujo'&&!root.querySelector('#flowMatrixV3'))schedule(false,180);
+  }).observe(root,{childList:true,subtree:false});
+
+  [500,1100].forEach(ms=>setTimeout(()=>run(false),ms));
 })();
