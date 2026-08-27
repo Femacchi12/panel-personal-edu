@@ -49,20 +49,15 @@
     }
   }
 
-  function isMovementsRange(range) {
-    return range === 'Movimientos!A:Z' || range === 'Movimientos!A:Y';
-  }
-
   function applyMovementStateFilter(values, range) {
-    if (!isMovementsRange(range) || !Array.isArray(values) || values.length < 2) return values;
+    if (range !== 'Movimientos!A:Z' || !Array.isArray(values) || values.length < 2) return values;
     const header = (values[0] || []).map(v => String(v ?? '').trim());
     const statusIndex = header.map(norm).indexOf('estado');
     if (statusIndex < 0) return values;
 
     const body = values.slice(1).filter(row => {
       const status = norm(row?.[statusIndex]);
-      // Real views only. “Programado” remains accepted here solely as legacy compatibility
-      // while the canonical future-expense label is now “Proyección”.
+      // Real views only: future expenses live in Estado = Proyección.
       return status !== 'programado' && status !== 'proyeccion';
     });
     return [values[0], ...body];
@@ -97,21 +92,6 @@
     return [values[0], ...body];
   }
 
-  function resolveSourceValues(payload, spreadsheetId, range) {
-    const sources = payload?.sources || {};
-    const direct = sources[`${spreadsheetId}|${range}`];
-    if (Array.isArray(direct)) return direct;
-
-    // Migration bridge: A:Z is the only canonical Movimientos payload.
-    // Legacy modules may still request A:Y, but they now receive the complete A:Z matrix
-    // so the extra canonical column is available without maintaining a second data source.
-    if (range === 'Movimientos!A:Y') {
-      const canonical = sources[`${spreadsheetId}|Movimientos!A:Z`];
-      if (Array.isArray(canonical)) return canonical;
-    }
-    return null;
-  }
-
   window.fetch = async function(input, init) {
     const rawUrl = typeof input === 'string' ? input : input?.url;
     if (!rawUrl || !rawUrl.startsWith('https://sheets.googleapis.com/v4/spreadsheets/')) {
@@ -127,7 +107,7 @@
 
     try {
       const payload = await getBackendData();
-      const sourceValues = resolveSourceValues(payload, spreadsheetId, range);
+      const sourceValues = payload?.sources?.[`${spreadsheetId}|${range}`];
       if (!Array.isArray(sourceValues)) {
         return new Response(JSON.stringify({ error: { message: `Fuente no permitida: ${range}` } }), {
           status: 404,

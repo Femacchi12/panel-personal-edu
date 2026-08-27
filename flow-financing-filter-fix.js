@@ -137,7 +137,7 @@
   async function apply(force=false){
     const view=activeView(); if(view!=='gastos'&&view!=='flujo')return;
     const data=await payload(force); if(!data)return;
-    const z=sourceRows(data,'Movimientos!A:Z'); const movements=z.length?z:sourceRows(data,'Movimientos!A:Z');
+    const movements=sourceRows(data,'Movimientos!A:Z');
     const filtered=movements.filter(r=>movementMatches(r,view));
     if(view==='gastos'){removeExpenseKpis();redrawSpendChart(filtered);}else renderFinancing(filtered);
   }
