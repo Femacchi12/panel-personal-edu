@@ -1,8 +1,16 @@
 (() => {
   'use strict';
 
+  const cfg = window.PANEL_CONFIG || {};
+  const apiBaseUrl = String(cfg.apiBaseUrl || '').replace(/\/$/,'');
+  const financeId = cfg.financeSpreadsheetId;
+  const usdCop = Number(cfg.regularIncome?.usdCopReference || 3150);
+
   let timer = null;
   let limitMode = 'control';
+  let debtCache = null;
+  let debtCacheAt = 0;
+  let debtPromise = null;
   window.__PANEL_CARD_LIMIT_MODE__ = limitMode;
 
   const norm = value => String(value ?? '')
@@ -36,9 +44,48 @@
     return Number.isFinite(n)?n:0;
   }
 
+  function parseRows(values){
+    if(!Array.isArray(values)||values.length<2) return [];
+    const headers=(values[0]||[]).map(v=>String(v??'').trim());
+    return values.slice(1)
+      .filter(row=>row?.some(v=>String(v??'').trim()!==''))
+      .map(row=>Object.fromEntries(headers.map((header,index)=>[header||`Col ${index+1}`,row?.[index]??''])));
+  }
+
+  function parseDate(value){
+    const s=String(value??'').trim();
+    if(!s) return null;
+    let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if(m) return new Date(+m[1],+m[2]-1,+m[3]);
+    m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if(m) return new Date(+m[3],+m[2]-1,+m[1]);
+    return null;
+  }
+
+  function safeDate(year,monthIndex,day){
+    const last=new Date(year,monthIndex+1,0).getDate();
+    return new Date(year,monthIndex,Math.min(day,last));
+  }
+
+  function currentCycle(cutDay=6,now=new Date()){
+    let end;
+    if(now.getDate()<=cutDay) end=safeDate(now.getFullYear(),now.getMonth(),cutDay);
+    else end=safeDate(now.getFullYear(),now.getMonth()+1,cutDay);
+    const previous=safeDate(end.getFullYear(),end.getMonth()-1,cutDay);
+    const start=new Date(previous.getFullYear(),previous.getMonth(),previous.getDate()+1);
+    return {start,end};
+  }
+
   const money = value => new Intl.NumberFormat('es-CO',{
     style:'currency',currency:'COP',maximumFractionDigits:0
   }).format(Number(value)||0);
+
+  const usdMoney = value => `US$${new Intl.NumberFormat('es-CO',{
+    minimumFractionDigits:2,maximumFractionDigits:2
+  }).format(Number(value)||0)}`;
+
+  const pad=n=>String(n).padStart(2,'0');
+  const shortDate=d=>`${pad(d.getDate())}/${pad(d.getMonth()+1)}`;
 
   function headerIndex(headers,tests){
     return headers.findIndex(h=>tests.some(test=>h.includes(test)));
@@ -82,6 +129,53 @@
     return cards.find(card=>text.includes(norm(card.issuer))&&text.includes(norm(card.owner)))
       || cards.find(card=>text.includes(norm(card.issuer)))
       || null;
+  }
+
+  async function loadArqDebt(force=false){
+    if(!apiBaseUrl||!financeId) return null;
+    if(!force&&debtCache&&Date.now()-debtCacheAt<50000) return debtCache;
+    if(!force&&debtPromise) return debtPromise;
+
+    debtPromise=(async()=>{
+      const getIdToken=window.__PANEL_GET_ID_TOKEN__;
+      if(typeof getIdToken!=='function') return null;
+      const token=await getIdToken(false);
+      if(!token) return null;
+      const response=await fetch(`${apiBaseUrl}/api/data`,{
+        headers:{Authorization:`Bearer ${token}`},cache:'no-store'
+      });
+      if(!response.ok) return null;
+      const payload=await response.json();
+      const rows=parseRows(payload?.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
+      const {start,end}=currentCycle(6);
+      const sums={COP:0,USD:0};
+
+      rows.forEach(row=>{
+        if(norm(row.Tipo)!=='gasto') return;
+        if(!norm(row['Cuenta / Tarjeta']).includes('arq')) return;
+        const isActual=window.MovementStatusCore?.isActual
+          ? window.MovementStatusCore.isActual(row.Estado)
+          : !/proyecc|proyect|programad/.test(norm(row.Estado));
+        if(!isActual) return;
+        const date=parseDate(row['Fecha real']||row['Fecha registrada']);
+        if(!date||date<start||date>end) return;
+        const currency=String(row['Moneda original']||'').trim().toUpperCase();
+        if(currency!=='COP'&&currency!=='USD') return;
+        sums[currency]+=parseNumber(row['Monto original']);
+      });
+
+      debtCache={
+        cop:sums.COP,
+        usd:sums.USD,
+        equivalent:sums.COP+sums.USD*usdCop,
+        start,end
+      };
+      debtCacheAt=Date.now();
+      return debtCache;
+    })();
+
+    try{return await debtPromise;}
+    finally{debtPromise=null;}
   }
 
   function currentLimit(card){
@@ -157,11 +251,30 @@
       : 'Cupo usado vs margen sobre el límite de control';
   }
 
-  function enhanceCards(cards){
+  function enhanceCards(cards,debt){
     document.querySelectorAll('#viewRoot .credit-card').forEach(cardEl=>{
       const label=`${cardEl.querySelector('.credit-brand')?.textContent||''} ${cardEl.querySelector('.credit-owner')?.textContent||''}`;
       const card=matchCard(label,cards);
       if(!card||!card.control) return;
+
+      const isArq=norm(card.issuer).includes('arq');
+      if(isArq&&debt){
+        card.used=debt.equivalent;
+        let debtBlock=cardEl.querySelector('.card-currency-debt');
+        if(!debtBlock){
+          debtBlock=document.createElement('div');
+          debtBlock.className='card-currency-debt';
+          const bottom=cardEl.querySelector('.credit-bottom');
+          if(bottom) cardEl.insertBefore(debtBlock,bottom);
+          else cardEl.appendChild(debtBlock);
+        }
+        debtBlock.innerHTML=`
+          <div class="card-debt-title">Saldo registrado del ciclo ${shortDate(debt.start)}–${shortDate(debt.end)}</div>
+          <div class="card-debt-row"><span>Deuda en COP</span><strong>${money(debt.cop)}</strong></div>
+          <div class="card-debt-row"><span>Deuda en USD</span><strong>${usdMoney(debt.usd)}</strong></div>
+          <div class="card-debt-note">Se pagan por separado · equivalente para límites: ${money(debt.equivalent)}</div>`;
+      }
+
       const pct=card.used/card.control*100;
       const available=card.control-card.used;
       let tone='',status='Dentro del límite de control';
@@ -210,12 +323,15 @@
     if(changed||force) chart.update('none');
   }
 
-  function applyAll(force=false){
+  async function applyAll(force=false){
     if(activeView()!=='tarjetas'||!window.Chart) return;
     const cards=readCardTable();
     if(!cards.length) return;
+    const debt=await loadArqDebt(force);
+    const arq=cards.find(card=>norm(card.issuer).includes('arq'));
+    if(arq&&debt) arq.used=debt.equivalent;
     ensureSelectors();
-    enhanceCards(cards);
+    enhanceCards(cards,debt);
     applyCardsChart(cards,force);
     applyTrendChart(cards,force);
   }
@@ -227,8 +343,9 @@
 
   document.addEventListener('click',event=>{
     if(event.target.closest('.nav-item,#refreshBtn,.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters,.card-specific-option,.card-specific-clear,[data-card-line-mode],.currency-btn')){
-      setTimeout(()=>schedule(140,false),40);
-      setTimeout(()=>schedule(420,false),180);
+      const force=Boolean(event.target.closest('#refreshBtn'));
+      setTimeout(()=>schedule(140,force),40);
+      setTimeout(()=>schedule(420,force),180);
     }
   },true);
 
@@ -243,7 +360,12 @@
       .card-limit-reference>span{margin-right:2px}
       .card-limit-reference button{border:1px solid #2b3a4d;background:#111b28;color:#aeb9c8;border-radius:999px;padding:5px 9px;font:inherit;cursor:pointer}
       .card-limit-reference button.active{border-color:#26d07c;color:#e8fff3;background:#143225}
-      .card-control-limit{margin:12px 0 4px;padding:10px 11px;border:1px solid #263548;border-radius:10px;background:#0d1622}
+      .card-currency-debt{margin:12px 0 4px;padding:10px 11px;border:1px solid #263548;border-radius:10px;background:#0b131e}
+      .card-debt-title{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#7f91a8;margin-bottom:7px}
+      .card-debt-row{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:11px;color:#9cacc0}
+      .card-debt-row strong{font-size:13px;color:#f2f6fb}
+      .card-debt-note{font-size:10px;color:#718399;margin-top:6px}
+      .card-control-limit{margin:8px 0 4px;padding:10px 11px;border:1px solid #263548;border-radius:10px;background:#0d1622}
       .card-control-limit.high{border-color:#8f6a1c}
       .card-control-limit.critical{border-color:#8f3e4a}
       .card-control-line,.card-control-meta{display:flex;align-items:center;justify-content:space-between;gap:12px}
