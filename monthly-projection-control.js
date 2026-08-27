@@ -55,8 +55,11 @@
   function account(row){const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);if(n.includes('efectivo'))return'Efectivo';if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';if(n.includes('arq'))return'ARQ Edu';if(n.includes('nu'))return(n.includes(' ro')||holder.includes('rocio')||holder==='ro')?'Nu Ro':'Nu Edu';return raw||'Sin especificar';}
   function method(row){const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;const raw=norm(row['Cuenta / Tarjeta']);if(raw.includes('credito')||raw.includes('crédito'))return'Crédito';if(raw.includes('transferencia'))return'Transferencia';if(raw.includes('debito')||raw.includes('débito'))return'Débito';if(raw.includes('efectivo'))return'Efectivo';const q=parseNumber(row.Cuotas);if(q>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';return'Sin especificar';}
   function matchesExtraFilters(row){
-    const cats=selectedGlobal('category');if(cats.length&&!cats.includes(String(row['Categoría']||'')))return false;
-    const st=window.__PAYMENT_FILTER_STATE__?.view==='flujo'?window.__PAYMENT_FILTER_STATE__:{account:[],method:[]};
+    const cats=selectedGlobal('category');
+    if(cats.length&&!cats.includes(String(row['Categoría']||'')))return false;
+    const view=activeView();
+    const rawState=window.__PAYMENT_FILTER_STATE__;
+    const st=rawState&&rawState.view===view?rawState:{account:[],method:[]};
     if(st.account?.length&&!st.account.includes(account(row)))return false;
     if(st.method?.length&&!st.method.includes(method(row)))return false;
     return true;
@@ -74,7 +77,7 @@
     const groups={
       super:{current:sum(actual.filter(isSuper)),previous:sum(previous.filter(isSuper)),projection:sum(projections.filter(isSuper))},
       fixed:{current:sum(actual.filter(isFixed)),previous:sum(previous.filter(isFixed)),projection:sum(projections.filter(isFixed))},
-      variable:{current:sum(actual.filter(r=>!isFixed(r)&&!isSuper(r))),previous:sum(previous.filter(r=>!isFixed(r)&&!isSuper(r)),),projection:0}
+      variable:{current:sum(actual.filter(r=>!isFixed(r)&&!isSuper(r))),previous:sum(previous.filter(r=>!isFixed(r)&&!isSuper(r))),projection:0}
     };
     groups.super.remaining=current?Math.max(0,groups.super.previous-groups.super.current-groups.super.projection):0;
     groups.fixed.remaining=current?Math.max(0,groups.fixed.previous-groups.fixed.current-groups.fixed.projection):0;
@@ -112,8 +115,8 @@
   }
   function schedule(force=false,delay=180){clearTimeout(timer);timer=setTimeout(()=>run(force),delay);}
   injectStyles();
-  document.addEventListener('click',e=>{if(e.target.closest('.nav-item,.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters'))schedule(false,260);if(e.target.closest('#refreshBtn')){cache=null;cacheAt=0;schedule(true,650);}},true);
-  document.addEventListener('panel:payment-filters-changed',()=>schedule(false,200));
-  document.addEventListener('panel:filters-updated',()=>schedule(false,220));
+  document.addEventListener('click',e=>{if(e.target.closest('.nav-item,.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters'))schedule(false,320);if(e.target.closest('#refreshBtn')){cache=null;cacheAt=0;schedule(true,650);}},true);
+  document.addEventListener('panel:payment-filters-changed',event=>{const view=activeView();if(event.detail?.view===view)schedule(false,260);});
+  document.addEventListener('panel:filters-updated',()=>schedule(false,260));
   schedule(false,500);
 })();
