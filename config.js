@@ -14,7 +14,8 @@ window.PANEL_CONFIG = {
   primaryCurrency: "COP",
   regularIncome: {
     fibrazoLlcUsdBase: 1300,
-    usdCopReference: 3150
+    usdCopReference: 3150,
+    usdArsReference: 1500
   }
 };
 
