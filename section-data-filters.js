@@ -150,14 +150,33 @@
     bar.querySelector('#clearSectionFilters')?.addEventListener('click',()=>{clearLocal(view);applyLocalChange(view);});
   }
 
+  function updateLocalControls(view){
+    const conf=VIEW_CONFIG[view]||VIEW_CONFIG.general;
+    conf.local.forEach(def=>{
+      const root=document.querySelector(`#sectionFilterBar .local-multi-filter[data-local-key="${def.key}"]`);if(!root)return;
+      const selected=getSelection(view,def.key);
+      root.classList.toggle('has-selection',selected.length>0);
+      const summary=root.querySelector('.local-summary');
+      if(summary)summary.textContent=!selected.length?'Todos':selected.length===1?selected[0]:`${selected.length} seleccionados`;
+      root.querySelectorAll('.local-option').forEach(btn=>{
+        const on=selected.includes(String(btn.dataset.value||''));
+        btn.classList.toggle('selected',on);btn.setAttribute('aria-pressed',on?'true':'false');
+        const check=btn.querySelector('.multi-filter-check');if(check)check.textContent=on?'✓':'';
+      });
+    });
+  }
+
   async function applyLocalChange(view){
     setCurrentFilterState(view);
+    if(view==='inversiones'){
+      updateLocalControls(view);
+      document.dispatchEvent(new CustomEvent('panel:section-filters-changed',{detail:{view}}));
+      return;
+    }
     await renderSectionFilters(view);
     document.dispatchEvent(new CustomEvent('panel:section-filters-changed',{detail:{view}}));
-    if(view!=='inversiones'){
-      const button=document.getElementById('refreshBtn');
-      if(button&&!button.disabled)button.click();
-    }
+    const button=document.getElementById('refreshBtn');
+    if(button&&!button.disabled)button.click();
   }
 
   async function syncView(){
@@ -171,7 +190,11 @@
     if(!event.target.closest('.local-multi-filter'))document.querySelectorAll('.local-multi-filter.open').forEach(x=>x.classList.remove('open'));
     if(event.target.closest('.nav-item'))setTimeout(()=>syncView().catch(console.error),30);
     if(event.target.closest('#clearFilters,#resetCurrentMonth')){
-      const view=activeView();clearLocal(view);setTimeout(()=>{setCurrentFilterState(view);renderSectionFilters(view);document.dispatchEvent(new CustomEvent('panel:section-filters-changed',{detail:{view}}));},80);
+      const view=activeView();clearLocal(view);setTimeout(()=>{
+        setCurrentFilterState(view);
+        if(view==='inversiones')updateLocalControls(view);else renderSectionFilters(view);
+        document.dispatchEvent(new CustomEvent('panel:section-filters-changed',{detail:{view}}));
+      },80);
     }
     if(event.target.closest('#refreshBtn')){backendCache=null;backendCacheAt=0;}
   },true);
