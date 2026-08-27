@@ -6,80 +6,34 @@
   const apiBaseUrl = String(cfg.apiBaseUrl || '').replace(/\/$/, '');
   if (!FINANCE_ID || !apiBaseUrl) return;
 
-  let cache = null, cacheAt = 0, timer = null, applying = false;
-  const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  let cache=null,cacheAt=0,timer=null,applying=false;
+  const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
+  const activeCurrency=()=>document.querySelector('.currency-btn.active')?.dataset.currency||'COP';
+  const selectedGlobal=key=>[...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)].map(x=>String(x.dataset.value||'').trim()).filter(Boolean);
+  const parseNumber=value=>{if(typeof value==='number')return Number.isFinite(value)?value:0;let s=String(value??'').trim().replace(/[^\d,.\-]/g,'');if(!s)return 0;const c=s.lastIndexOf(','),d=s.lastIndexOf('.');if(c>=0&&d>=0){if(c>d)s=s.replace(/\./g,'').replace(',','.');else s=s.replace(/,/g,'');}else if(c>=0){const p=s.split(',');s=p.length===2&&p[1].length<=2?p[0].replace(/\./g,'')+'.'+p[1]:s.replace(/,/g,'');}else if(d>=0){const p=s.split('.');if(p.length>2||(p.length===2&&p[1].length===3))s=s.replace(/\./g,'');}const n=Number(s);return Number.isFinite(n)?n:0;};
+  const parseRows=values=>{if(!Array.isArray(values)||values.length<2)return[];const h=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(r=>r?.some(v=>String(v??'').trim()!=='')).map(r=>Object.fromEntries(h.map((k,i)=>[k||`Col ${i+1}`,r?.[i]??''])));};
 
-  function activeView(){ return document.querySelector('.nav-item.active')?.dataset.view || ''; }
-  function activeCurrency(){ return document.querySelector('.currency-btn.active')?.dataset.currency || 'COP'; }
-  function selectedGlobal(key){ return [...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)].map(x=>String(x.dataset.value||'').trim()).filter(Boolean); }
-
-  function parseNumber(value){
-    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-    let s = String(value ?? '').trim().replace(/[^\d,.\-]/g,''); if (!s) return 0;
-    const c=s.lastIndexOf(','),d=s.lastIndexOf('.');
-    if(c>=0&&d>=0){ if(c>d)s=s.replace(/\./g,'').replace(',','.'); else s=s.replace(/,/g,''); }
-    else if(c>=0){ const p=s.split(','); s=p.length===2&&p[1].length<=2?p[0].replace(/\./g,'')+'.'+p[1]:s.replace(/,/g,''); }
-    else if(d>=0){ const p=s.split('.'); if(p.length>2||(p.length===2&&p[1].length===3))s=s.replace(/\./g,''); }
-    const n=Number(s); return Number.isFinite(n)?n:0;
-  }
-  function parseRows(values){
-    if(!Array.isArray(values)||values.length<2)return[];
-    const h=(values[0]||[]).map(v=>String(v??'').trim());
-    return values.slice(1).filter(r=>r?.some(v=>String(v??'').trim()!=='')).map(r=>Object.fromEntries(h.map((k,i)=>[k||`Col ${i+1}`,r?.[i]??''])));
-  }
-  function monthKey(value){
-    const s=norm(value); let m=s.match(/^(20\d{2})-(\d{1,2})/); if(m)return`${m[1]}-${String(+m[2]).padStart(2,'0')}`;
-    const map={ene:1,enero:1,feb:2,febrero:2,mar:3,marzo:3,abr:4,abril:4,may:5,mayo:5,jun:6,junio:6,jul:7,julio:7,ago:8,agosto:8,sep:9,sept:9,septiembre:9,oct:10,octubre:10,nov:11,noviembre:11,dic:12,diciembre:12};
-    m=s.match(/^(ene|enero|feb|febrero|mar|marzo|abr|abril|may|mayo|jun|junio|jul|julio|ago|agosto|sep|sept|septiembre|oct|octubre|nov|noviembre|dic|diciembre)\s+(20\d{2})/);
-    return m?`${m[2]}-${String(map[m[1]]).padStart(2,'0')}`:'';
-  }
-  function median(values){ const list=values.map(parseNumber).filter(v=>v>0).sort((a,b)=>a-b); if(!list.length)return 0; const i=Math.floor(list.length/2); return list.length%2?list[i]:(list[i-1]+list[i])/2; }
-  function currentMonthKey(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
-
-  async function payload(force=false){
-    if(!force&&cache&&Date.now()-cacheAt<45000)return cache;
-    const token=await window.__PANEL_GET_ID_TOKEN__?.(false); if(!token)return null;
-    const res=await fetch(`${apiBaseUrl}/api/data`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'}); if(!res.ok)return null;
-    cache=await res.json(); cacheAt=Date.now(); return cache;
-  }
-  function sourceRows(data,range){ return parseRows(data?.sources?.[`${FINANCE_ID}|${range}`]||[]); }
+  async function payload(force=false){if(!force&&cache&&Date.now()-cacheAt<45000)return cache;const token=await window.__PANEL_GET_ID_TOKEN__?.(false);if(!token)return null;const res=await fetch(`${apiBaseUrl}/api/data`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});if(!res.ok)return null;cache=await res.json();cacheAt=Date.now();return cache;}
+  const sourceRows=(data,range)=>parseRows(data?.sources?.[`${FINANCE_ID}|${range}`]||[]);
 
   function ensureFilters(){
     if(activeView()!=='flujo')return;
-    const filterBar=document.getElementById('filterBar');
-    const category=document.querySelector('#globalFilters .multi-filter[data-filter="category"]');
-    const sub=document.querySelector('#globalFilters .multi-filter[data-filter="subcategory"]');
-    const paymentBar=document.getElementById('paymentMethodFilterBar');
+    const filterBar=document.getElementById('filterBar'),category=document.querySelector('#globalFilters .multi-filter[data-filter="category"]'),sub=document.querySelector('#globalFilters .multi-filter[data-filter="subcategory"]'),paymentBar=document.getElementById('paymentMethodFilterBar');
     if(filterBar){filterBar.hidden=false;filterBar.style.display='';}
     if(category){category.hidden=false;category.style.display='';}
     if(sub){sub.hidden=true;sub.style.display='none';}
     if(paymentBar){paymentBar.hidden=false;paymentBar.style.display='';const grid=paymentBar.querySelector('.section-filter-grid');if(grid)grid.style.gridTemplateColumns='repeat(2,minmax(0,1fr))';}
   }
 
-  function rowMonth(row){ return monthKey(row['Mes consumo']||row['Mes pago']||row['Fecha real']||row['Fecha registrada']); }
-  function isActual(row){ const s=norm(row.Estado); return norm(row.Tipo)==='gasto' && !/proyecc|programad|proyectad/.test(s); }
-  function account(row){
-    const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);
-    if(n.includes('efectivo'))return'Efectivo';
-    if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';
-    if(n.includes('arq'))return'ARQ Edu';
-    if(n.includes('nu')){if(n.includes(' ro')||n.endsWith('ro')||holder==='ro'||holder.includes('rocio'))return'Nu Ro';return'Nu Edu';}
-    return raw||'Sin especificar';
-  }
-  function method(row){
-    const explicit=String(row['Modalidad de pago']||'').trim(); if(explicit)return explicit;
-    const raw=norm(row['Cuenta / Tarjeta']);
-    if(raw.includes('credito')||raw.includes('crédito'))return'Crédito';
-    if(raw.includes('transferencia'))return'Transferencia';
-    if(raw.includes('debito')||raw.includes('débito'))return'Débito';
-    if(raw.includes('efectivo'))return'Efectivo';
-    const q=parseNumber(row.Cuotas); if(q>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';
-    return'Sin especificar';
-  }
+  const monthKey=value=>window.RegularIncomeCore?.monthKey(value)||'';
+  function rowMonth(row){return monthKey(row['Mes consumo']||row['Mes pago']||row['Fecha real']||row['Fecha registrada']);}
+  function isActual(row){return norm(row.Tipo)==='gasto'&&!/proyecc|programad|proyectad/.test(norm(row.Estado));}
+  function account(row){const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);if(n.includes('efectivo'))return'Efectivo';if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';if(n.includes('arq'))return'ARQ Edu';if(n.includes('nu')){if(n.includes(' ro')||n.endsWith('ro')||holder==='ro'||holder.includes('rocio'))return'Nu Ro';return'Nu Edu';}return raw||'Sin especificar';}
+  function method(row){const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;const raw=norm(row['Cuenta / Tarjeta']);if(raw.includes('credito'))return'Crédito';if(raw.includes('transferencia'))return'Transferencia';if(raw.includes('debito'))return'Débito';if(raw.includes('efectivo'))return'Efectivo';const q=parseNumber(row.Cuotas);if(q>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';return'Sin especificar';}
   function movementMatches(row){
     if(!isActual(row))return false;
-    const years=selectedGlobal('year'),months=selectedGlobal('month'),cats=selectedGlobal('category');
-    const mk=rowMonth(row),ym=mk.match(/^(20\d{2})-(\d{2})$/);
+    const years=selectedGlobal('year'),months=selectedGlobal('month'),cats=selectedGlobal('category'),mk=rowMonth(row),ym=mk.match(/^(20\d{2})-(\d{2})$/);
     if(years.length&&(!ym||!years.includes(ym[1])))return false;
     if(months.length&&(!ym||!months.includes(String(+ym[2]))))return false;
     if(cats.length&&!cats.includes(String(row['Categoría']||'')))return false;
@@ -89,79 +43,39 @@
     return true;
   }
 
-  function regularCopByYear(concepts){
-    const map=new Map();
-    concepts.forEach(r=>{const k=monthKey(r.Mes);if(!k)return;const cop=parseNumber(r['Sueldo COP']);if(cop>0){const y=k.slice(0,4);if(!map.has(y))map.set(y,[]);map.get(y).push(cop);}});
-    const out=new Map(); map.forEach((list,y)=>out.set(y,median(list))); return out;
-  }
-  function selectedPeriodKeys(concepts,movements){
-    const years=selectedGlobal('year'),months=selectedGlobal('month'),current=currentMonthKey();
-    const keys=new Set();
-    concepts.forEach(r=>{const k=monthKey(r.Mes);if(k&&k<=current)keys.add(k);});
+  function selectedPeriodKeys(model,movements){
+    const years=selectedGlobal('year'),months=selectedGlobal('month');
+    const current=(()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;})();
+    const keys=new Set([...model.months.keys()].filter(k=>k<=current));
     movements.filter(isActual).forEach(r=>{const k=rowMonth(r);if(k&&k<=current)keys.add(k);});
-    return [...keys].filter(k=>{
-      const [y,m]=k.split('-');
-      if(years.length&&!years.includes(y))return false;
-      if(months.length&&!months.includes(String(+m)))return false;
-      return true;
-    }).sort();
-  }
-  function incomeForMonth(concepts,key,regularByYear){
-    const row=concepts.find(r=>monthKey(r.Mes)===key)||{};
-    const copActual=parseNumber(row['Sueldo COP']);
-    const usdActual=parseNumber(row['Sueldo USD (equiv. COP)']);
-    const current=key===currentMonthKey();
-    const copUsed=copActual||(current?regularByYear.get(key.slice(0,4))||0:0);
-    const missing=[];
-    if(!copActual&&copUsed>0)missing.push('Nómina COP');
-    return {cop:copUsed+usdActual,missing};
-  }
-  function periodIncome(concepts,movements){
-    const keys=selectedPeriodKeys(concepts,movements),regularByYear=regularCopByYear(concepts);
-    let total=0; const missing=[];
-    keys.forEach(k=>{const x=incomeForMonth(concepts,k,regularByYear);total+=x.cop;if(x.missing.length)missing.push(`${k}: ${x.missing.join(' + ')}`);});
-    let meta='';
-    if(keys.length===1){meta=missing.length?`Regular · falta soporte: ${missing[0].split(': ')[1]}`:'Ingreso regular del mes';}
-    else{meta=`${keys.length} meses · ingreso regular acumulado`;if(missing.length)meta+=` · ${missing.length} con soporte pendiente`;}
-    return {cop:total,meta,keys};
+    return [...keys].filter(k=>{const[y,m]=k.split('-');if(years.length&&!years.includes(y))return false;if(months.length&&!months.includes(String(+m)))return false;return true;}).sort();
   }
 
-  function currencyFactor(rows,currency){
-    if(currency==='COP')return 1;
-    const ratios=rows.map(r=>{const cop=parseNumber(r['Monto COP']);const other=parseNumber(r[currency==='USD'?'Monto USD':'Monto ARS']);return cop>0&&other>0?other/cop:0;}).filter(v=>v>0);
-    return median(ratios)||(currency==='USD'?1/3150:1/2.1);
-  }
+  function currencyFactor(rows,currency){if(currency==='COP')return 1;const ratios=rows.map(r=>{const cop=parseNumber(r['Monto COP']);const other=parseNumber(r[currency==='USD'?'Monto USD':'Monto ARS']);return cop>0&&other>0?other/cop:0;}).filter(v=>v>0);if(ratios.length){ratios.sort((a,b)=>a-b);return ratios[Math.floor(ratios.length/2)];}return currency==='USD'?1/(cfg.regularIncome?.usdCopReference||3150):1/2.1;}
   function formatMoney(value,currency){const digits=currency==='USD'?2:0;return new Intl.NumberFormat('es-CO',{style:'currency',currency,minimumFractionDigits:digits,maximumFractionDigits:digits}).format(Number(value)||0);}
-  function setCard(card,label,value,meta){if(!card)return;const l=card.querySelector('.kpi-label'),v=card.querySelector('.kpi-value'),m=card.querySelector('.kpi-meta span');if(l&&l.textContent!==label)l.textContent=label;if(v&&v.textContent!==value)v.textContent=value;if(m&&m.textContent!==meta)m.textContent=meta;}
-  function primaryCards(){
-    const root=document.getElementById('viewRoot');if(!root)return null;
-    const grid=[...root.querySelectorAll('.kpi-grid')].find(g=>{const labels=[...g.querySelectorAll('.kpi-label')].map(x=>x.textContent.trim());return labels.some(x=>x==='Ingresos'||x==='Ingresos promedio')&&labels.includes('Egresos')&&labels.includes('Ahorro');});
-    if(!grid)return null;const cards=[...grid.querySelectorAll('.kpi-card')];
-    return {income:cards.find(c=>['Ingresos','Ingresos promedio'].includes(c.querySelector('.kpi-label')?.textContent.trim())),expense:cards.find(c=>c.querySelector('.kpi-label')?.textContent.trim()==='Egresos'),savings:cards.find(c=>c.querySelector('.kpi-label')?.textContent.trim()==='Ahorro'),rate:cards.find(c=>norm(c.querySelector('.kpi-label')?.textContent).includes('tasa de ahorro'))};
-  }
+  function setCard(card,label,value,meta){if(!card)return;const l=card.querySelector('.kpi-label'),v=card.querySelector('.kpi-value'),m=card.querySelector('.kpi-meta span');if(l)l.textContent=label;if(v)v.textContent=value;if(m)m.textContent=meta;}
+  function primaryCards(){const root=document.getElementById('viewRoot');if(!root)return null;const grid=[...root.querySelectorAll('.kpi-grid')].find(g=>{const labels=[...g.querySelectorAll('.kpi-label')].map(x=>x.textContent.trim());return labels.some(x=>x==='Ingresos'||x==='Ingresos promedio'||x==='Ingresos regulares')&&labels.includes('Egresos')&&labels.includes('Ahorro');});if(!grid)return null;const cards=[...grid.querySelectorAll('.kpi-card')];return{income:cards.find(c=>['Ingresos','Ingresos promedio','Ingresos regulares'].includes(c.querySelector('.kpi-label')?.textContent.trim())),expense:cards.find(c=>c.querySelector('.kpi-label')?.textContent.trim()==='Egresos'),savings:cards.find(c=>c.querySelector('.kpi-label')?.textContent.trim()==='Ahorro'),rate:cards.find(c=>norm(c.querySelector('.kpi-label')?.textContent).includes('tasa de ahorro'))};}
 
   async function apply(force=false){
-    if(applying||activeView()!=='flujo')return;applying=true;
+    if(applying||activeView()!=='flujo'||!window.RegularIncomeCore)return;applying=true;
     try{
       const data=await payload(force);if(!data)return;ensureFilters();
-      const z=sourceRows(data,'Movimientos!A:Z'),movements=z.length?z:sourceRows(data,'Movimientos!A:Y');
-      const concepts=sourceRows(data,'Resumen_Conceptos_Ingresos!A:L');
-      const filtered=movements.filter(movementMatches),ref=periodIncome(concepts,movements),currency=activeCurrency(),factor=currencyFactor(movements,currency);
-      const income=ref.cop*factor;
-      const amountField=currency==='COP'?'Monto COP':currency==='USD'?'Monto USD':'Monto ARS';
-      const expenses=filtered.reduce((sum,r)=>sum+parseNumber(r[amountField]),0),savings=income-expenses,rate=income?savings/income:0;
+      const movements=sourceRows(data,'Movimientos!A:Z');
+      const model=window.RegularIncomeCore.build(data,FINANCE_ID);
+      window.__PANEL_REGULAR_INCOME_MODEL__=model;
+      const keys=selectedPeriodKeys(model,movements),period=model.period(keys),filtered=movements.filter(movementMatches),currency=activeCurrency(),factor=currencyFactor(movements,currency);
+      const income=period.totalCop*factor,amountField=currency==='COP'?'Monto COP':currency==='USD'?'Monto USD':'Monto ARS',expenses=filtered.reduce((s,r)=>s+parseNumber(r[amountField]),0),savings=income-expenses,rate=income?savings/income:0;
+      const missing=period.missing.length;
+      const meta=keys.length===1?(missing?`Ingreso regular del mes · soporte pendiente: ${period.missing[0].missingSupport.join(' + ')}`:'Ingreso regular del mes'):`${keys.length} meses · ingreso regular acumulado${missing?` · ${missing} con soporte pendiente`:''}`;
       const cards=primaryCards();
-      if(cards){
-        setCard(cards.income,ref.keys.length>1?'Ingresos regulares':'Ingresos promedio',formatMoney(income,currency),ref.meta);
-        setCard(cards.expense,'Egresos',formatMoney(expenses,currency),`${filtered.length} movimientos realizados según filtros`);
-        setCard(cards.savings,'Ahorro',formatMoney(savings,currency),'Ingreso regular - egresos');
-        setCard(cards.rate,'Tasa de ahorro',`${new Intl.NumberFormat('es-CO',{minimumFractionDigits:1,maximumFractionDigits:1}).format(rate*100)}%`,'Ahorro / ingreso regular');
-      }
+      if(cards){setCard(cards.income,keys.length>1?'Ingresos regulares':'Ingresos promedio',formatMoney(income,currency),meta);setCard(cards.expense,'Egresos',formatMoney(expenses,currency),`${filtered.length} movimientos realizados según filtros`);setCard(cards.savings,'Ahorro',formatMoney(savings,currency),'Ingreso regular - egresos');setCard(cards.rate,'Tasa de ahorro',`${new Intl.NumberFormat('es-CO',{minimumFractionDigits:1,maximumFractionDigits:1}).format(rate*100)}%`,'Ahorro / ingreso regular');}
     }catch(error){console.error('Estabilizador Flujo:',error);}finally{applying=false;}
   }
-  function schedule(force=false,delay=260){clearTimeout(timer);timer=setTimeout(()=>apply(force),delay);}
-  document.addEventListener('click',event=>{if(event.target.closest('.nav-item')){setTimeout(()=>apply(false),650);return;}if(event.target.closest('.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters,.currency-btn'))schedule(false,320);if(event.target.closest('#refreshBtn')){cache=null;cacheAt=0;schedule(true,650);}},true);
-  document.addEventListener('panel:payment-filters-changed',()=>schedule(false,180));
-  document.addEventListener('panel:filters-updated',()=>schedule(false,220));
-  const start=()=>setTimeout(()=>apply(false),900);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
+
+  const schedule=(force=false,delay=220)=>{clearTimeout(timer);timer=setTimeout(()=>apply(force),delay);};
+  document.addEventListener('click',event=>{if(event.target.closest('.nav-item')){setTimeout(()=>apply(false),550);return;}if(event.target.closest('.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters,.currency-btn'))schedule(false,240);if(event.target.closest('#refreshBtn')){cache=null;cacheAt=0;schedule(true,550);}},true);
+  document.addEventListener('panel:payment-filters-changed',()=>schedule(false,160));
+  document.addEventListener('panel:filters-updated',()=>schedule(false,180));
+  document.addEventListener('panel:regular-income-base-applied',()=>schedule(false,80));
+  setTimeout(()=>apply(false),750);
 })();
