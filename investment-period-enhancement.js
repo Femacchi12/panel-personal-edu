@@ -16,7 +16,7 @@
   let rendering = false;
   let charts = [];
 
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
   const activeView = () => document.querySelector('.nav-item.active')?.dataset.view || '';
   const currentCurrency = () => document.querySelector('.currency-btn.active')?.dataset.currency || 'COP';
 
@@ -200,13 +200,20 @@
 
   injectStyles();
   document.addEventListener('click',event=>{
-    if(event.target.closest('.nav-item')) setTimeout(()=>{forcePeriodFilters();schedule(false,320);},120);
-    if(event.target.closest('.currency-btn,.multi-filter-option,.local-option,#clearFilters,#resetCurrentMonth,#clearSectionFilters')) schedule(false,320);
+    if(event.target.closest('.nav-item')) setTimeout(()=>{forcePeriodFilters();schedule(false,280);},100);
+    if(event.target.closest('.currency-btn,.multi-filter-option,#clearFilters,#resetCurrentMonth')) schedule(false,280);
     if(event.target.closest('#refreshBtn')){cache=null;cacheAt=0;schedule(true,520);}
   });
+  document.addEventListener('panel:section-filters-changed',event=>{
+    if(event?.detail?.view==='inversiones') schedule(false,120);
+  });
 
+  // Mantener un único guard: solo repone este mismo renderer si app.js reconstruye viewRoot
+  // por una recarga de datos. No crea una segunda versión de Inversiones.
   const root=document.getElementById('viewRoot');
-  if(root) new MutationObserver(()=>{if(activeView()==='inversiones'&&!root.querySelector('#investmentPeriodCorrected')) schedule(false,260);}).observe(root,{childList:true,subtree:false});
+  if(root) new MutationObserver(()=>{
+    if(activeView()==='inversiones'&&!root.querySelector('#investmentPeriodCorrected')) schedule(false,220);
+  }).observe(root,{childList:true,subtree:false});
 
-  setTimeout(()=>{forcePeriodFilters();schedule(false,360);},360);
+  setTimeout(()=>{forcePeriodFilters();schedule(false,320);},320);
 })();
