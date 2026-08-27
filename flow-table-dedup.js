@@ -73,12 +73,3 @@
   if (root) new MutationObserver(() => schedule(110)).observe(root, { childList: true, subtree:false });
   [350, 700, 1200, 2200].forEach(ms => setTimeout(apply, ms));
 })();
-
-// Corrección única de porcentajes: siempre usa ingreso mensual regular sin extras/primas.
-(() => {
-  if (document.querySelector('script[data-regular-income-percentage-fix]')) return;
-  const script = document.createElement('script');
-  script.src = 'flow-regular-income-percentage-fix.js?v=20260825-1625';
-  script.dataset.regularIncomePercentageFix = '1';
-  document.head.appendChild(script);
-})();
