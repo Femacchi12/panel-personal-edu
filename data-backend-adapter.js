@@ -56,9 +56,8 @@
     if (statusIndex < 0) return values;
 
     const body = values.slice(1).filter(row => {
-      const status = norm(row?.[statusIndex]);
-      // Real views only: future expenses live in Estado = Proyección.
-      return status !== 'programado' && status !== 'proyeccion';
+      const status = row?.[statusIndex];
+      return window.MovementStatusCore?.isActual(status) ?? !/proyecc|proyect|programad/.test(norm(status));
     });
     return [values[0], ...body];
   }

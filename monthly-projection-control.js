@@ -48,8 +48,8 @@
   }
 
   function status(row){return norm(row.Estado);}
-  function isActual(row){return norm(row.Tipo)==='gasto'&&!/proyecc|programad|proyectad/.test(status(row));}
-  function isProjection(row){return norm(row.Tipo)==='gasto'&&/proyecc|programad|proyectad/.test(status(row));}
+  function isActual(row){return norm(row.Tipo)==='gasto'&&(window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(status(row)));}
+  function isProjection(row){return norm(row.Tipo)==='gasto'&&(window.MovementStatusCore?.isProjection(row.Estado) ?? /proyecc|proyect|programad/.test(status(row)));}
   function isFixed(row){return/^(si|sí|true|1)$/i.test(String(row['Es fijo']||'').trim());}
   function isSuper(row){return norm(row['Categoría'])==='supermercado';}
   function account(row){const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);if(n.includes('efectivo'))return'Efectivo';if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';if(n.includes('arq'))return'ARQ Edu';if(n.includes('nu'))return(n.includes(' ro')||holder.includes('rocio')||holder==='ro')?'Nu Ro':'Nu Edu';return raw||'Sin especificar';}

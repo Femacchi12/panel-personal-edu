@@ -65,7 +65,7 @@
   function expenseType(row){return /^(si|sí|true|1)$/i.test(String(row['Es fijo']||'').trim())?'Fijo':'Variable';}
   function isRealExpense(row){
     if(norm(row.Tipo)!=='gasto' && row.Tipo)return false;
-    return !/proyecc|programad|proyectad/.test(norm(row.Estado));
+    return window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado));
   }
 
   function selectedGlobal(key){

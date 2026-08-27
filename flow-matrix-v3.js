@@ -48,8 +48,7 @@
 
   function isReal(row){
     if(norm(row.Tipo)!=='gasto')return false;
-    const s=norm(row.Estado);
-    return !/proyecc|programad|proyectad/.test(s);
+    return window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado));
   }
   function account(row){
     const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);

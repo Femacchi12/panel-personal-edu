@@ -67,7 +67,7 @@
 
   function isReal(row) {
     if (norm(row.Tipo) !== 'gasto') return false;
-    return !/proyecc|programad|proyectad/.test(norm(row.Estado));
+    return window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado));
   }
 
   function account(row) {

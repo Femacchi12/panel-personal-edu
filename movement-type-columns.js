@@ -18,7 +18,7 @@
       const token=await window.__PANEL_GET_ID_TOKEN__?.(false);if(!token)return new Map();
       const r=await fetch(`${apiBaseUrl}/api/data`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});if(!r.ok)return new Map();
       const p=await r.json(),rows=parseRows(p?.sources?.[`${financeId}|Movimientos!A:Z`]||[]),map=new Map();
-      rows.filter(row=>!row.Tipo||norm(row.Tipo)==='gasto').forEach(row=>{
+      rows.filter(row=>(!row.Tipo||norm(row.Tipo)==='gasto')&&(window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado)))).forEach(row=>{
         const value=/^(si|sí|true|1)$/i.test(String(row['Es fijo']||''))?'Fijo':'Variable';
         const k=key(row['Descripción / Comercio'],row['Cuenta / Tarjeta'],row.Titular,row['Monto COP']);
         if(!map.has(k))map.set(k,value);

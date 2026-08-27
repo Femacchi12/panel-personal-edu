@@ -68,7 +68,7 @@
     return'Sin especificar';
   }
   function movementMatches(row,view){
-    const status=norm(row.Estado); if(status==='programado'||status==='proyeccion')return false;
+    if(!(window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado))))return false;
     const d=parseDate(row['Fecha real']||row['Fecha registrada']);
     const years=selectedGlobal('year'),months=selectedGlobal('month'),cats=selectedGlobal('category'),subs=selectedGlobal('subcategory');
     if(years.length&&(!d||!years.includes(String(d.getFullYear()))))return false;

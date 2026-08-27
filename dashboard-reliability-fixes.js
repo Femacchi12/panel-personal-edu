@@ -151,6 +151,7 @@
     const years=selectedGlobal('year'),months=selectedGlobal('month'),cats=selectedGlobal('category'),subs=selectedGlobal('subcategory');
     return rows.filter(row=>{
       if(!isExpense(row))return false;
+      if(!(window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado))))return false;
       const d=parseDate(pick(row,['Fecha real','Fecha registrada','Fecha','Mes consumo']));
       if(!d)return false;
       if(years.length&&!years.includes(String(d.getFullYear())))return false;

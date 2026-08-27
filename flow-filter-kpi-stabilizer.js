@@ -28,7 +28,7 @@
 
   const monthKey=value=>window.RegularIncomeCore?.monthKey(value)||'';
   function rowMonth(row){return monthKey(row['Mes consumo']||row['Mes pago']||row['Fecha real']||row['Fecha registrada']);}
-  function isActual(row){return norm(row.Tipo)==='gasto'&&!/proyecc|programad|proyectad/.test(norm(row.Estado));}
+  function isActual(row){return norm(row.Tipo)==='gasto'&&(window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado)));}
   function account(row){const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);if(n.includes('efectivo'))return'Efectivo';if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';if(n.includes('arq'))return'ARQ Edu';if(n.includes('nu')){if(n.includes(' ro')||n.endsWith('ro')||holder==='ro'||holder.includes('rocio'))return'Nu Ro';return'Nu Edu';}return raw||'Sin especificar';}
   function method(row){const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;const raw=norm(row['Cuenta / Tarjeta']);if(raw.includes('credito'))return'Crédito';if(raw.includes('transferencia'))return'Transferencia';if(raw.includes('debito'))return'Débito';if(raw.includes('efectivo'))return'Efectivo';const q=parseNumber(row.Cuotas);if(q>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';return'Sin especificar';}
   function movementMatches(row){

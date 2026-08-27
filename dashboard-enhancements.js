@@ -85,6 +85,7 @@
     const subcategories = selectedFilter('subcategory');
     return rows.filter(row => {
       if (!isExpense(row)) return false;
+      if (!(window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado)))) return false;
       const d = parseDate(pick(row,['Fecha real','Fecha registrada','Fecha','Mes consumo']));
       if (years.length && (!d || !years.includes(String(d.getFullYear())))) return false;
       if (months.length && (!d || !months.includes(String(d.getMonth()+1)))) return false;

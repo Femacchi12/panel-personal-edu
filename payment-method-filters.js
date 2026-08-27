@@ -86,6 +86,7 @@
   }
 
   function periodMatch(row){
+    if(!(window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado))))return false;
     const d=parseDate(row['Fecha real']||row['Fecha registrada']);if(!d)return false;
     const ys=globalSelected('year'),ms=globalSelected('month'),cs=globalSelected('category');
     if(ys.length&&!ys.includes(String(d.getFullYear())))return false;
