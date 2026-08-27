@@ -118,7 +118,6 @@ async function loadDashboard() {
     await loadScript("flow-savings-enhancements.js");
     await loadScript("income-type-filter.js");
     await loadScript("table-date-behavior.js");
-    await loadScript("investment-timeline.js");
     await loadScript("investment-mode-all-option.js");
     await loadScript("expense-table-advanced.js");
     await loadScript("flow-matrix-v3.js");
