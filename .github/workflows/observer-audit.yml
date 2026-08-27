@@ -1,0 +1,44 @@
+name: Observer audit
+
+on:
+  push:
+    paths:
+      - '.github/workflows/observer-audit.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Inventory MutationObservers in active scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            dashboard-enhancements.js dashboard-reliability-fixes.js section-structure-cleanup.js
+            amount-original-format.js flow-table-dedup.js income-regular-baseline.js investment-period-enhancement.js
+            card-specific-filter.js card-payment-control.js card-chart-personal-limit.js card-payments-installments.js
+            flow-savings-enhancements.js income-type-filter.js table-date-behavior.js expense-table-advanced.js
+            flow-matrix-v3.js flow-matrix-detail-delegate.js monthly-projection-control.js exchange-simulator.js
+            movement-type-columns.js payment-method-filters.js flow-financing-filter-fix.js services-table-enhancement.js
+            flow-percentage-base-fix.js flow-filter-kpi-stabilizer.js dashboard-reliability-loop-guard.js
+          )
+          : > observer-audit.txt
+          for f in "${files[@]}"; do
+            [[ -f "$f" ]] || continue
+            if grep -nE 'MutationObserver|\.observe\(' "$f" >/tmp/matches; then
+              echo "### $f" >> observer-audit.txt
+              cat /tmp/matches >> observer-audit.txt
+              echo >> observer-audit.txt
+            fi
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add observer-audit.txt
+          git commit -m "Record observer audit"
+          git push
