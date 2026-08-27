@@ -240,7 +240,7 @@
   },true);
 
   const root=document.getElementById('viewRoot');
-  if(root)new MutationObserver(()=>schedule(90)).observe(root,{childList:true,subtree:true});
+  if(root)new MutationObserver(()=>schedule(90)).observe(root,{childList:true,subtree:false});
 
   if(!document.getElementById('dashboardReliabilityFixStyles')){
     const style=document.createElement('style');style.id='dashboardReliabilityFixStyles';style.textContent=`

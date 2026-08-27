@@ -235,7 +235,7 @@
   injectStyles();
   const root = document.getElementById('viewRoot');
   const title = document.getElementById('viewTitle');
-  if (root) new MutationObserver(schedule).observe(root,{childList:true,subtree:true});
+  if (root) new MutationObserver(schedule).observe(root,{childList:true,subtree:false});
   if (title) new MutationObserver(schedule).observe(title,{childList:true,characterData:true,subtree:true});
   document.addEventListener('click',event=>{
     if (event.target.closest('.nav-item,.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters')) setTimeout(schedule,90);

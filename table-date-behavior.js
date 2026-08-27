@@ -148,5 +148,5 @@
         processAll(node);
       });
     }
-  }).observe(root,{childList:true,subtree:true});
+  }).observe(root,{childList:true,subtree:false});
 })();

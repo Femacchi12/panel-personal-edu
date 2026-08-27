@@ -377,7 +377,7 @@
   });
 
   const root = document.getElementById('viewRoot');
-  if (root) new MutationObserver(scheduleCardEnhancement).observe(root,{childList:true,subtree:true});
+  if (root) new MutationObserver(scheduleCardEnhancement).observe(root,{childList:true,subtree:false});
   window.addEventListener('resize',() => {
     if (cardChart) requestAnimationFrame(() => drawFixedYAxis(cardChart));
   });

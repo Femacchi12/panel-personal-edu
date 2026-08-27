@@ -70,7 +70,7 @@
 
   injectStableComparisonStyles();
   const root = document.getElementById('viewRoot');
-  if (root) new MutationObserver(() => schedule(110)).observe(root, { childList: true, subtree: true });
+  if (root) new MutationObserver(() => schedule(110)).observe(root, { childList: true, subtree:false });
   [350, 700, 1200, 2200].forEach(ms => setTimeout(apply, ms));
 })();
 

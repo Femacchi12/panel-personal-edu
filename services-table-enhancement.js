@@ -145,7 +145,7 @@
 
   const root = document.getElementById('viewRoot');
   if (root) {
-    new MutationObserver(() => schedule(70)).observe(root, { childList: true, subtree: true });
+    new MutationObserver(() => schedule(70)).observe(root, { childList: true, subtree:false });
   }
 
   loadDashboardV2Enhancements();

@@ -90,7 +90,7 @@
   function apply(){if(applying)return;applying=true;try{const root=document.getElementById('viewRoot');if(!root)return;cleanCards(root);cleanExpenseFlowDuplicates(root);syncMonthlyConsidered(root);cleanPension(root);cleanInvestments(root);}finally{applying=false;}}
   function schedule(delay=80){clearTimeout(timer);timer=setTimeout(apply,delay);}
   document.addEventListener('click',e=>{if(e.target.closest?.('.nav-item,.multi-filter-option,.local-option,.currency-btn,#refreshBtn,#clearFilters,#clearSectionFilters,#monthlyProjectionToggle'))schedule(180);},true);
-  const root=document.getElementById('viewRoot');if(root)new MutationObserver(()=>schedule(90)).observe(root,{childList:true,subtree:true});
+  const root=document.getElementById('viewRoot');if(root)new MutationObserver(()=>schedule(90)).observe(root,{childList:true,subtree:false});
   const sectionFilters=document.getElementById('sectionFilterBar');if(sectionFilters)new MutationObserver(()=>schedule(30)).observe(sectionFilters,{childList:true,subtree:true});
   injectInvestmentGuard();schedule(500);
 })();

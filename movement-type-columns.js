@@ -58,5 +58,5 @@
 
   function scan(root=document){root.querySelectorAll?.('table').forEach(t=>enhance(t));}
   const style=document.createElement('style');style.textContent='.movement-fixed{color:#26d07c;font-weight:700}.movement-variable{color:#a8b5c7}';document.head.appendChild(style);
-  scan();const root=document.getElementById('viewRoot')||document.body;new MutationObserver(m=>m.forEach(x=>x.addedNodes.forEach(n=>{if(n instanceof Element){if(n.matches?.('table'))enhance(n);scan(n);}}))).observe(root,{childList:true,subtree:true});
+  scan();const root=document.getElementById('viewRoot')||document.body;new MutationObserver(m=>m.forEach(x=>x.addedNodes.forEach(n=>{if(n instanceof Element){if(n.matches?.('table'))enhance(n);scan(n);}}))).observe(root,{childList:true,subtree:false});
 })();
