@@ -102,11 +102,12 @@
     const direct = sources[`${spreadsheetId}|${range}`];
     if (Array.isArray(direct)) return direct;
 
-    // Migration compatibility: A:Z is the canonical Movimientos payload.
-    // Older modules that still request A:Y receive a 25-column projection of A:Z.
+    // Migration bridge: A:Z is the only canonical Movimientos payload.
+    // Legacy modules may still request A:Y, but they now receive the complete A:Z matrix
+    // so the extra canonical column is available without maintaining a second data source.
     if (range === 'Movimientos!A:Y') {
       const canonical = sources[`${spreadsheetId}|Movimientos!A:Z`];
-      if (Array.isArray(canonical)) return canonical.map(row => Array.isArray(row) ? row.slice(0, 25) : row);
+      if (Array.isArray(canonical)) return canonical;
     }
     return null;
   }
