@@ -1,0 +1,26 @@
+name: Flow cleanup check
+
+on:
+  push:
+    paths:
+      - '.github/workflows/flow-cleanup-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate consolidated flow modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check flow-percentage-base-fix.js
+          node --check flow-table-dedup.js
+          if grep -R "flow-regular-income-percentage-fix.js" --include='*.js' --include='*.html' .; then
+            echo "Legacy flow percentage loader still referenced"
+            exit 1
+          fi
+          test ! -f flow-regular-income-percentage-fix.js
