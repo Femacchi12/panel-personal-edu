@@ -91,20 +91,11 @@
     return selected.some(v => norm(v).includes(norm(row.Entidad)) || norm(row.Entidad).includes(norm(v).split('/')[0].trim()));
   }
 
-  function investmentRates(rows) {
-    const usable = rows.filter(r => parseNumber(r['Valor USD']) > 0 && parseNumber(r['Valor COP']) > 0);
-    let usdCop = Number(cfg?.regularIncome?.usdCopReference) || 3150;
-    let usdArs = 1500;
-    if (usable.length) {
-      const usd = usable.reduce((s, r) => s + parseNumber(r['Valor USD']), 0);
-      const cop = usable.reduce((s, r) => s + parseNumber(r['Valor COP']), 0);
-      const ars = usable.reduce((s, r) => s + parseNumber(r['Valor ARS']), 0);
-      if (usd > 0) {
-        if (cop > 0) usdCop = cop / usd;
-        if (ars > 0) usdArs = ars / usd;
-      }
-    }
-    return { usdCop, usdArs };
+  function investmentRates() {
+    return {
+      usdCop: Number(cfg?.regularIncome?.usdCopReference) || 3150,
+      usdArs: Number(cfg?.regularIncome?.usdArsReference) || 1500
+    };
   }
 
   function convert(value, base, currency, rates) {
@@ -166,12 +157,11 @@
       const p = await payload(force).catch(() => null);
       if (!p || activeView() !== 'inversiones') return;
       const summaries = parseRows(p?.sources?.[`${financeId}|Resumen_Inversiones!A:N`] || []);
-      const positions = parseRows(p?.sources?.[`${financeId}|Posiciones!A:X`] || []);
       const rows = latestSummary(summaries.filter(summaryMatchesPlatform), periodEnd());
       if (!rows.length) return;
 
       const currency = currentCurrency();
-      const rates = investmentRates(positions);
+      const rates = investmentRates();
       let capital = 0, result = 0, total = 0;
       rows.forEach(row => {
         const base = String(row['Moneda base'] || 'COP').toUpperCase();
@@ -217,11 +207,9 @@
 
   injectStyles();
   document.addEventListener('click', e => {
-    if (e.target.closest('.nav-item,.currency-btn,.multi-filter-option,.local-option,#clearFilters,#resetCurrentMonth,#clearSectionFilters')) schedule(false, 220);
-    if (e.target.closest('#refreshBtn')) { cache = null; cacheAt = 0; schedule(true, 550); }
+    if (e.target.closest('.nav-item,.currency-btn,#globalFilters .multi-filter-option,#clearFilters,#resetCurrentMonth,#clearSectionFilters')) schedule(false, 180);
+    if (e.target.closest('#refreshBtn')) { cache = null; cacheAt = 0; schedule(true, 500); }
   });
-  document.addEventListener('panel:section-filters-changed', e => { if (e?.detail?.view === 'inversiones') schedule(false, 140); });
-  const root = document.getElementById('viewRoot');
-  if (root) new MutationObserver(() => { if (activeView() === 'inversiones') schedule(false, 180); }).observe(root, { childList: true, subtree: false });
+  document.addEventListener('panel:section-filters-changed', e => { if (e?.detail?.view === 'inversiones') schedule(false, 100); });
   schedule(false, 500);
 })();
