@@ -18,16 +18,3 @@ window.PANEL_CONFIG = {
     usdArsReference: 1500
   }
 };
-
-(() => {
-  const loadPaymentFilters = () => {
-    if (document.querySelector('script[data-payment-method-filters]')) return;
-    const script = document.createElement('script');
-    script.src = 'payment-method-filters.js?v=20260823-1629';
-    script.defer = true;
-    script.dataset.paymentMethodFilters = 'true';
-    document.head.appendChild(script);
-  };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadPaymentFilters, { once: true });
-  else loadPaymentFilters();
-})();
