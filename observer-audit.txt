@@ -1,0 +1,59 @@
+### dashboard-enhancements.js
+380:  if (root) new MutationObserver(scheduleCardEnhancement).observe(root,{childList:true,subtree:true});
+
+### dashboard-reliability-fixes.js
+243:  if(root)new MutationObserver(()=>schedule(90)).observe(root,{childList:true,subtree:true});
+
+### section-structure-cleanup.js
+93:  const root=document.getElementById('viewRoot');if(root)new MutationObserver(()=>schedule(90)).observe(root,{childList:true,subtree:true});
+94:  const sectionFilters=document.getElementById('sectionFilterBar');if(sectionFilters)new MutationObserver(()=>schedule(30)).observe(sectionFilters,{childList:true,subtree:true});
+
+### amount-original-format.js
+70:  const observer = new MutationObserver(() => requestAnimationFrame(apply));
+74:    observer.observe(document.documentElement, { childList: true, subtree: true });
+
+### flow-table-dedup.js
+73:  if (root) new MutationObserver(() => schedule(110)).observe(root, { childList: true, subtree: true });
+
+### investment-period-enhancement.js
+95:  const root=document.getElementById('viewRoot');if(root)new MutationObserver(()=>{if(activeView()==='inversiones'&&!root.querySelector('#investmentPeriodCorrected'))schedule(false,120);}).observe(root,{childList:true,subtree:false});
+
+### card-specific-filter.js
+332:    uiObserver = new MutationObserver(scheduleUI);
+333:    uiObserver.observe(main,{childList:true,subtree:true});
+
+### card-payment-control.js
+295:  if(root) new MutationObserver(()=>schedule(100)).observe(root,{childList:true,subtree:false});
+
+### card-chart-personal-limit.js
+31:  if(root) new MutationObserver(()=>schedule()).observe(root,{childList:true,subtree:false});
+
+### card-payments-installments.js
+249:  new MutationObserver(()=>{
+252:  }).observe(root,{childList:true,subtree:false});
+
+### income-type-filter.js
+238:  if (root) new MutationObserver(schedule).observe(root,{childList:true,subtree:true});
+239:  if (title) new MutationObserver(schedule).observe(title,{childList:true,characterData:true,subtree:true});
+
+### table-date-behavior.js
+143:  new MutationObserver(mutations => {
+151:  }).observe(root,{childList:true,subtree:true});
+
+### expense-table-advanced.js
+156:  const root=document.getElementById('viewRoot');if(root)new MutationObserver(()=>schedule(false,100)).observe(root,{childList:true,subtree:false});
+
+### flow-matrix-v3.js
+211:  if(root)new MutationObserver(()=>{
+213:  }).observe(root,{childList:true,subtree:false});
+
+### movement-type-columns.js
+61:  scan();const root=document.getElementById('viewRoot')||document.body;new MutationObserver(m=>m.forEach(x=>x.addedNodes.forEach(n=>{if(n instanceof Element){if(n.matches?.('table'))enhance(n);scan(n);}}))).observe(root,{childList:true,subtree:true});
+
+### services-table-enhancement.js
+148:    new MutationObserver(() => schedule(70)).observe(root, { childList: true, subtree: true });
+
+### dashboard-reliability-loop-guard.js
+6:  // Evita que el footer TOTAL se elimine y vuelva a crear en cada MutationObserver.
+48:  if(root)new MutationObserver(scheduleEnd).observe(root,{childList:true});
+
