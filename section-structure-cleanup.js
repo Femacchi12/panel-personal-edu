@@ -25,9 +25,10 @@
   function cleanPension(root){if(activeView()!=='pension')return;const head=root.querySelector('.section-head');if(!head)return;const core=[...root.children].find(isCorePensionGrid),v2=root.querySelector('#pensionV2');if(core){showGrid(core);if(head.nextElementSibling!==core)head.insertAdjacentElement('afterend',core);}if(v2){hideElement(v2.querySelector(':scope > .v2-kpis'));const a=core||head;if(a.nextElementSibling!==v2)a.insertAdjacentElement('afterend',v2);}}
 
   // INVERSIONES: investment-period-enhancement.js es el único renderer oficial.
-  // Aquí solo se esconden restos del renderer base/legacy; nunca se reordenan ni ocultan piezas del renderer oficial.
+  // Aquí solo se eliminan/esconden restos del renderer base/legacy.
   function cleanInvestments(root){
     if(activeView()!=='inversiones')return;
+    document.querySelectorAll('#investmentV2ModeFilter').forEach(el=>el.remove());
     const official=root.querySelector('#investmentPeriodCorrected');
     hideElement(root.querySelector('#investmentCorrected'));
     hideElement(root.querySelector('#investmentV2'));
@@ -48,5 +49,6 @@
   function schedule(delay=80){clearTimeout(timer);timer=setTimeout(apply,delay);}
   document.addEventListener('click',e=>{if(e.target.closest?.('.nav-item,.multi-filter-option,.local-option,.currency-btn,#refreshBtn,#clearFilters,#clearSectionFilters'))schedule(180);},true);
   const root=document.getElementById('viewRoot');if(root)new MutationObserver(()=>schedule(120)).observe(root,{childList:true,subtree:true});
+  const sectionFilters=document.getElementById('sectionFilterBar');if(sectionFilters)new MutationObserver(()=>schedule(30)).observe(sectionFilters,{childList:true,subtree:true});
   schedule(500);
 })();
