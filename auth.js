@@ -127,6 +127,7 @@ async function loadDashboard() {
   dashboardLoaded = true;
   try {
     if (BACKEND_MODE) await loadScript("data-backend-adapter.js");
+    await loadScript("regular-income-core.js");
     await loadScript("app.js");
     await loadScript("income-doc-enhancements.js");
     await loadScript("income-chart-filter-fix.js");
