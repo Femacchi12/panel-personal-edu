@@ -1,0 +1,85 @@
+name: Localize viewRoot observers
+
+on:
+  push:
+    paths:
+      - '.github/workflows/localize-viewroot-observers.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Replace global observer guard with local observer settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          files = [
+              'dashboard-enhancements.js',
+              'dashboard-reliability-fixes.js',
+              'section-structure-cleanup.js',
+              'flow-table-dedup.js',
+              'income-type-filter.js',
+              'table-date-behavior.js',
+              'movement-type-columns.js',
+              'services-table-enhancement.js',
+          ]
+
+          changed = []
+          for name in files:
+              p = Path(name)
+              text = p.read_text(encoding='utf-8')
+              lines = []
+              touched = False
+              for line in text.splitlines(keepends=True):
+                  if 'observe(root' in line and re.search(r'subtree\s*:\s*true', line):
+                      line = re.sub(r'subtree\s*:\s*true', 'subtree:false', line)
+                      touched = True
+                  lines.append(line)
+              if touched:
+                  p.write_text(''.join(lines), encoding='utf-8')
+                  changed.append(name)
+
+          expected = set(files)
+          if set(changed) != expected:
+              missing = sorted(expected - set(changed))
+              raise SystemExit('Expected viewRoot observer replacement missing in: ' + ', '.join(missing))
+
+          idx = Path('index.html')
+          html = idx.read_text(encoding='utf-8')
+          line = '  <script src="observer-safety.js"></script>\n'
+          if line not in html:
+              raise SystemExit('observer-safety script tag not found')
+          idx.write_text(html.replace(line, ''), encoding='utf-8')
+
+          guard = Path('observer-safety.js')
+          if not guard.exists():
+              raise SystemExit('observer-safety.js not found')
+          guard.unlink()
+
+          for name in files:
+              for line in Path(name).read_text(encoding='utf-8').splitlines():
+                  if 'observe(root' in line and re.search(r'subtree\s*:\s*true', line):
+                      raise SystemExit(f'viewRoot subtree:true remains in {name}: {line}')
+          if 'observer-safety.js' in idx.read_text(encoding='utf-8'):
+              raise SystemExit('observer-safety still loaded')
+          PY
+
+          for f in dashboard-enhancements.js dashboard-reliability-fixes.js section-structure-cleanup.js flow-table-dedup.js income-type-filter.js table-date-behavior.js movement-type-columns.js services-table-enhancement.js; do
+            node --check "$f"
+          done
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Localize viewRoot observer safeguards"
+          git push
