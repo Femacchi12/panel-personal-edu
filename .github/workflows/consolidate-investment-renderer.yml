@@ -1,0 +1,75 @@
+name: Consolidate investment renderer
+
+on:
+  push:
+    paths:
+      - '.github/workflows/consolidate-investment-renderer.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Merge investment overview into official renderer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('investment-period-enhancement.js')
+          text = p.read_text(encoding='utf-8')
+
+          marker = "      const categoryFilters=selectedLocal('invClass').length||selectedLocal('invCategory').length||selectedLocal('invSubcategory').length;\n      const effectiveMode=selectedLocal('investmentValueMode')[0]||'total';"
+          insert = """      const categoryFilters=selectedLocal('invClass').length||selectedLocal('invCategory').length||selectedLocal('invSubcategory').length;
+      const consolidated=summary.reduce((acc,r)=>{const market=parseNumber(r['Valor mercado']),capital=parseNumber(r['Aportes/Incrementos']),result=String(r.Resultado||'').trim()?parseNumber(r.Resultado):market-capital,base=String(r['Moneda base']||'COP').toUpperCase();acc.capital+=convertBase(capital,base,currency,rates);acc.result+=convertBase(result,base,currency,rates);acc.total+=convertBase(market,base,currency,rates);return acc;},{capital:0,result:0,total:0});
+      const snapshotMarket=snapshot.reduce((sum,r)=>sum+parseNumber(r[`Valor ${currency}`]),0),canReconcile=!categoryFilters,reconciliationDiff=consolidated.total-snapshotMarket,reconciliationTolerance=Math.max(currency==='USD'?.01:1,Math.abs(snapshotMarket)*1e-8),reconciled=canReconcile&&Math.abs(reconciliationDiff)<=reconciliationTolerance;
+      const reconciliationText=!canReconcile?'La conciliación se omite con filtros de clase/categoría':reconciled?'Conciliado con Posiciones':`Revisar diferencia ${money(reconciliationDiff,currency)}`;
+      const resultClass=consolidated.result>0?'result-positive':consolidated.result<0?'result-negative':'';
+      const summaryHtml=`<div class=\"investment-consolidated-overview\"><div class=\"investment-summary-title\"><strong>Resumen consolidado de inversiones</strong><span>${esc(reconciliationText)}</span></div><div class=\"investment-summary-grid\"><div class=\"investment-summary-card\"><span>Capital aportado</span><strong>${esc(money(consolidated.capital,currency))}</strong><small>Aportes / incrementos acumulados</small></div><div class=\"investment-summary-card ${resultClass}\"><span>Ganancia / pérdida</span><strong>${esc(money(consolidated.result,currency))}</strong><small>Resultado acumulado frente al capital</small></div><div class=\"investment-summary-card\"><span>Capital + ganancia/pérdida</span><strong>${esc(money(consolidated.total,currency))}</strong><small>Valor actual consolidado</small></div></div></div>`;
+      const effectiveMode=selectedLocal('investmentValueMode')[0]||'total';"""
+          if marker not in text:
+              raise SystemExit('Investment summary insertion marker not found')
+          text = text.replace(marker, insert)
+
+          old = "      host.innerHTML=`<div class=\"kpi-grid investment-kpis\">"
+          new = "      host.innerHTML=`${summaryHtml}<div class=\"kpi-grid investment-kpis\">"
+          if old not in text:
+              raise SystemExit('Investment host marker not found')
+          text = text.replace(old, new, 1)
+
+          old_style = ".investment-truth-note{color:#8b9ab0;font-size:10px;line-height:1.55;padding:10px 12px;border:1px solid var(--border-soft);border-radius:10px;background:rgba(255,255,255,.015)}`;"
+          new_style = ".investment-truth-note{color:#8b9ab0;font-size:10px;line-height:1.55;padding:10px 12px;border:1px solid var(--border-soft);border-radius:10px;background:rgba(255,255,255,.015)}.investment-consolidated-overview{display:grid;gap:9px}.investment-summary-title{display:flex;justify-content:space-between;gap:12px;align-items:end;color:#7f90a8;font-size:9px}.investment-summary-title strong{color:#eef4fb;font-size:12px}.investment-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.investment-summary-card{background:linear-gradient(180deg,#0d1520,#0a1018);border:1px solid var(--border-soft);border-radius:13px;padding:13px 14px;min-width:0}.investment-summary-card span{display:block;color:#718198;font-size:8px;text-transform:uppercase;letter-spacing:.06em;font-weight:800}.investment-summary-card strong{display:block;margin-top:7px;font-size:21px;line-height:1.15;color:#edf3fb}.investment-summary-card small{display:block;margin-top:5px;color:#6f8095;font-size:9px;line-height:1.4}.investment-summary-card.result-positive strong{color:#26d07c}.investment-summary-card.result-negative strong{color:#ff667a}@media(max-width:760px){.investment-summary-grid{grid-template-columns:1fr}}`;"
+          if old_style not in text:
+              raise SystemExit('Investment style marker not found')
+          text = text.replace(old_style, new_style)
+          p.write_text(text, encoding='utf-8')
+
+          # The official renderer now owns the overview; remove the second renderer/fetch.
+          p = Path('index.html')
+          text = p.read_text(encoding='utf-8')
+          line = '  <script src="investment-summary-overview.js?v=20260827-0942"></script>\n'
+          if line not in text:
+              raise SystemExit('Legacy investment overview script line not found')
+          text = text.replace(line, '')
+          text = text.replace('investment-period-enhancement.js?v=20260827-1505', 'investment-period-enhancement.js?v=20260827-1520')
+          p.write_text(text, encoding='utf-8')
+
+          if 'investment-summary-overview.js' in Path('index.html').read_text(encoding='utf-8'):
+              raise SystemExit('Legacy investment overview still loaded')
+          if 'Conciliado con Posiciones' not in Path('investment-period-enhancement.js').read_text(encoding='utf-8'):
+              raise SystemExit('Reconciliation check missing')
+          PY
+
+          rm -f investment-summary-overview.js
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A investment-period-enhancement.js investment-summary-overview.js index.html
+          git commit -m "Consolidate investment overview into official renderer"
+          git push
