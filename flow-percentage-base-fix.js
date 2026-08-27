@@ -7,6 +7,7 @@
   if (!apiBaseUrl || !financeId) return;
 
   let cache = null, cacheAt = 0, timer = null, applying = false;
+  const norm = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const money = v => new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(Number(v)||0);
   const usd = v => new Intl.NumberFormat('es-CO',{maximumFractionDigits:2}).format(Number(v)||0);
   const pct = v => `${new Intl.NumberFormat('es-CO',{minimumFractionDigits:1,maximumFractionDigits:1}).format((Number(v)||0)*100)}%`;
@@ -55,6 +56,38 @@
     }));
   }
 
+  function setTextIfChanged(cell,value){
+    if(cell&&cell.textContent!==value)cell.textContent=value;
+  }
+
+  function updateSavingsTable(model){
+    const table=[...document.querySelectorAll('table')].find(t=>{
+      const title=norm(t.closest('.panel')?.querySelector('.panel-title strong')?.textContent);
+      return title.includes('flujo y ahorro mensual');
+    });
+    if(!table)return;
+
+    const headers=[...table.querySelectorAll('thead th')].map(th=>norm(th.textContent));
+    const monthIndex=headers.findIndex(h=>h==='mes');
+    const incomeIndex=headers.findIndex(h=>h.includes('ingresos reales'));
+    const expenseIndex=headers.findIndex(h=>h.includes('egresos reales'));
+    const savingsIndex=headers.findIndex(h=>h.includes('ahorro real'));
+    const rateIndex=headers.findIndex(h=>h.includes('tasa de ahorro'));
+    if(monthIndex<0||expenseIndex<0||rateIndex<0)return;
+
+    table.querySelectorAll('tbody tr').forEach(row=>{
+      const cells=row.cells;if(!cells?.length)return;
+      const key=window.RegularIncomeCore?.monthKey(cells[monthIndex]?.textContent||'');
+      const base=key?model.months.get(key)?.totalCop:0;
+      if(!(base>0))return;
+      const expenses=num(cells[expenseIndex]?.textContent);
+      const savings=base-expenses;
+      if(incomeIndex>=0)setTextIfChanged(cells[incomeIndex],money(base));
+      if(savingsIndex>=0)setTextIfChanged(cells[savingsIndex],money(savings));
+      setTextIfChanged(cells[rateIndex],pct(savings/base));
+    });
+  }
+
   function updateNote(model){
     const reference=document.querySelector('.salary-reference'); if(!reference)return;
     let note=reference.querySelector('.income-base-note'); if(!note){note=document.createElement('div');note.className='income-base-note';reference.appendChild(note);}
@@ -70,7 +103,10 @@
       const data=await payload(force); if(!data||!window.RegularIncomeCore)return;
       const model=window.RegularIncomeCore.build(data,financeId);
       window.__PANEL_REGULAR_INCOME_MODEL__=model;
-      updateCards(model); updateMatrix(model); updateNote(model);
+      updateCards(model);
+      updateMatrix(model);
+      updateSavingsTable(model);
+      updateNote(model);
       document.dispatchEvent(new CustomEvent('panel:regular-income-base-applied'));
     }catch(error){console.error('Base regular unificada:',error);}finally{applying=false;}
   }
