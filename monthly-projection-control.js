@@ -109,7 +109,7 @@
     const view=activeView();if(view!=='gastos'&&view!=='flujo')return;
     const root=document.getElementById('viewRoot');if(!root)return;
     const p=await payload(force);if(!p)return;
-    const z=parseRows(p.sources?.[`${financeId}|Movimientos!A:Z`]||[]),rows=z.length?z:parseRows(p.sources?.[`${financeId}|Movimientos!A:Y`]||[]);
+    const z=parseRows(p.sources?.[`${financeId}|Movimientos!A:Z`]||[]),rows=z.length?z:parseRows(p.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
     const stats=monthlyStats(rows,targetMonth(rows));
     let host=root.querySelector('#monthlyProjectionSuite');if(!host){host=document.createElement('section');host.id='monthlyProjectionSuite';const head=root.querySelector(':scope > .section-head');if(head)head.insertAdjacentElement('afterend',host);else root.prepend(host);}renderSuite(host,stats);
   }

@@ -40,7 +40,7 @@
   };
 
   const SOURCES = [
-    {key:'movimientos', book:'finance', range:'Movimientos!A:Y', parser:'rows'},
+    {key:'movimientos', book:'finance', range:'Movimientos!A:Z', parser:'rows'},
     {key:'flujo', book:'finance', range:'Flujo_Mensual!A:J', parser:'smart'},
     {key:'tarjetas', book:'finance', range:'Tarjetas!A:T', parser:'smart'},
     {key:'cuotas', book:'finance', range:'Cuotas!A:T', parser:'smart'},

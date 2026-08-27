@@ -265,7 +265,7 @@
       scroll.hidden = true;
       const payload = await getBackendPayload();
       const cfg = window.PANEL_CONFIG || {};
-      const movements = currentFilteredMovements(getSource(payload,cfg.financeSpreadsheetId,'Movimientos!A:Y'));
+      const movements = currentFilteredMovements(getSource(payload,cfg.financeSpreadsheetId,'Movimientos!A:Z'));
       const cards = getSource(payload,cfg.financeSpreadsheetId,'Tarjetas!A:T');
       const currency = activeCurrency();
       const built = buildCardSeries(movements,cards,cardMetric,currency);

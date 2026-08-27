@@ -206,7 +206,7 @@
       const allCards=source(payload,'Tarjetas!A:T').filter(c=>cardId(c)&&norm(c.Activa||'sí')!=='no');
       const selectedId=String(window.__PANEL_ACTIVE_CARD_ID__||'');
       const visibleCards=selectedId?allCards.filter(c=>cardId(c)===selectedId):allCards;
-      const movements=filteredMovements(source(payload,'Movimientos!A:Y'));
+      const movements=filteredMovements(source(payload,'Movimientos!A:Z'));
       const metric=document.querySelector('[data-card-line-mode].active')?.dataset.cardLineMode||'spend';
       const currency=document.querySelector('.currency-btn.active')?.dataset.currency||'COP';
       const built=buildCardSeries(movements,allCards,visibleCards,metric,currency);

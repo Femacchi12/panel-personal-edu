@@ -147,7 +147,7 @@
   function filteredBackendPayload(payload) {
     if (!payload?.sources || !activeCardId || activeView() !== 'tarjetas') return payload;
     const next = {...payload, sources:{...payload.sources}};
-    ['Tarjetas!A:T','Movimientos!A:Y','Cuotas!A:T'].forEach(range => {
+    ['Tarjetas!A:T','Movimientos!A:Z','Cuotas!A:T'].forEach(range => {
       const key = `${financeId}|${range}`;
       if (Array.isArray(next.sources[key])) next.sources[key] = filterMatrix(next.sources[key], range);
     });
@@ -160,7 +160,7 @@
     if (!activeCardId || activeView() !== 'tarjetas' || !rawUrl || !response.ok) return response;
 
     const range = sheetsRangeFromUrl(rawUrl);
-    if (['Tarjetas!A:T','Movimientos!A:Y','Cuotas!A:T'].includes(range)) {
+    if (['Tarjetas!A:T','Movimientos!A:Z','Cuotas!A:T'].includes(range)) {
       try {
         const payload = await response.clone().json();
         payload.values = filterMatrix(payload.values || [], range);
