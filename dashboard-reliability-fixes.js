@@ -73,8 +73,12 @@
     [...root.children].forEach(el=>{
       if ((el.classList?.contains('monthly-programmed-panel') || el.classList?.contains('monthly-comparison-panel')) && el!==programmed && el!==comparison) el.remove();
     });
-    if (programmed) root.appendChild(programmed);
-    if (comparison) root.appendChild(comparison);
+
+    const target=[programmed,comparison].filter(Boolean);
+    const children=[...root.children];
+    const alreadyAtEnd=target.every((el,index)=>children[children.length-target.length+index]===el);
+    if (alreadyAtEnd) return;
+    target.forEach(el=>root.appendChild(el));
   }
 
   // 3) Automatic total footer in the detail opened from the monthly matrix.
@@ -85,7 +89,6 @@
   function addFlowDetailTotal() {
     const table=document.querySelector('#flowMatrixDetail table');
     if (!table) return;
-    table.querySelector('tfoot[data-auto-total]')?.remove();
     const headers=[...table.querySelectorAll('thead th')].map(th=>norm(th.textContent));
     const indexes={cop:headers.indexOf('monto cop'),ars:headers.indexOf('monto ars'),usd:headers.indexOf('monto usd')};
     if (indexes.cop<0) return;
@@ -96,20 +99,23 @@
       if(indexes.ars>=0)sums.ars+=parseNumber(row.cells[indexes.ars]?.textContent);
       if(indexes.usd>=0)sums.usd+=parseNumber(row.cells[indexes.usd]?.textContent);
     });
-    const foot=document.createElement('tfoot');
-    foot.dataset.autoTotal='1';
-    const tr=document.createElement('tr');
-    tr.className='flow-detail-total-row';
+
+    let foot=table.querySelector('tfoot[data-auto-total]');
+    if(!foot){foot=document.createElement('tfoot');foot.dataset.autoTotal='1';table.appendChild(foot);}
+    let tr=foot.querySelector('tr');
+    if(!tr){tr=document.createElement('tr');tr.className='flow-detail-total-row';foot.appendChild(tr);}
+    while(tr.children.length<headers.length)tr.appendChild(document.createElement('td'));
+    while(tr.children.length>headers.length)tr.lastElementChild?.remove();
+
     headers.forEach((_,index)=>{
-      const td=document.createElement('td');
-      if(index===0)td.textContent='TOTAL';
-      if(index===indexes.cop)td.textContent=formatMoney(sums.cop,'COP');
-      if(index===indexes.ars)td.textContent=formatMoney(sums.ars,'ARS');
-      if(index===indexes.usd)td.textContent=formatMoney(sums.usd,'USD');
-      tr.appendChild(td);
+      const td=tr.children[index];
+      let value='';
+      if(index===0)value='TOTAL';
+      if(index===indexes.cop)value=formatMoney(sums.cop,'COP');
+      if(index===indexes.ars)value=formatMoney(sums.ars,'ARS');
+      if(index===indexes.usd)value=formatMoney(sums.usd,'USD');
+      if(td&&td.textContent!==value)td.textContent=value;
     });
-    foot.appendChild(tr);
-    table.appendChild(foot);
   }
 
   // 4) Raw backend reader through XHR, bypassing the card-specific window.fetch wrapper.
@@ -124,7 +130,6 @@
         const xhr=new XMLHttpRequest();
         xhr.open('GET',`${apiBaseUrl}/api/data`,true);
         xhr.setRequestHeader('Authorization',`Bearer ${token}`);
-        xhr.setRequestHeader('Cache-Control','no-cache');
         xhr.onreadystatechange=()=>{
           if(xhr.readyState!==4)return;
           if(xhr.status>=200&&xhr.status<300){
