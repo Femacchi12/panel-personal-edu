@@ -32,9 +32,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 provider.addScope("https://www.googleapis.com/auth/userinfo.email");
-if (!BACKEND_MODE) {
-  provider.addScope("https://www.googleapis.com/auth/spreadsheets.readonly");
-}
+if (!BACKEND_MODE) provider.addScope("https://www.googleapis.com/auth/spreadsheets.readonly");
 provider.setCustomParameters({ prompt: "select_account" });
 
 window.__PANEL_GET_ID_TOKEN__ = async (forceRefresh = false) => {
@@ -54,19 +52,9 @@ const accountText = document.getElementById("accountText");
 let dashboardLoaded = false;
 let redirectHandled = false;
 
-function normalizeEmail(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function isAuthorizedEmail(value) {
-  return ALLOWED_EMAILS.has(normalizeEmail(value));
-}
-
-function saveToken(token) {
-  if (!token || BACKEND_MODE) return;
-  localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ token, savedAt: Date.now() }));
-}
-
+function normalizeEmail(value) { return String(value || "").trim().toLowerCase(); }
+function isAuthorizedEmail(value) { return ALLOWED_EMAILS.has(normalizeEmail(value)); }
+function saveToken(token) { if (token && !BACKEND_MODE) localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ token, savedAt: Date.now() })); }
 function restoreToken() {
   if (BACKEND_MODE) return "backend";
   try {
@@ -83,11 +71,7 @@ function restoreToken() {
     return null;
   }
 }
-
-function clearToken() {
-  localStorage.removeItem(TOKEN_STORAGE_KEY);
-  window.__PANEL_GOOGLE_ACCESS_TOKEN__ = null;
-}
+function clearToken() { localStorage.removeItem(TOKEN_STORAGE_KEY); window.__PANEL_GOOGLE_ACCESS_TOKEN__ = null; }
 
 function showLogin(message = "Inicia sesión con una de las dos cuentas autorizadas para continuar.") {
   document.body.classList.remove("auth-authorized", "auth-denied");
@@ -98,19 +82,15 @@ function showLogin(message = "Inicia sesión con una de las dos cuentas autoriza
   signInButton.hidden = false;
   changeAccountButton.hidden = true;
 }
-
 function showDenied(email) {
   document.body.classList.remove("auth-pending", "auth-authorized");
   document.body.classList.add("auth-denied");
   authOverlay.classList.remove("hidden");
   authTitle.textContent = "Acceso denegado";
-  authMessage.textContent = email
-    ? `La cuenta ${email} no está autorizada para ver este dashboard.`
-    : "Esta cuenta no está autorizada para ver este dashboard.";
+  authMessage.textContent = email ? `La cuenta ${email} no está autorizada para ver este dashboard.` : "Esta cuenta no está autorizada para ver este dashboard.";
   signInButton.hidden = true;
   changeAccountButton.hidden = false;
 }
-
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
@@ -139,6 +119,7 @@ async function loadDashboard() {
     await loadScript("income-type-filter.js");
     await loadScript("table-date-behavior.js");
     await loadScript("investment-timeline.js");
+    await loadScript("investment-mode-all-option.js");
     await loadScript("expense-table-advanced.js");
     await loadScript("flow-matrix-v3.js");
     await loadScript("flow-matrix-detail-delegate.js");
@@ -160,16 +141,11 @@ async function loadDashboard() {
 
 function authorize(user, token) {
   const email = normalizeEmail(user?.email);
-  if (!isAuthorizedEmail(email)) {
-    showDenied(email);
-    return false;
-  }
-
+  if (!isAuthorizedEmail(email)) { showDenied(email); return false; }
   if (!BACKEND_MODE && !token) {
     showLogin("Tu cuenta está autorizada. Confirma nuevamente con Google para habilitar la lectura privada de Finanzas Edu y Salud - Familia.");
     return false;
   }
-
   window.__PANEL_GOOGLE_ACCESS_TOKEN__ = BACKEND_MODE ? "backend" : token;
   saveToken(token);
   document.body.classList.remove("auth-pending", "auth-denied");
@@ -179,15 +155,12 @@ function authorize(user, token) {
   loadDashboard();
   return true;
 }
-
 function captureResult(result) {
   if (!result?.user) return false;
   if (BACKEND_MODE) return authorize(result.user, "backend");
   const credential = GoogleAuthProvider.credentialFromResult(result);
-  const token = credential?.accessToken || null;
-  return authorize(result.user, token);
+  return authorize(result.user, credential?.accessToken || null);
 }
-
 async function startGoogleSignIn() {
   signInButton.disabled = true;
   authMessage.textContent = "Abriendo Google para validar tu cuenta…";
@@ -195,38 +168,18 @@ async function startGoogleSignIn() {
     const result = await signInWithPopup(auth, provider);
     captureResult(result);
   } catch (error) {
-    const redirectCodes = new Set([
-      "auth/popup-blocked",
-      "auth/cancelled-popup-request",
-      "auth/web-storage-unsupported",
-      "auth/operation-not-supported-in-this-environment"
-    ]);
-    if (redirectCodes.has(error.code)) {
-      await signInWithRedirect(auth, provider);
-      return;
-    }
+    const redirectCodes = new Set(["auth/popup-blocked","auth/cancelled-popup-request","auth/web-storage-unsupported","auth/operation-not-supported-in-this-environment"]);
+    if (redirectCodes.has(error.code)) { await signInWithRedirect(auth, provider); return; }
     if (error.code !== "auth/popup-closed-by-user") {
       console.error("Error de autenticación:", error);
       showLogin("No fue posible iniciar sesión. Inténtalo nuevamente.");
-    } else {
-      showLogin();
-    }
-  } finally {
-    signInButton.disabled = false;
-  }
+    } else showLogin();
+  } finally { signInButton.disabled = false; }
 }
 
 signInButton.addEventListener("click", startGoogleSignIn);
-changeAccountButton.addEventListener("click", async () => {
-  clearToken();
-  await signOut(auth);
-  await startGoogleSignIn();
-});
-signOutButton?.addEventListener("click", async () => {
-  clearToken();
-  await signOut(auth);
-  location.reload();
-});
+changeAccountButton.addEventListener("click", async () => { clearToken(); await signOut(auth); await startGoogleSignIn(); });
+signOutButton?.addEventListener("click", async () => { clearToken(); await signOut(auth); location.reload(); });
 
 try {
   const redirectResult = await getRedirectResult(auth);
@@ -239,31 +192,11 @@ try {
 }
 
 onAuthStateChanged(auth, async user => {
-  if (!user) {
-    if (redirectHandled) showLogin();
-    return;
-  }
-
+  if (!user) { if (redirectHandled) showLogin(); return; }
   const email = normalizeEmail(user.email);
-  if (!isAuthorizedEmail(email)) {
-    clearToken();
-    await signOut(auth);
-    showDenied(email);
-    return;
-  }
-
-  if (BACKEND_MODE) {
-    authorize(user, "backend");
-    return;
-  }
-
+  if (!isAuthorizedEmail(email)) { clearToken(); await signOut(auth); showDenied(email); return; }
+  if (BACKEND_MODE) { authorize(user, "backend"); return; }
   const restored = restoreToken();
-  if (restored) {
-    authorize(user, restored);
-    return;
-  }
-
-  if (redirectHandled && !dashboardLoaded) {
-    showLogin("Cuenta autorizada. Confirma con Google para cargar los datos privados del dashboard.");
-  }
+  if (restored) { authorize(user, restored); return; }
+  if (redirectHandled && !dashboardLoaded) showLogin("Cuenta autorizada. Confirma con Google para cargar los datos privados del dashboard.");
 });
