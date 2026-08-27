@@ -17,7 +17,6 @@ const ALLOWED_EMAILS = new Set([
 ]);
 
 const SOURCES = [
-  { book: 'finance', range: 'Movimientos!A:Y' },
   { book: 'finance', range: 'Movimientos!A:Z' },
   { book: 'finance', range: 'Flujo_Mensual!A:J' },
   { book: 'finance', range: 'Tablas_Flujo!A:T' },
@@ -149,7 +148,7 @@ app.get('/health', (req, res) => {
     ok: true,
     service: 'panel-personal-edu-backend',
     sourceCount: SOURCES.length,
-    revision: 'documents-sheet-separation-2026-08-26'
+    revision: 'canonical-movements-a-z-2026-08-27'
   });
 });
 
