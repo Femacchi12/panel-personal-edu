@@ -17,24 +17,80 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Replace legacy Movimientos A:Y consumers
+      - name: Finish A:Z migration and remove compatibility bridge
         shell: bash
         run: |
           set -euo pipefail
-          while IFS= read -r -d '' file; do
-            if [[ "$file" == "./data-backend-adapter.js" ]]; then
-              continue
-            fi
-            sed -i 's/Movimientos!A:Y/Movimientos!A:Z/g' "$file"
-          done < <(find . -type f -name '*.js' -print0)
+
+          python - <<'PY'
+          from pathlib import Path
+
+          # 1) Canonical source everywhere outside the adapter migration code.
+          for path in Path('.').rglob('*.js'):
+              if path.name == 'data-backend-adapter.js':
+                  continue
+              text = path.read_text(encoding='utf-8')
+              updated = text.replace('Movimientos!A:Y', 'Movimientos!A:Z')
+              if updated != text:
+                  path.write_text(updated, encoding='utf-8')
+
+          # 2) Remove now-redundant A:Z fallbacks created during the migration.
+          replacements = {
+              Path('flow-financing-filter-fix.js'): (
+                  "const z=sourceRows(data,'Movimientos!A:Z'); const movements=z.length?z:sourceRows(data,'Movimientos!A:Z');",
+                  "const movements=sourceRows(data,'Movimientos!A:Z');"
+              ),
+              Path('monthly-projection-control.js'): (
+                  "const z=parseRows(p.sources?.[`${financeId}|Movimientos!A:Z`]||[]),rows=z.length?z:parseRows(p.sources?.[`${financeId}|Movimientos!A:Z`]||[]);",
+                  "const rows=parseRows(p.sources?.[`${financeId}|Movimientos!A:Z`]||[]);"
+              )
+          }
+          for path, (old, new) in replacements.items():
+              text = path.read_text(encoding='utf-8')
+              if old in text:
+                  path.write_text(text.replace(old, new), encoding='utf-8')
+
+          # 3) Retire the A:Y compatibility bridge from the backend adapter.
+          adapter = Path('data-backend-adapter.js')
+          text = adapter.read_text(encoding='utf-8')
+          text = text.replace(
+              "  function isMovementsRange(range) {\n    return range === 'Movimientos!A:Z' || range === 'Movimientos!A:Y';\n  }\n\n",
+              ""
+          )
+          text = text.replace(
+              "if (!isMovementsRange(range) || !Array.isArray(values) || values.length < 2) return values;",
+              "if (range !== 'Movimientos!A:Z' || !Array.isArray(values) || values.length < 2) return values;"
+          )
+          start = text.find("  function resolveSourceValues(payload, spreadsheetId, range) {")
+          end = text.find("\n\n  window.fetch = async function", start)
+          if start != -1 and end != -1:
+              text = text[:start] + text[end+2:]
+          text = text.replace(
+              "      const sourceValues = resolveSourceValues(payload, spreadsheetId, range);",
+              "      const sourceValues = payload?.sources?.[`${spreadsheetId}|${range}`];"
+          )
+          text = text.replace(
+              "      // Real views only. “Programado” remains accepted here solely as legacy compatibility\n      // while the canonical future-expense label is now “Proyección”.\n",
+              "      // Real views only: future expenses live in Estado = Proyección.\n"
+          )
+          adapter.write_text(text, encoding='utf-8')
+
+          # 4) Hard verification: no JavaScript consumer may mention A:Y anymore.
+          offenders = []
+          for path in Path('.').rglob('*.js'):
+              if 'Movimientos!A:Y' in path.read_text(encoding='utf-8'):
+                  offenders.append(str(path))
+          if offenders:
+              raise SystemExit('Legacy Movimientos A:Y still present in: ' + ', '.join(offenders))
+          PY
 
           if git diff --quiet; then
-            echo "No legacy A:Y consumers found."
+            echo "Canonical Movimientos migration already complete."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- '*.js'
-          git commit -m "Canonicalize Movimientos consumers on A:Z"
+          git commit -m "Complete canonical Movimientos A:Z migration"
           git push
