@@ -55,7 +55,7 @@
   function latestPerPlatformAsOf(rows,end){const groups=new Map();rows.forEach(row=>{const d=parseDate(row.Fecha);if(!d||(end&&d>end))return;const p=String(row['Plataforma / Bróker']||'Sin plataforma').trim();if(!groups.has(p))groups.set(p,[]);groups.get(p).push(row);});const out=[];groups.forEach(group=>{const max=Math.max(...group.map(r=>parseDate(r.Fecha)?.getTime()||0));out.push(...group.filter(r=>(parseDate(r.Fecha)?.getTime()||0)===max));});return out;}
   function latestSummaryAsOf(rows,end){const groups=new Map();rows.forEach(row=>{const d=parseDate(row['Fecha corte']);if(!d||(end&&d>end))return;const p=String(row.Entidad||'Sin plataforma').trim();if(!groups.has(p)||d>(parseDate(groups.get(p)['Fecha corte'])||new Date(0)))groups.set(p,row);});return[...groups.values()];}
   function aggregate(rows,keyFn,valueFn){const map=new Map();rows.forEach(r=>{const k=keyFn(r);map.set(k,(map.get(k)||0)+(Number(valueFn(r))||0));});return map;}
-  function investmentRates(rows){const usable=rows.filter(r=>parseNumber(r['Valor USD'])>0&&parseNumber(r['Valor COP'])>0);let usdCop=3150,usdArs=1500;if(usable.length){const usd=usable.reduce((s,r)=>s+parseNumber(r['Valor USD']),0),cop=usable.reduce((s,r)=>s+parseNumber(r['Valor COP']),0),ars=usable.reduce((s,r)=>s+parseNumber(r['Valor ARS']),0);if(usd>0){usdCop=cop/usd;usdArs=ars/usd;}}return{usdCop,usdArs};}
+  function investmentRates(){return{usdCop:Number(cfg?.regularIncome?.usdCopReference)||3150,usdArs:Number(cfg?.regularIncome?.usdArsReference)||1500};}
   function convertBase(value,base,currency,rates){const v=Number(value)||0;if(base===currency)return v;if(base==='USD'&&currency==='COP')return v*rates.usdCop;if(base==='USD'&&currency==='ARS')return v*rates.usdArs;if(base==='COP'&&currency==='USD')return v/rates.usdCop;if(base==='COP'&&currency==='ARS')return v/rates.usdCop*rates.usdArs;if(base==='ARS'&&currency==='USD')return v/rates.usdArs;if(base==='ARS'&&currency==='COP')return v/rates.usdArs*rates.usdCop;return v;}
   function summaryMatchesPlatform(row){const selected=selectedLocal('invPlatform');if(!selected.length)return true;return selected.some(v=>norm(v).includes(norm(row.Entidad))||norm(row.Entidad).includes(norm(v).split('/')[0].trim()));}
 
@@ -73,7 +73,7 @@
       const p=await getPayload(force).catch(e=>{console.error('Inversiones periodo:',e);return null;});if(!p||activeView()!=='inversiones')return;
       ensureValueModeFilter();
       const allPos=parseRows(p?.sources?.[`${financeId}|Posiciones!A:X`]||[]),raw=applyLocalFilters(allPos),summaryAll=parseRows(p?.sources?.[`${financeId}|Resumen_Inversiones!A:N`]||[]);
-      const bounds=periodBounds(),snapshot=latestPerPlatformAsOf(raw,bounds.end),currency=currentCurrency(),rates=investmentRates(allPos),timeline=buildTimeline(raw,currency,bounds);
+      const bounds=periodBounds(),snapshot=latestPerPlatformAsOf(raw,bounds.end),currency=currentCurrency(),rates=investmentRates(),timeline=buildTimeline(raw,currency,bounds);
       const summary=latestSummaryAsOf(summaryAll.filter(summaryMatchesPlatform),bounds.end);
       const categoryFilters=selectedLocal('invClass').length||selectedLocal('invCategory').length||selectedLocal('invSubcategory').length;
       const effectiveMode=valueMode==='all'?'total':valueMode;
@@ -107,8 +107,8 @@
   function schedule(force=false,delay=180){clearTimeout(timer);timer=setTimeout(()=>render(force),delay);}
 
   injectStyles();
-  document.addEventListener('click',event=>{if(event.target.closest('.nav-item'))setTimeout(()=>{forcePeriodFilters();schedule(false,280);},100);if(event.target.closest('.currency-btn,.multi-filter-option,#clearFilters,#resetCurrentMonth'))schedule(false,280);if(event.target.closest('#refreshBtn')){cache=null;cacheAt=0;schedule(true,520);}});
-  document.addEventListener('panel:section-filters-changed',event=>{if(event?.detail?.view==='inversiones')schedule(false,120);});
-  const root=document.getElementById('viewRoot');if(root)new MutationObserver(()=>{if(activeView()==='inversiones'&&!root.querySelector('#investmentPeriodCorrected'))schedule(false,220);}).observe(root,{childList:true,subtree:false});
+  document.addEventListener('click',event=>{if(event.target.closest('.nav-item'))setTimeout(()=>{forcePeriodFilters();schedule(false,280);},100);if(event.target.closest('.currency-btn,#clearFilters,#resetCurrentMonth'))schedule(false,220);if(event.target.closest('#globalFilters .multi-filter-option'))schedule(false,220);if(event.target.closest('#refreshBtn')){cache=null;cacheAt=0;schedule(true,520);}});
+  document.addEventListener('panel:section-filters-changed',event=>{if(event?.detail?.view==='inversiones')schedule(false,100);});
+  const root=document.getElementById('viewRoot');if(root)new MutationObserver(()=>{if(activeView()==='inversiones'&&!root.querySelector('#investmentPeriodCorrected'))schedule(false,140);}).observe(root,{childList:true,subtree:false});
   setTimeout(()=>{forcePeriodFilters();schedule(false,320);},320);
 })();
