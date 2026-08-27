@@ -6,6 +6,7 @@
   if (!apiBaseUrl) return;
 
   const FINANCE_ID = cfg.financeSpreadsheetId;
+  const DOCUMENTS_ID = cfg.documentsSpreadsheetId;
   const HEALTH_ID = cfg.healthSpreadsheetId;
   const localState = {};
   let backendCache = null;
@@ -67,8 +68,12 @@
     ]},
     documentos: { global:['year','month'], local:[
       filter('documentArea','Área / Tipo',[
-        src('Documentos_Financieros!A:L',['Área','Tipo','Categoría']),src('Documentos_Identidad!A:N',['Área','Tipo','Categoría']),
-        src('Documentos_Laborales!A:L',['Área','Tipo','Categoría']),src('Documentos_Tributarios!A:L',['Área','Tipo','Categoría']),
+        src('Documentos_Financieros!A:L',['Área','Tipo','Categoría','Producto'],DOCUMENTS_ID),
+        src('Documentos_Identidad!A:N',['Área','Tipo','Categoría'],DOCUMENTS_ID),
+        src('Documentos_Laborales!A:L',['Área','Tipo','Categoría'],DOCUMENTS_ID),
+        src('Documentos_Tributarios!A:L',['Área','Tipo','Categoría'],DOCUMENTS_ID),
+        src('Documentos_Pension_Cesantias!A:L',['Área','Tipo','Categoría','Producto'],DOCUMENTS_ID),
+        src('Documentos_Personales!A:L',['Área','Tipo','Categoría'],DOCUMENTS_ID),
         src('Documentos!A:X',['Área','Tipo','Categoría'],HEALTH_ID)
       ])
     ]},
@@ -149,8 +154,6 @@
     setCurrentFilterState(view);
     await renderSectionFilters(view);
     document.dispatchEvent(new CustomEvent('panel:section-filters-changed',{detail:{view}}));
-    // Inversiones se recalcula con datos ya cargados. No se pulsa Actualizar ni se
-    // reconstruyen todas las fuentes del dashboard por un filtro local.
     if(view!=='inversiones'){
       const button=document.getElementById('refreshBtn');
       if(button&&!button.disabled)button.click();
