@@ -1,0 +1,35 @@
+name: Validate dashboard controllers
+
+on:
+  push:
+    paths:
+      - .github/workflows/validate-dashboard-controllers.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check affected JavaScript
+        run: |
+          node --check app.js
+          node --check income-doc-enhancements.js
+          node --check income-chart-filter-fix.js
+          node --check income-regular-controller.js
+          node --check flow-income-controller.js
+          node --check flow-financing-filter-fix.js
+          node --check flow-matrix-v3.js
+          node --check flow-matrix-detail-delegate.js
+          node --check monthly-projection-control.js
+          node --check regular-income-core.js
+      - name: Check removed controller references
+        run: |
+          ! grep -F 'flow-percentage-base-fix.js' auth.js index.html
+          ! grep -F 'flow-filter-kpi-stabilizer.js' auth.js index.html
+          ! grep -F 'flow-savings-enhancements.js' auth.js index.html
+          ! grep -F 'income-regular-baseline.js' auth.js index.html
+          grep -F 'income-regular-controller.js' auth.js
+          grep -F 'flow-income-controller.js' auth.js
