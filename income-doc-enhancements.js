@@ -2,10 +2,9 @@
   'use strict';
 
   const cfg = window.PANEL_CONFIG || {};
-  const apiBaseUrl = String(cfg.apiBaseUrl || '').replace(/\/$/, '');
   const financeId = String(cfg.financeSpreadsheetId || '');
   const documentsId = String(cfg.documentsSpreadsheetId || '');
-  if (!apiBaseUrl || !financeId) return;
+  if (!financeId) return;
 
   const MONTHS = {
     ene:1, enero:1, feb:2, febrero:2, mar:3, marzo:3, abr:4, abril:4,
@@ -15,12 +14,14 @@
   };
 
   let chart = null;
-  let timer = null;
+  let frame = 0;
+  let renderVersion = 0;
 
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
   }[c]));
   const norm = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  const activeView = () => document.querySelector('.nav-item.active')?.dataset.view || '';
 
   function parseNumber(value) {
     if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -104,18 +105,9 @@
   }
 
   async function getPayload(force = false) {
-    if (typeof window.__PANEL_GET_BACKEND_DATA__ === 'function') {
-      return window.__PANEL_GET_BACKEND_DATA__(force);
-    }
-    const getToken = window.__PANEL_GET_ID_TOKEN__;
-    if (typeof getToken !== 'function') throw new Error('No hay sesión Firebase disponible');
-    const token = await getToken(false);
-    if (!token) throw new Error('No se pudo obtener el token de sesión');
-    const response = await fetch(`${apiBaseUrl}/api/data`, {
-      headers:{Authorization:`Bearer ${token}`}, cache:'no-store'
-    });
-    if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
-    return response.json();
+    const getData = window.__PANEL_GET_BACKEND_DATA__;
+    if (typeof getData !== 'function') throw new Error('Backend central de datos no disponible');
+    return getData(force);
   }
 
   async function getRows(range, spreadsheetId = financeId, force = false) {
@@ -163,7 +155,7 @@
   }
 
   function drawIncomeChart(concepts) {
-    if (!window.Chart) return;
+    if (!window.Chart || activeView() !== 'ingresos') return;
     chart?.destroy();
     const canvas = document.getElementById('incomeCompleteChart');
     if (!canvas || !concepts.length) return;
@@ -188,7 +180,7 @@
     });
   }
 
-  async function enhanceIncome(root) {
+  async function enhanceIncome(root, version) {
     if (!root || root.querySelector('[data-income-complete]') || root.dataset.incomeLoading === '1') return;
     root.dataset.incomeLoading = '1';
     try {
@@ -200,6 +192,7 @@
         getRows('Facturas_USD!A:L'),
         getRows('Flujo_Ahorro!A:P')
       ]);
+      if (version !== renderVersion || activeView() !== 'ingresos' || !root.isConnected) return;
 
       const nomina = filterPeriod(nominaAll);
       const usdRows = filterPeriod(usdAll);
@@ -234,7 +227,7 @@
         ${table('Plan de ahorro','Conserva la vista de ahorro y metas vinculada a ingresos',saving,Object.keys(saving[0] || {}).slice(0,16))}
         <div class="income-source-note">Fuentes: Nómina Colombia, Ingresos, Detalle_Ingresos, Resumen_Conceptos_Ingresos, Facturas_USD y Flujo_Ahorro de Finanzas Edu.</div>
       </div>`;
-      requestAnimationFrame(()=>drawIncomeChart(concepts));
+      requestAnimationFrame(()=>{if(version===renderVersion)drawIncomeChart(concepts);});
       document.dispatchEvent(new CustomEvent('panel:income-doc-rendered'));
     } catch (error) {
       console.error('No se pudo completar la vista de ingresos:', error);
@@ -243,13 +236,13 @@
     }
   }
 
-  async function enhanceDocuments(root) {
+  async function enhanceDocuments(root, version) {
     if (!documentsId || !root || root.querySelector('[data-doc-priority]') || root.dataset.docLoading === '1') return;
     root.dataset.docLoading = '1';
     try {
       const docs = (await getRows('Documentos_Personales!A:L',documentsId))
         .sort((a,b)=>String(a['Prioridad']||'').localeCompare(String(b['Prioridad']||'')) || String(a['Documento']||'').localeCompare(String(b['Documento']||'')));
-      if (!docs.length) return;
+      if (version !== renderVersion || activeView() !== 'documentos' || !root.isConnected || !docs.length) return;
       const html = `<div class="panel" data-doc-priority>
         <div class="panel-header"><div class="panel-title"><strong>Documentos personales prioritarios</strong><span>Acceso directo a soportes clave</span></div></div>
         <div class="doc-priority-list">${docs.map(r=>{
@@ -266,25 +259,31 @@
     }
   }
 
-  function run() {
+  function run(version) {
     const root = document.getElementById('viewRoot');
-    const view = document.querySelector('.nav-item.active')?.dataset.view || '';
-    if (!root) return;
-    if (view === 'ingresos') enhanceIncome(root);
-    else if (view === 'documentos') enhanceDocuments(root);
+    const view = activeView();
+    if (!root || version !== renderVersion) return;
+    if (view === 'ingresos') enhanceIncome(root, version);
+    else if (view === 'documentos') enhanceDocuments(root, version);
   }
 
-  function schedule(delay = 20) {
-    clearTimeout(timer);
-    timer = setTimeout(run, delay);
+  function schedule() {
+    renderVersion++;
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      run(renderVersion);
+    });
   }
 
   injectStyles();
   document.addEventListener('panel:view-root-changed',event=>{
-    if(event.detail?.view==='ingresos'||event.detail?.view==='documentos')schedule(10);
+    const view=event.detail?.view;
+    if(view==='ingresos'||view==='documentos')schedule();
+    else renderVersion++;
   });
   document.addEventListener('panel:section-filters-changed',event=>{
-    if(event.detail?.view==='documentos')schedule(10);
+    if(event.detail?.view==='documentos')schedule();
   });
-  queueMicrotask(()=>schedule(0));
+  queueMicrotask(schedule);
 })();
