@@ -15,8 +15,14 @@
     .toLowerCase()
     .trim();
 
-  async function getBackendData() {
+  function resetBackendCache() {
+    dataPromise = null;
+    cacheUntil = 0;
+  }
+
+  async function getBackendData(force = false) {
     const now = Date.now();
+    if (force) resetBackendCache();
     if (dataPromise && now < cacheUntil) return dataPromise;
 
     dataPromise = (async () => {
@@ -43,10 +49,20 @@
     try {
       return await dataPromise;
     } catch (error) {
-      dataPromise = null;
-      cacheUntil = 0;
+      resetBackendCache();
       throw error;
     }
+  }
+
+  window.__PANEL_GET_BACKEND_DATA__ = getBackendData;
+  window.__PANEL_RESET_BACKEND_DATA__ = resetBackendCache;
+
+  function jsonResponse(payload, status = 200, statusText = 'OK') {
+    return new Response(JSON.stringify(payload), {
+      status,
+      statusText,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 
   function applyMovementStateFilter(values, range) {
@@ -93,6 +109,18 @@
 
   window.fetch = async function(input, init) {
     const rawUrl = typeof input === 'string' ? input : input?.url;
+    const method = String(init?.method || input?.method || 'GET').toUpperCase();
+    const normalizedUrl = String(rawUrl || '').replace(/\/$/, '');
+
+    if (normalizedUrl === `${apiBaseUrl}/api/data` && method === 'GET') {
+      try {
+        const payload = await getBackendData(false);
+        return jsonResponse(payload);
+      } catch (error) {
+        return jsonResponse({ error: { message: String(error?.message || error) } }, 502, 'Backend Error');
+      }
+    }
+
     if (!rawUrl || !rawUrl.startsWith('https://sheets.googleapis.com/v4/spreadsheets/')) {
       return originalFetch(input, init);
     }
@@ -108,29 +136,22 @@
       const payload = await getBackendData();
       const sourceValues = payload?.sources?.[`${spreadsheetId}|${range}`];
       if (!Array.isArray(sourceValues)) {
-        return new Response(JSON.stringify({ error: { message: `Fuente no permitida: ${range}` } }), {
-          status: 404,
-          statusText: 'Not Found',
-          headers: { 'Content-Type': 'application/json' }
-        });
+        return jsonResponse({ error: { message: `Fuente no permitida: ${range}` } }, 404, 'Not Found');
       }
 
       const actualValues = applyMovementStateFilter(sourceValues, range);
       const values = applySectionFilters(actualValues, range);
-      return new Response(JSON.stringify({
+      return jsonResponse({
         range,
         majorDimension: 'ROWS',
         values
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
       });
     } catch (error) {
-      return new Response(JSON.stringify({ error: { message: String(error?.message || error) } }), {
-        status: 502,
-        statusText: 'Backend Error',
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonResponse({ error: { message: String(error?.message || error) } }, 502, 'Backend Error');
     }
   };
+
+  document.addEventListener('click', event => {
+    if (event.target.closest?.('#refreshBtn')) resetBackendCache();
+  }, true);
 })();
