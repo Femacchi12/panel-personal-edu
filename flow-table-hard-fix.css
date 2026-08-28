@@ -1,7 +1,0 @@
-/* Solución estructural definitiva para tablas mensuales duplicadas.
-   Las versiones superiores pertenecen exclusivamente a #monthlyProjectionSuite.
-   Se conservan las versiones finales de la sección que viven fuera de ese bloque. */
-#monthlyProjectionSuite .monthly-programmed-panel,
-#monthlyProjectionSuite .monthly-comparison-panel {
-  display: none !important;
-}
