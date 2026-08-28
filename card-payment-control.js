@@ -59,6 +59,7 @@
   }
 
   async function getPayload(force=false) {
+    if (typeof window.__PANEL_GET_BACKEND_DATA__ === 'function') return window.__PANEL_GET_BACKEND_DATA__(force);
     if (!force && payloadPromise && Date.now() < cacheUntil) return payloadPromise;
     payloadPromise = (async()=>{
       const getIdToken = window.__PANEL_GET_ID_TOKEN__;
@@ -285,13 +286,12 @@
   function schedule(delay=90){ clearTimeout(timer); timer=setTimeout(run,delay); }
 
   injectStyles();
-  document.addEventListener('click',event=>{
-    if (event.target.closest('.nav-item,.currency-btn,#refreshBtn,.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters')) {
-      if (event.target.closest('#refreshBtn')) { payloadPromise=null; cacheUntil=0; }
-      setTimeout(()=>schedule(120),40);
-    }
+  document.addEventListener('panel:view-root-changed',event=>{
+    if(event.detail?.view==='tarjetas')schedule(30);
   });
-  const root=document.getElementById('viewRoot');
-  if(root) new MutationObserver(()=>schedule(100)).observe(root,{childList:true,subtree:false});
+  document.addEventListener('panel:card-filter-changed',()=>schedule(40));
+  document.addEventListener('panel:section-filters-changed',event=>{
+    if(event.detail?.view==='tarjetas')schedule(40);
+  });
   schedule();
 })();

@@ -137,15 +137,20 @@
     if(!force&&debtPromise) return debtPromise;
 
     debtPromise=(async()=>{
-      const getIdToken=window.__PANEL_GET_ID_TOKEN__;
-      if(typeof getIdToken!=='function') return null;
-      const token=await getIdToken(false);
-      if(!token) return null;
-      const response=await fetch(`${apiBaseUrl}/api/data`,{
-        headers:{Authorization:`Bearer ${token}`},cache:'no-store'
-      });
-      if(!response.ok) return null;
-      const payload=await response.json();
+      let payload=null;
+      if(typeof window.__PANEL_GET_BACKEND_DATA__==='function'){
+        payload=await window.__PANEL_GET_BACKEND_DATA__(force);
+      }else{
+        const getIdToken=window.__PANEL_GET_ID_TOKEN__;
+        if(typeof getIdToken!=='function') return null;
+        const token=await getIdToken(false);
+        if(!token) return null;
+        const response=await fetch(`${apiBaseUrl}/api/data`,{
+          headers:{Authorization:`Bearer ${token}`},cache:'no-store'
+        });
+        if(!response.ok) return null;
+        payload=await response.json();
+      }
       const rows=parseRows(payload?.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
       const {start,end}=currentCycle(6);
       const sums={COP:0,USD:0};
@@ -341,16 +346,19 @@
     timer=setTimeout(()=>applyAll(force),delay);
   }
 
-  document.addEventListener('click',event=>{
-    if(event.target.closest('.nav-item,#refreshBtn,.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters,.card-specific-option,.card-specific-clear,[data-card-line-mode],.currency-btn')){
-      const force=Boolean(event.target.closest('#refreshBtn'));
-      setTimeout(()=>schedule(140,force),40);
-      setTimeout(()=>schedule(420,force),180);
+  document.addEventListener('panel:view-root-changed',event=>{
+    if(event.detail?.view==='tarjetas'){
+      schedule(40,false);
+      setTimeout(()=>schedule(180,false),80);
     }
+  });
+  document.addEventListener('panel:card-filter-changed',()=>schedule(50,false));
+  document.addEventListener('panel:section-filters-changed',event=>{
+    if(event.detail?.view==='tarjetas')schedule(50,false);
+  });
+  document.addEventListener('click',event=>{
+    if(event.target.closest('[data-card-line-mode]'))schedule(60,false);
   },true);
-
-  const root=document.getElementById('viewRoot');
-  if(root) new MutationObserver(()=>schedule(100,false)).observe(root,{childList:true,subtree:false});
 
   if(!document.getElementById('cardLimitControlStyles')){
     const style=document.createElement('style');

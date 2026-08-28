@@ -245,16 +245,17 @@
     host.innerHTML=`${renderPayments(cycles,selected)}${renderInstallments(purchases,projection,selected)}`;
   }
 
-  document.addEventListener('click',event=>{
-    if(event.target.closest('.nav-item,.local-option,.local-clear,#clearSectionFilters,#refreshBtn')){
-      clearTimeout(timer);timer=setTimeout(()=>render(!!event.target.closest('#refreshBtn')),180);
-    }
+  function scheduleRender(delay=80,force=false){
+    clearTimeout(timer);
+    timer=setTimeout(()=>render(force).catch(console.error),delay);
+  }
+  document.addEventListener('panel:view-root-changed',event=>{
+    if(event.detail?.view==='tarjetas')scheduleRender(60,false);
   });
-  document.addEventListener('change',()=>{clearTimeout(timer);timer=setTimeout(()=>render(false),150);});
-  new MutationObserver(()=>{
-    if(activeView()!=='tarjetas'||root.querySelector('#cardPaymentsInstallments'))return;
-    clearTimeout(timer);timer=setTimeout(()=>render(false),120);
-  }).observe(root,{childList:true,subtree:false});
+  document.addEventListener('panel:card-filter-changed',()=>scheduleRender(70,false));
+  document.addEventListener('panel:section-filters-changed',event=>{
+    if(event.detail?.view==='tarjetas')scheduleRender(70,false);
+  });
 
   render(false).catch(console.error);
 })();
