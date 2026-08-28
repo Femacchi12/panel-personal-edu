@@ -6,7 +6,9 @@
   const usdCop = Number(cfg.regularIncome?.usdCopReference || 3150);
   if(!financeId) return;
 
-  let timer = null;
+  let renderFrame = 0;
+  let requestVersion = 0;
+  let pendingForce = false;
   let limitMode = 'control';
   window.__PANEL_CARD_LIMIT_MODE__ = limitMode;
 
@@ -177,7 +179,7 @@
             limitMode=next;
             window.__PANEL_CARD_LIMIT_MODE__=limitMode;
             syncSelectorState();
-            applyAll(false);
+            schedule(false);
           });
         });
       }
@@ -296,8 +298,9 @@
 
   async function applyAll(force=false){
     if(activeView()!=='tarjetas'||!window.Chart) return;
+    const version=++requestVersion;
     const [cardRows,debt]=await Promise.all([sourceRows('Tarjetas!A:T',force),loadArqDebt(force)]);
-    if(activeView()!=='tarjetas') return;
+    if(version!==requestVersion||activeView()!=='tarjetas') return;
     const cards=cardsFromRows(cardRows);
     if(!cards.length) return;
     const arq=cards.find(card=>norm(card.issuer).includes('arq'));
@@ -309,19 +312,25 @@
     applyTrendChart(cards);
   }
 
-  function schedule(delay=80,force=false){
-    clearTimeout(timer);
-    timer=setTimeout(()=>applyAll(force).catch(error=>console.error('Control de límites de tarjeta:',error)),delay);
+  function schedule(force=false){
+    pendingForce=pendingForce||force;
+    if(renderFrame)return;
+    renderFrame=requestAnimationFrame(()=>{
+      renderFrame=0;
+      const useForce=pendingForce;
+      pendingForce=false;
+      applyAll(useForce).catch(error=>console.error('Control de límites de tarjeta:',error));
+    });
   }
 
   document.addEventListener('panel:view-root-changed',event=>{
-    if(event.detail?.view==='tarjetas') schedule(60,false);
+    if(event.detail?.view==='tarjetas')schedule(false);else requestVersion++;
   });
-  document.addEventListener('panel:card-filter-changed',()=>schedule(35,false));
+  document.addEventListener('panel:card-filter-changed',()=>schedule(false));
   document.addEventListener('panel:section-filters-changed',event=>{
-    if(event.detail?.view==='tarjetas')schedule(35,false);
+    if(event.detail?.view==='tarjetas')schedule(false);
   });
-  document.addEventListener('panel:card-trend-rendered',()=>schedule(0,false));
+  document.addEventListener('panel:card-trend-rendered',()=>schedule(false));
 
   if(!document.getElementById('cardLimitControlStyles')){
     const style=document.createElement('style');
@@ -353,5 +362,5 @@
     document.head.appendChild(style);
   }
 
-  schedule(220,false);
+  queueMicrotask(()=>schedule(false));
 })();
