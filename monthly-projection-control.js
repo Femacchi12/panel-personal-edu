@@ -2,13 +2,12 @@
   'use strict';
 
   const cfg=window.PANEL_CONFIG||{};
-  const apiBaseUrl=String(cfg.apiBaseUrl||'').replace(/\/$/,'');
   const financeId=String(cfg.financeSpreadsheetId||'');
-  if(!apiBaseUrl||!financeId)return;
+  if(!financeId)return;
 
   const STORAGE_KEY='panel-personal-edu.include-monthly-projection';
   const MONTHS=['ene','feb','mar','abr','may','jun','jul','ago','sept','oct','nov','dic'];
-  let frame=0,pendingForce=false,requestVersion=0;
+  let frame=0,pendingForce=false,requestVersion=0,lastPayload=null,lastRows=[];
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -37,9 +36,20 @@
   function selectedGlobal(key){return[...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)].map(el=>String(el.dataset.value||'').trim()).filter(Boolean);}
   function activeView(){return document.querySelector('.nav-item.active')?.dataset.view||'';}
   function rowMonth(row){return monthKey(row['Mes consumo']||row['Mes pago']||row['Fecha real']||row['Fecha registrada']);}
+  function filterContext(view=activeView()){
+    const rawState=window.__PAYMENT_FILTER_STATE__;
+    const payment=rawState&&rawState.view===view?rawState:{account:[],method:[]};
+    return{
+      years:selectedGlobal('year'),
+      months:selectedGlobal('month').map(Number).filter(n=>n>=1&&n<=12),
+      categories:selectedGlobal('category'),
+      account:Array.isArray(payment.account)?payment.account:[],
+      method:Array.isArray(payment.method)?payment.method:[]
+    };
+  }
 
-  function targetMonth(rows){
-    const years=selectedGlobal('year'),months=selectedGlobal('month').map(Number).filter(n=>n>=1&&n<=12),current=currentMonthKey();
+  function targetMonth(rows,ctx){
+    const years=ctx.years,months=ctx.months,current=currentMonthKey();
     const keys=[...new Set(rows.map(rowMonth).filter(k=>k&&k<=current))].sort();
     if(years.length===1&&months.length===1)return`${years[0]}-${String(months[0]).padStart(2,'0')}`;
     if(months.length===1){const suffix=`-${String(months[0]).padStart(2,'0')}`;const match=keys.filter(k=>k.endsWith(suffix)&&(!years.length||years.includes(k.slice(0,4))));if(match.length)return match[match.length-1];}
@@ -54,31 +64,34 @@
   function isSuper(row){return norm(row['Categoría'])==='supermercado';}
   function account(row){const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);if(n.includes('efectivo'))return'Efectivo';if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';if(n.includes('arq'))return'ARQ Edu';if(n.includes('nu'))return(n.includes(' ro')||holder.includes('rocio')||holder==='ro')?'Nu Ro':'Nu Edu';return raw||'Sin especificar';}
   function method(row){const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;const raw=norm(row['Cuenta / Tarjeta']);if(raw.includes('credito')||raw.includes('crédito'))return'Crédito';if(raw.includes('transferencia'))return'Transferencia';if(raw.includes('debito')||raw.includes('débito'))return'Débito';if(raw.includes('efectivo'))return'Efectivo';const q=parseNumber(row.Cuotas);if(q>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';return'Sin especificar';}
-  function matchesExtraFilters(row){
-    const cats=selectedGlobal('category');
-    if(cats.length&&!cats.includes(String(row['Categoría']||'')))return false;
-    const view=activeView();
-    const rawState=window.__PAYMENT_FILTER_STATE__;
-    const st=rawState&&rawState.view===view?rawState:{account:[],method:[]};
-    if(st.account?.length&&!st.account.includes(account(row)))return false;
-    if(st.method?.length&&!st.method.includes(method(row)))return false;
+  function matchesExtraFilters(row,ctx){
+    if(ctx.categories.length&&!ctx.categories.includes(String(row['Categoría']||'')))return false;
+    if(ctx.account.length&&!ctx.account.includes(account(row)))return false;
+    if(ctx.method.length&&!ctx.method.includes(method(row)))return false;
     return true;
   }
 
   async function payload(force=false){const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return null;return getData(force);}
   function sum(rows){return rows.reduce((a,r)=>a+parseNumber(r['Monto COP']),0);}
+  function groupTotals(actual,previous,projections){
+    const out={super:{current:0,previous:0,projection:0},fixed:{current:0,previous:0,projection:0},variable:{current:0,previous:0,projection:0}};
+    const add=(bucket,row,amount)=>{if(isSuper(row))out.super[bucket]+=amount;if(isFixed(row))out.fixed[bucket]+=amount;if(!isFixed(row)&&!isSuper(row))out.variable[bucket]+=amount;};
+    actual.forEach(row=>add('current',row,parseNumber(row['Monto COP'])));
+    previous.forEach(row=>add('previous',row,parseNumber(row['Monto COP'])));
+    projections.forEach(row=>{const amount=parseNumber(row['Monto COP']);if(isSuper(row))out.super.projection+=amount;if(isFixed(row))out.fixed.projection+=amount;});
+    return out;
+  }
 
-  function monthlyStats(rows,key){
-    const prev=previousMonth(key),current=key===currentMonthKey();
-    const scoped=rows.filter(matchesExtraFilters);
-    const actual=scoped.filter(r=>isActual(r)&&rowMonth(r)===key);
-    const previous=scoped.filter(r=>isActual(r)&&rowMonth(r)===prev);
-    const projections=scoped.filter(r=>isProjection(r)&&rowMonth(r)===key).sort((a,b)=>(parseDate(a['Fecha real']||a['Fecha registrada'])?.getTime()||0)-(parseDate(b['Fecha real']||b['Fecha registrada'])?.getTime()||0));
-    const groups={
-      super:{current:sum(actual.filter(isSuper)),previous:sum(previous.filter(isSuper)),projection:sum(projections.filter(isSuper))},
-      fixed:{current:sum(actual.filter(isFixed)),previous:sum(previous.filter(isFixed)),projection:sum(projections.filter(isFixed))},
-      variable:{current:sum(actual.filter(r=>!isFixed(r)&&!isSuper(r))),previous:sum(previous.filter(r=>!isFixed(r)&&!isSuper(r))),projection:0}
-    };
+  function monthlyStats(rows,key,ctx){
+    const prev=previousMonth(key),current=key===currentMonthKey(),actual=[],previous=[],projections=[];
+    for(const row of rows){
+      if(!matchesExtraFilters(row,ctx))continue;
+      const month=rowMonth(row);
+      if(month===key){if(isActual(row))actual.push(row);else if(isProjection(row))projections.push(row);}
+      else if(month===prev&&isActual(row))previous.push(row);
+    }
+    projections.sort((a,b)=>(parseDate(a['Fecha real']||a['Fecha registrada'])?.getTime()||0)-(parseDate(b['Fecha real']||b['Fecha registrada'])?.getTime()||0));
+    const groups=groupTotals(actual,previous,projections);
     groups.super.remaining=current?Math.max(0,groups.super.previous-groups.super.current-groups.super.projection):0;
     groups.fixed.remaining=current?Math.max(0,groups.fixed.previous-groups.fixed.current-groups.fixed.projection):0;
     groups.variable.remaining=0;
@@ -109,8 +122,8 @@
     const view=activeView();if(view!=='gastos'&&view!=='flujo')return;
     const root=document.getElementById('viewRoot');if(!root)return;
     const p=await payload(force);if(!p||version!==requestVersion||activeView()!==view||!root.isConnected)return;
-    const rows=parseRows(p.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
-    const stats=monthlyStats(rows,targetMonth(rows));
+    if(p!==lastPayload){lastPayload=p;lastRows=parseRows(p.sources?.[`${financeId}|Movimientos!A:Z`]||[]);}
+    const ctx=filterContext(view),stats=monthlyStats(lastRows,targetMonth(lastRows,ctx),ctx);
     let host=root.querySelector('#monthlyProjectionSuite');
     if(!host){
       host=document.createElement('section');host.id='monthlyProjectionSuite';
@@ -153,5 +166,6 @@
     const view=activeView();if(event.detail?.view===view&&(view==='gastos'||view==='flujo'))schedule(false);
   });
   document.addEventListener('panel:filters-updated',()=>{const view=activeView();if(view==='gastos'||view==='flujo')schedule(false);});
+  document.addEventListener('panel:backend-refresh-requested',()=>{lastPayload=null;lastRows=[];});
   queueMicrotask(()=>schedule(false));
 })();
