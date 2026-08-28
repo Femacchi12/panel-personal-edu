@@ -116,6 +116,6 @@
   });
   document.addEventListener('panel:section-filters-changed',event=>{if(event?.detail?.view==='inversiones')schedule(false);});
   document.addEventListener('panel:section-filters-ready',event=>{if(event?.detail?.view==='inversiones')schedule(false);});
-  document.addEventListener('click',event=>{if(event.target.closest('#refreshBtn')&&activeView()==='inversiones')schedule(true);},true);
+  document.addEventListener('panel:backend-refresh-requested',()=>{if(activeView()==='inversiones')schedule(false);});
   queueMicrotask(()=>{if(activeView()==='inversiones'){forcePeriodFilters();schedule(false);}});
 })();
