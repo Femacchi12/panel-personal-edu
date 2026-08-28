@@ -7,7 +7,7 @@
 
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let reconcileTimer=null,movementRows=null;
+  let reconcileFrame=0,movementRows=null,reconcileVersion=0,scheduledForce=false;
   const state={gastos:{account:[],method:[]},flujo:{account:[],method:[]}};
 
   function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const headers=(values[0]||[]).map(v=>String(v||'').trim());return values.slice(1).filter(r=>r?.some(v=>String(v??'').trim()!=='')).map(r=>Object.fromEntries(headers.map((h,i)=>[h||`Col ${i+1}`,r?.[i]??''])));}
@@ -52,9 +52,9 @@
     const root=document.createElement('div');root.className=`multi-filter stable-payment-filter${values.length?' has-selection':''}`;root.dataset.payKey=def.key;
     root.innerHTML=`<div class="filter-label-row"><span>${esc(def.label)}</span></div><button type="button" class="multi-filter-trigger pay-trigger" aria-expanded="false"><span class="pay-summary">${esc(summary)}</span><span class="filter-chevron">⌄</span></button><div class="multi-filter-menu pay-menu"><input class="multi-filter-search pay-search" placeholder="Buscar…" autocomplete="off"><div class="multi-filter-options pay-options"></div></div>`;
     const box=root.querySelector('.pay-options');box.innerHTML=options.length?options.map(value=>{const on=values.includes(value);return`<button type="button" class="multi-filter-option pay-option${on?' selected':''}" data-value="${esc(value)}" aria-pressed="${on}"><span class="multi-filter-check">${on?'✓':''}</span><span>${esc(value)}</span></button>`;}).join(''):'<div class="multi-filter-empty">Sin opciones</div>';
-    root.querySelector('.pay-trigger')?.addEventListener('click',event=>{event.stopPropagation();document.querySelectorAll('.stable-payment-filter.open').forEach(x=>{if(x!==root){x.classList.remove('open');x.querySelector('.pay-trigger')?.setAttribute('aria-expanded','false')}});root.classList.toggle('open');root.querySelector('.pay-trigger')?.setAttribute('aria-expanded',root.classList.contains('open')?'true':'false');if(root.classList.contains('open'))setTimeout(()=>root.querySelector('.pay-search')?.focus(),0);});
+    root.querySelector('.pay-trigger')?.addEventListener('click',event=>{event.stopPropagation();document.querySelectorAll('.stable-payment-filter.open').forEach(x=>{if(x!==root){x.classList.remove('open');x.querySelector('.pay-trigger')?.setAttribute('aria-expanded','false')}});root.classList.toggle('open');root.querySelector('.pay-trigger')?.setAttribute('aria-expanded',root.classList.contains('open')?'true':'false');if(root.classList.contains('open'))requestAnimationFrame(()=>root.querySelector('.pay-search')?.focus());});
     root.querySelector('.pay-search')?.addEventListener('input',event=>{const q=norm(event.target.value);root.querySelectorAll('.pay-option').forEach(btn=>btn.hidden=!!q&&!norm(btn.dataset.value).includes(q));});
-    root.querySelectorAll('.pay-option').forEach(btn=>btn.addEventListener('click',event=>{event.stopPropagation();const value=btn.dataset.value,list=selected(view,def.key),i=list.indexOf(value);if(i>=0)list.splice(i,1);else list.push(value);state[view][def.key]=list;reconcile(true);}));
+    root.querySelectorAll('.pay-option').forEach(btn=>btn.addEventListener('click',event=>{event.stopPropagation();const value=btn.dataset.value,list=selected(view,def.key),i=list.indexOf(value);if(i>=0)list.splice(i,1);else list.push(value);state[view][def.key]=list;schedule(true);}));
     return root;
   }
 
@@ -71,24 +71,38 @@
   async function apply(view){
     if(!supported(view))return;
     const data=(await load()).filter(r=>periodMatch(r)&&rowMatchesPayment(r,view));
+    if(activeView()!==view)return;
     window.__PAYMENT_FILTER_STATE__={view,account:[...state[view].account],method:[...state[view].method]};
     window.__PAYMENT_FILTERED_MOVEMENTS__=data;
     document.dispatchEvent(new CustomEvent('panel:payment-filters-changed',{detail:window.__PAYMENT_FILTER_STATE__}));
   }
 
   async function reconcile(forceApply=false){
-    clearTimeout(reconcileTimer);const view=activeView();ensureStyle();ensureBar();alignGlobalFilters(view);await renderBar(view);if(forceApply||supported(view))await apply(view);
+    const version=++reconcileVersion,view=activeView();
+    ensureStyle();ensureBar();alignGlobalFilters(view);
+    await renderBar(view);
+    if(version!==reconcileVersion||activeView()!==view)return;
+    if(forceApply||supported(view))await apply(view);
   }
-  function schedule(delay=50,force=false){clearTimeout(reconcileTimer);reconcileTimer=setTimeout(()=>reconcile(force).catch(console.error),delay);}
+  function schedule(force=false){
+    scheduledForce=scheduledForce||force;
+    if(reconcileFrame)return;
+    reconcileFrame=requestAnimationFrame(()=>{
+      reconcileFrame=0;
+      const useForce=scheduledForce;
+      scheduledForce=false;
+      reconcile(useForce).catch(console.error);
+    });
+  }
 
-  document.addEventListener('panel:view-root-changed',event=>{const view=event.detail?.view;if(supported(view))schedule(20,true);else ensureBar()?.setAttribute('hidden','');});
-  document.addEventListener('panel:filters-updated',()=>schedule(40,true));
+  document.addEventListener('panel:view-root-changed',event=>{const view=event.detail?.view;if(supported(view))schedule(true);else{reconcileVersion++;ensureBar()?.setAttribute('hidden','');}});
+  document.addEventListener('panel:filters-updated',()=>schedule(true));
   document.addEventListener('click',event=>{
     if(!event.target.closest('.stable-payment-filter'))document.querySelectorAll('.stable-payment-filter.open').forEach(x=>{x.classList.remove('open');x.querySelector('.pay-trigger')?.setAttribute('aria-expanded','false')});
     const view=activeView();
-    if(event.target.closest('#resetCurrentMonth,#clearFilters')){clearPaymentState(view);schedule(60,true);}
-    if(event.target.closest('#refreshBtn')){movementRows=null;schedule(250,true);}
+    if(event.target.closest('#resetCurrentMonth,#clearFilters')){clearPaymentState(view);queueMicrotask(()=>schedule(true));}
+    if(event.target.closest('#refreshBtn')){movementRows=null;reconcileVersion++;}
   },true);
 
-  ensureStyle();ensureBar();queueMicrotask(()=>schedule(100,true));
+  ensureStyle();ensureBar();queueMicrotask(()=>schedule(true));
 })();
