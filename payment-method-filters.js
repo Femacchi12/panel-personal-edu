@@ -7,7 +7,7 @@
 
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let reconcileFrame=0,movementRows=null,reconcileVersion=0,scheduledForce=false;
+  let reconcileFrame=0,reconcileVersion=0,scheduledForce=false;
   const state={gastos:{account:[],method:[]},flujo:{account:[],method:[]}};
 
   function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const headers=(values[0]||[]).map(v=>String(v||'').trim());return values.slice(1).filter(r=>r?.some(v=>String(v??'').trim()!=='')).map(r=>Object.fromEntries(headers.map((h,i)=>[h||`Col ${i+1}`,r?.[i]??''])));}
@@ -29,15 +29,10 @@
   }
 
   async function load(force=false){
-    if(force)movementRows=null;
-    if(movementRows)return movementRows;
-    const direct=window.__PANEL_GET_SOURCE_VALUES__;
-    if(typeof direct==='function') movementRows=parseRows(await direct(FINANCE_ID,'Movimientos!A:Z',force));
-    else {
-      const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return[];
-      const data=await getData(force);movementRows=parseRows(data?.sources?.[`${FINANCE_ID}|Movimientos!A:Z`]||[]);
-    }
-    return movementRows;
+    const getData=window.__PANEL_GET_BACKEND_DATA__;
+    if(typeof getData!=='function')return[];
+    const data=await getData(force);
+    return parseRows(data?.sources?.[`${FINANCE_ID}|Movimientos!A:Z`]||[]);
   }
 
   function ensureStyle(){if(document.getElementById('stablePaymentFilterStyles'))return;const style=document.createElement('style');style.id='stablePaymentFilterStyles';style.textContent=`#paymentMethodFilterBar{margin-top:-1px!important;border-top:0!important;border-top-left-radius:0!important;border-top-right-radius:0!important;padding-top:0!important}#paymentMethodFilterBar>.filter-head{display:none!important}#paymentMethodFilterBar::before{content:"";display:block;height:1px;background:var(--border-soft);margin:0 0 10px}#paymentMethodFilterBar .section-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}#paymentMethodFilterBar .multi-filter{min-width:0}.main>#filterBar:not([hidden]):has(+ #paymentMethodFilterBar:not([hidden])){margin-bottom:0!important;border-bottom-left-radius:0!important;border-bottom-right-radius:0!important;border-bottom-color:transparent!important;padding-bottom:10px!important}#paymentMethodFilterBar[hidden]{display:none!important}@media(max-width:720px){#paymentMethodFilterBar .section-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}#paymentMethodFilterBar .multi-filter-trigger{padding-left:8px;padding-right:8px;font-size:11px}.multi-filter-menu{min-width:180px}}`;document.head.appendChild(style);}
@@ -101,7 +96,6 @@
     if(!event.target.closest('.stable-payment-filter'))document.querySelectorAll('.stable-payment-filter.open').forEach(x=>{x.classList.remove('open');x.querySelector('.pay-trigger')?.setAttribute('aria-expanded','false')});
     const view=activeView();
     if(event.target.closest('#resetCurrentMonth,#clearFilters')){clearPaymentState(view);queueMicrotask(()=>schedule(true));}
-    if(event.target.closest('#refreshBtn')){movementRows=null;reconcileVersion++;}
   },true);
 
   ensureStyle();ensureBar();queueMicrotask(()=>schedule(true));
