@@ -4,6 +4,7 @@
   const cfg = window.PANEL_CONFIG || {};
   const apiBaseUrl = String(cfg.apiBaseUrl || '').replace(/\/$/, '');
   const financeId = String(cfg.financeSpreadsheetId || '');
+  const documentsId = String(cfg.documentsSpreadsheetId || '');
   if (!apiBaseUrl || !financeId) return;
 
   const MONTHS = {
@@ -13,15 +14,12 @@
     dic:12, diciembre:12
   };
 
-  let payloadPromise = null;
-  let cacheUntil = 0;
   let chart = null;
   let timer = null;
 
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
   }[c]));
-
   const norm = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 
   function parseNumber(value) {
@@ -49,7 +47,6 @@
   const cop = value => new Intl.NumberFormat('es-CO', {
     style:'currency', currency:'COP', maximumFractionDigits:0
   }).format(Number(value) || 0);
-
   const usd = value => new Intl.NumberFormat('es-CO', {
     style:'currency', currency:'USD', minimumFractionDigits:2, maximumFractionDigits:2
   }).format(Number(value) || 0);
@@ -74,17 +71,14 @@
       const n = Number(raw);
       return n >= 1 && n <= 12 ? n : null;
     }
-    const token = raw.split(/[\s\-\/]+/)[0];
-    return MONTHS[token] || null;
+    return MONTHS[raw.split(/[\s\-\/]+/)[0]] || null;
   }
 
   function rowPeriod(row) {
     let year = Number(String(row['Año'] || '').match(/\d{4}/)?.[0] || 0) || null;
     let month = monthNumber(row['Mes']);
-
     const mesText = String(row['Mes'] || '');
     if (!year) year = Number(mesText.match(/\b(20\d{2})\b/)?.[1] || 0) || null;
-
     if (!year || !month) {
       for (const key of ['Fecha devengo','Fecha pago','Fecha','Periodo','Período','Fecha inicio']) {
         const value = String(row[key] || '').trim();
@@ -109,27 +103,23 @@
     });
   }
 
-  async function getPayload() {
-    const now = Date.now();
-    if (payloadPromise && now < cacheUntil) return payloadPromise;
-    payloadPromise = (async () => {
-      const getToken = window.__PANEL_GET_ID_TOKEN__;
-      if (typeof getToken !== 'function') throw new Error('No hay sesión Firebase disponible');
-      const token = await getToken(false);
-      if (!token) throw new Error('No se pudo obtener el token de sesión');
-      const response = await fetch(`${apiBaseUrl}/api/data`, {
-        headers:{Authorization:`Bearer ${token}`}, cache:'no-store'
-      });
-      if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
-      return response.json();
-    })();
-    cacheUntil = now + 55_000;
-    try { return await payloadPromise; }
-    catch (error) { payloadPromise = null; cacheUntil = 0; throw error; }
+  async function getPayload(force = false) {
+    if (typeof window.__PANEL_GET_BACKEND_DATA__ === 'function') {
+      return window.__PANEL_GET_BACKEND_DATA__(force);
+    }
+    const getToken = window.__PANEL_GET_ID_TOKEN__;
+    if (typeof getToken !== 'function') throw new Error('No hay sesión Firebase disponible');
+    const token = await getToken(false);
+    if (!token) throw new Error('No se pudo obtener el token de sesión');
+    const response = await fetch(`${apiBaseUrl}/api/data`, {
+      headers:{Authorization:`Bearer ${token}`}, cache:'no-store'
+    });
+    if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+    return response.json();
   }
 
-  function sourceRows(payload, range) {
-    return parseRows(payload?.sources?.[`${financeId}|${range}`] || []);
+  function sourceRows(payload, range, spreadsheetId = financeId) {
+    return parseRows(payload?.sources?.[`${spreadsheetId}|${range}`] || []);
   }
 
   function linkCell(value) {
@@ -174,13 +164,11 @@
     chart?.destroy();
     const canvas = document.getElementById('incomeCompleteChart');
     if (!canvas || !concepts.length) return;
-
     const labels = concepts.map(r => r['Mes'] || '');
     const salaryCop = concepts.map(r => parseNumber(r['Sueldo COP']));
     const salaryUsd = concepts.map(r => parseNumber(r['Sueldo USD (equiv. COP)']));
     const totals = concepts.map(r => parseNumber(r['Total consolidado']));
     const extras = totals.map((v,i) => Math.max(0, v - salaryCop[i] - salaryUsd[i]));
-
     chart = new Chart(canvas, {
       type:'line',
       data:{labels,datasets:[
@@ -235,14 +223,15 @@
         </div>
         <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Composición mensual de ingresos</strong><span>Sueldo COP, componente USD, extras y total consolidado</span></div></div><div class="chart-scroll"><div class="chart-inner" style="min-width:100%;height:330px"><canvas id="incomeCompleteChart"></canvas></div></div></div>
         ${table('Conceptos consolidados','Resumen mensual de todos los componentes',concepts,['Mes','Sueldo COP','Sueldo USD (equiv. COP)','Intereses y auxilios','Devoluciones','Transferencias familiares','Entrevistas / extras USD','Prima COP','Pago a Ro','Prima USD (equiv. COP)','Otros ingresos','Total consolidado'])}
-        ${table('Detalle de ingresos y extras','Incluye las notas recuperadas desde Cambio, como transferencia de papá y entrevista ARQ',details,['Mes','Concepto','Tipo','Moneda original','Valor original','Equivalente COP','Estado conciliación','Fuente','Observaciones trasladadas','Diferencia / alerta'])}
+        ${table('Detalle de ingresos y extras','Detalle de ingresos y extras registrados',details,['Mes','Concepto','Tipo','Moneda original','Valor original','Equivalente COP','Estado conciliación','Fuente','Observaciones trasladadas','Diferencia / alerta'])}
         ${table('Nómina Colombia','Histórico de comprobantes y conceptos de nómina',nomina,['Periodo','Cargo','Sueldo','Ingreso no salarial','Prima','Cesantías','Intereses cesantías','Otros devengados','Total ingresos','Total deducciones','Neto pagado','Estado revisión','URL soporte directo','Observaciones'])}
         ${table('Pagos recibidos en USD','Ingresos efectivamente acreditados en ARQ / DolarApp',usdRows,['Fecha devengo','Fecha pago','Origen','Tipo','Valor bruto','Deducciones','Valor neto','Cuenta destino','Documento','Fuente','Observaciones'])}
         ${table('Facturación en USD','Facturas de servicios prestados y estado de pago',invoices,['Año','Mes','Documento','Moneda','Importe facturado','Estado pago','Fecha pago','Fuente','URL directa','Observaciones'])}
         ${table('Plan de ahorro','Conserva la vista de ahorro y metas vinculada a ingresos',saving,Object.keys(saving[0] || {}).slice(0,16))}
         <div class="income-source-note">Fuentes: Nómina Colombia, Ingresos, Detalle_Ingresos, Resumen_Conceptos_Ingresos, Facturas_USD y Flujo_Ahorro de Finanzas Edu.</div>
       </div>`;
-      requestAnimationFrame(()=>drawIncomeChart(conceptsAll));
+      requestAnimationFrame(()=>drawIncomeChart(concepts));
+      document.dispatchEvent(new CustomEvent('panel:income-doc-rendered'));
     } catch (error) {
       console.error('No se pudo completar la vista de ingresos:', error);
     } finally {
@@ -251,11 +240,11 @@
   }
 
   async function enhanceDocuments(root) {
-    if (!root || root.querySelector('[data-doc-priority]') || root.dataset.docLoading === '1') return;
+    if (!documentsId || !root || root.querySelector('[data-doc-priority]') || root.dataset.docLoading === '1') return;
     root.dataset.docLoading = '1';
     try {
       const payload = await getPayload();
-      const docs = sourceRows(payload,'Documentos_Personales!A:L')
+      const docs = sourceRows(payload,'Documentos_Personales!A:L',documentsId)
         .sort((a,b)=>String(a['Prioridad']||'').localeCompare(String(b['Prioridad']||'')) || String(a['Documento']||'').localeCompare(String(b['Documento']||'')));
       if (!docs.length) return;
       const html = `<div class="panel" data-doc-priority>
@@ -279,21 +268,16 @@
     const title = document.getElementById('viewTitle')?.textContent?.trim();
     if (!root) return;
     if (title === 'Ingresos y ahorro') enhanceIncome(root);
-    if (title === 'Documentos') enhanceDocuments(root);
+    else if (title === 'Documentos') enhanceDocuments(root);
   }
 
-  function schedule() {
+  function schedule(delay = 30) {
     clearTimeout(timer);
-    timer = setTimeout(run, 30);
+    timer = setTimeout(run, delay);
   }
 
   injectStyles();
   const root = document.getElementById('viewRoot');
-  const title = document.getElementById('viewTitle');
-  if (root) new MutationObserver(schedule).observe(root,{childList:true});
-  if (title) new MutationObserver(schedule).observe(title,{childList:true,characterData:true,subtree:true});
-  document.addEventListener('click',event=>{
-    if (event.target.closest('.nav-item,.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters')) setTimeout(schedule,60);
-  });
-  schedule();
+  if (root) new MutationObserver(()=>schedule(30)).observe(root,{childList:true});
+  schedule(0);
 })();
