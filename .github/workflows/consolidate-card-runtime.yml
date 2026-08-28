@@ -1,0 +1,36 @@
+name: Consolidate card runtime
+
+on:
+  push:
+    paths:
+      - '.github/workflows/consolidate-card-runtime.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply consolidation
+        run: python3 scripts/consolidate_card_runtime.py
+      - name: Validate JavaScript
+        run: |
+          node --check card-payment-control.js
+          node --check card-chart-personal-limit.js
+          node --check card-payments-installments.js
+          node --check section-data-filters.js
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add card-payment-control.js card-chart-personal-limit.js card-payments-installments.js section-data-filters.js
+          if git diff --cached --quiet; then
+            echo "No changes required"
+          else
+            git commit -m "Consolidate card runtime listeners and cache"
+            git push
+          fi
