@@ -2,6 +2,7 @@
   'use strict';
 
   let frame=0,requestVersion=0;
+  const DISPLAY_TOLERANCE_COP=5;
   const money=value=>new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(Number(value)||0);
   const monthLabel=value=>{const m=String(value||'').match(/^(20\d{2})-(\d{2})$/);if(!m)return value||'—';const names=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];return `${names[Number(m[2])-1]} ${m[1]}`;};
 
@@ -38,9 +39,11 @@
   }
 
   function paint(result){
-    window.__PANEL_EXPENSE_RECONCILIATION__=result;
+    const raw=Array.isArray(result?.mismatches)?result.mismatches:[];
+    const mismatches=raw.filter(item=>Math.abs(Number(item?.differenceCop)||0)>DISPLAY_TOLERANCE_COP);
+    const normalized={...result,ok:mismatches.length===0,mismatches,displayToleranceCop:DISPLAY_TOLERANCE_COP};
+    window.__PANEL_EXPENSE_RECONCILIATION__=normalized;
     const host=ensureHost();if(!host)return;
-    const mismatches=Array.isArray(result?.mismatches)?result.mismatches:[];
     if(!mismatches.length){host.hidden=true;host.innerHTML='';return;}
     const latest=mismatches[0],count=mismatches.length;
     host.hidden=false;
