@@ -8,7 +8,7 @@
 
   const STORAGE_KEY='panel-personal-edu.include-monthly-projection';
   const MONTHS=['ene','feb','mar','abr','may','jun','jul','ago','sept','oct','nov','dic'];
-  let timer=null;
+  let frame=0,pendingForce=false,requestVersion=0;
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -100,15 +100,15 @@
     host.innerHTML=`<div class="panel monthly-close-panel"><div class="panel-header monthly-close-head"><div class="panel-title"><strong>${esc(title)}</strong><span>${esc(subtitle)}</span></div>${stats.current?`<label class="monthly-switch"><input type="checkbox" id="monthlyProjectionToggle" ${on?'checked':''}><span></span><b>Incluir proyección de cierre</b></label>`:''}</div><div class="monthly-kpis"><div><span>${stats.current?'Real hasta hoy':'Gasto real'}</span><strong>${esc(money(stats.realTotal))}</strong><small>Solo movimientos realizados</small></div><div><span>Proyección pendiente</span><strong>${esc(money(stats.current?stats.projectionTotal:0))}</strong><small>${stats.current?`${stats.projections.length} gasto${stats.projections.length===1?'':'s'}`:'No aplica a meses cerrados'}</small></div><div><span>Faltante recurrente</span><strong>${esc(money(stats.recurringGap))}</strong><small>${stats.current?'Supermercado + fijos/servicios':'No aplica a meses cerrados'}</small></div><div class="monthly-considered ${on?'projected':'actual'}"><span>Total considerado</span><strong>${esc(money(considered))}</strong><small>${on?'Real + cierre estimado':'Solo gasto real'}</small></div></div></div>
     <div class="panel table-panel monthly-programmed-panel"><div class="panel-header"><div class="panel-title"><strong>Proyecciones del mes</strong><span>${stats.current?`Pendientes conocidos para ${esc(monthLabel(stats.key))}.`:`Mes histórico: las proyecciones no se suman al cierre real.`}</span></div></div>${stats.projections.length?`<div class="table-scroll"><table class="monthly-planning-table"><thead><tr><th>Fecha</th><th>Categoría</th><th>Descripción</th><th>Medio de pago</th><th>Monto</th><th>Estado</th></tr></thead><tbody>${stats.projections.map(r=>`<tr><td>${esc(dateLabel(r))}</td><td>${esc(r['Categoría']||'—')}</td><td>${esc(r['Descripción / Comercio']||'—')}</td><td>${esc(r['Cuenta / Tarjeta']||'—')}</td><td>${esc(money(parseNumber(r['Monto COP'])))}</td><td><span class="monthly-status">${esc(projectionStatus(r))}</span></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty-state"><strong>Sin proyecciones pendientes</strong><span>No hay movimientos con estado Proyección para este mes y filtros.</span></div>'}</div>
     <div class="panel table-panel monthly-comparison-panel"><div class="panel-header"><div class="panel-title"><strong>Comparación mensual de gasto recurrente y variable</strong><span>${esc(monthLabel(stats.key))} vs ${esc(monthLabel(stats.prev))}.</span></div></div><div class="table-scroll"><table class="monthly-planning-table"><thead><tr><th>Grupo</th><th>Este mes</th><th>Mes anterior</th><th>Comparación</th></tr></thead><tbody>${comparisonRows(stats)}</tbody></table></div></div>`;
-    host.querySelector('#monthlyProjectionToggle')?.addEventListener('change',e=>{setProjection(e.target.checked);schedule(false,0);});
+    host.querySelector('#monthlyProjectionToggle')?.addEventListener('change',e=>{setProjection(e.target.checked);schedule(false);});
   }
 
   function injectStyles(){if(document.getElementById('monthlyProjectionStylesV2'))return;const style=document.createElement('style');style.id='monthlyProjectionStylesV2';style.textContent=`#monthlyProjectionSuite{display:grid;gap:12px;margin:0 0 4px}.monthly-detached-host{display:contents}.monthly-close-head{align-items:center}.monthly-switch{display:flex;align-items:center;gap:8px;color:#aebbd0;font-size:10px;cursor:pointer;user-select:none}.monthly-switch input{display:none}.monthly-switch span{width:34px;height:18px;border-radius:99px;background:#172334;border:1px solid #24344b;position:relative}.monthly-switch span:after{content:"";position:absolute;width:12px;height:12px;border-radius:50%;top:2px;left:3px;background:#718198}.monthly-switch input:checked+span{background:rgba(23,105,255,.25);border-color:#2c67c4}.monthly-switch input:checked+span:after{left:17px;background:#6fa1ff}.monthly-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.monthly-kpis>div{background:#0c1420;border:1px solid var(--border-soft);border-radius:11px;padding:11px}.monthly-kpis span{display:block;color:#718198;text-transform:uppercase;font-size:8px;font-weight:800;letter-spacing:.05em}.monthly-kpis strong{display:block;font-size:18px;margin-top:7px}.monthly-kpis small{display:block;color:#718198;font-size:9px;margin-top:5px}.monthly-kpis .monthly-considered.projected{border-color:rgba(23,105,255,.35);background:rgba(23,105,255,.07)}.monthly-planning-table{min-width:760px}.monthly-planning-table td{white-space:normal;vertical-align:top}.monthly-diff{display:inline-flex;padding:4px 7px;border-radius:99px;font-size:9px;font-weight:800}.monthly-diff.under{color:#f6c844;background:rgba(246,200,68,.08)}.monthly-diff.over{color:#ff8797;background:rgba(255,102,122,.08)}.monthly-diff.neutral{color:#7ee6af;background:rgba(38,208,124,.08)}.monthly-status{font-size:9px;color:#8db2f2;font-weight:700}@media(max-width:900px){.monthly-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.monthly-close-head{align-items:flex-start;flex-direction:column}}`;document.head.appendChild(style);}
 
-  async function run(force=false){
+  async function run(force=false,version=requestVersion){
     const view=activeView();if(view!=='gastos'&&view!=='flujo')return;
     const root=document.getElementById('viewRoot');if(!root)return;
-    const p=await payload(force);if(!p||activeView()!==view)return;
+    const p=await payload(force);if(!p||version!==requestVersion||activeView()!==view||!root.isConnected)return;
     const rows=parseRows(p.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
     const stats=monthlyStats(rows,targetMonth(rows));
     let host=root.querySelector('#monthlyProjectionSuite');
@@ -133,16 +133,25 @@
       if(comparison)comparisonHost.replaceChildren(comparison);else comparisonHost.replaceChildren();
     }
   }
-  function schedule(force=false,delay=70){clearTimeout(timer);timer=setTimeout(()=>run(force).catch(console.error),delay);}
+  function schedule(force=false){
+    pendingForce=pendingForce||force;
+    requestVersion++;
+    if(frame)return;
+    frame=requestAnimationFrame(()=>{
+      frame=0;
+      const version=requestVersion,useForce=pendingForce;
+      pendingForce=false;
+      run(useForce,version).catch(console.error);
+    });
+  }
   injectStyles();
   document.addEventListener('panel:view-root-changed',event=>{
     const view=event.detail?.view;
-    if(view==='gastos'||view==='flujo')schedule(false,20);
+    if(view==='gastos'||view==='flujo')schedule(false);else requestVersion++;
   });
   document.addEventListener('panel:payment-filters-changed',event=>{
-    const view=activeView();if(event.detail?.view===view&&(view==='gastos'||view==='flujo'))schedule(false,35);
+    const view=activeView();if(event.detail?.view===view&&(view==='gastos'||view==='flujo'))schedule(false);
   });
-  document.addEventListener('panel:filters-updated',()=>{const view=activeView();if(view==='gastos'||view==='flujo')schedule(false,35);});
-  document.addEventListener('click',event=>{if(event.target.closest('#refreshBtn'))schedule(true,260);},true);
-  queueMicrotask(()=>schedule(false,80));
+  document.addEventListener('panel:filters-updated',()=>{const view=activeView();if(view==='gastos'||view==='flujo')schedule(false);});
+  queueMicrotask(()=>schedule(false));
 })();
