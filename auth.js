@@ -94,7 +94,7 @@ function showDenied(email) {
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = `${src}?v=${Date.now()}`;
+    script.src = src;
     script.async = false;
     script.onload = resolve;
     script.onerror = reject;
