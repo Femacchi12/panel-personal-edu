@@ -6,8 +6,9 @@
   if(!financeId)return;
 
   const STORAGE_KEY='panel-personal-edu.fx-simulations.v1';
-  let active=false,renderVersion=0,frame=0,pendingForce=false;
+  let renderVersion=0,frame=0,pendingForce=false;
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
 
   function num(v){if(typeof v==='number')return Number.isFinite(v)?v:0;let s=String(v??'').trim().replace(/[^\d,.\-]/g,'');if(!s)return 0;const c=s.lastIndexOf(','),d=s.lastIndexOf('.');if(c>=0&&d>=0){if(c>d)s=s.replace(/\./g,'').replace(',','.');else s=s.replace(/,/g,'');}else if(c>=0){const p=s.split(',');s=p.length===2&&p[1].length<=2?p[0].replace(/\./g,'')+'.'+p[1]:s.replace(/,/g,'');}else if(d>=0){const p=s.split('.');if(p.length>2||(p.length===2&&p[1].length===3))s=s.replace(/\./g,'');}const n=Number(s);return Number.isFinite(n)?n:0;}
   const fmt=(v,c)=>new Intl.NumberFormat('es-CO',{style:'currency',currency:c,minimumFractionDigits:c==='USD'?2:0,maximumFractionDigits:c==='USD'?2:0}).format(Number(v)||0);
@@ -22,19 +23,6 @@
   function history(){try{const v=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(v)?v.slice(0,10):[];}catch(_){return[];}}
   function saveHistory(item){const next=[item,...history()].slice(0,10);localStorage.setItem(STORAGE_KEY,JSON.stringify(next));return next;}
 
-  function ensureNav(){
-    if(document.querySelector('[data-view="cambio"]'))return;
-    const anchor=document.querySelector('[data-view="servicios"]');if(!anchor)return;
-    const btn=document.createElement('button');btn.className='nav-item';btn.dataset.view='cambio';btn.innerHTML='<span class="nav-icon">⇄</span><span class="nav-label">Tipo de cambio</span>';
-    anchor.insertAdjacentElement('afterend',btn);
-    btn.addEventListener('click',event=>{
-      event.preventDefault();event.stopImmediatePropagation();
-      active=true;
-      document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x===btn));
-      schedule(false);
-    });
-  }
-
   function setChrome(){
     const eyebrow=document.getElementById('viewEyebrow'),title=document.getElementById('viewTitle');
     if(eyebrow)eyebrow.textContent='FINANZAS';if(title)title.textContent='Tipo de cambio';
@@ -42,7 +30,6 @@
     const s=document.getElementById('sectionFilterBar');if(s)s.hidden=true;
     const p=document.getElementById('paymentMethodFilterBar');if(p)p.hidden=true;
   }
-  function restoreChrome(){const f=document.getElementById('filterBar');if(f)f.hidden=false;}
 
   function historyHtml(items){if(!items.length)return'<div class="empty-state"><div><strong>Sin simulaciones todavía</strong><span>Al calcular una conversión aparecerá aquí. Se conservan solo las últimas 10.</span></div></div>';return`<div class="table-scroll expanded"><table><thead><tr><th>Fecha</th><th>Origen</th><th>Monto</th><th>Destino</th><th>Resultado</th><th>USD→COP</th><th>USD→ARS</th></tr></thead><tbody>${items.map(x=>`<tr><td>${esc(x.at)}</td><td>${esc(x.from)}</td><td>${esc(fmt(x.amount,x.from))}</td><td>${esc(x.to)}</td><td>${esc(fmt(x.result,x.to))}</td><td>${esc(new Intl.NumberFormat('es-CO',{maximumFractionDigits:2}).format(x.usdCop))}</td><td>${esc(new Intl.NumberFormat('es-CO',{maximumFractionDigits:2}).format(x.usdArs))}</td></tr>`).join('')}</tbody></table></div>`;}
 
@@ -62,11 +49,11 @@
   }
 
   async function render(force=false){
-    if(!active)return;
+    if(activeView()!=='cambio')return;
     const version=++renderVersion,root=document.getElementById('viewRoot');if(!root)return;
     setChrome();
     const p=await payload(force).catch(e=>{console.error('Simulador TC:',e);return null;});
-    if(version!==renderVersion||!active||!p||!root.isConnected)return;
+    if(version!==renderVersion||activeView()!=='cambio'||!p||!root.isConnected)return;
     const matrix=p?.sources?.[`${financeId}|Simulador_TC!A:J`]||[];
     paint(root,ratesFromMatrix(matrix),history());
   }
@@ -83,14 +70,11 @@
 
   function injectStyles(){if(document.getElementById('fxSimulatorStyles'))return;const s=document.createElement('style');s.id='fxSimulatorStyles';s.textContent=`.fx-rate-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:12px}.fx-rate-grid label,.fx-rate-grid>div{background:#0a121c;border:1px solid #172335;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:7px}.fx-rate-grid span,.fx-rate-grid label{font-size:11px;color:#8190a5}.fx-rate-grid input,.fx-converter input,.fx-converter select{background:#0b1420;color:#e9f0fa;border:1px solid #1b2a3e;border-radius:9px;padding:10px;font:inherit}.fx-converter{display:grid;grid-template-columns:140px minmax(160px,1fr) 30px 140px auto;gap:10px;align-items:center}.fx-result{margin-top:14px;font-size:25px;font-weight:800;color:#26d07c}.fx-panel{margin-bottom:14px}@media(max-width:800px){.fx-rate-grid{grid-template-columns:1fr 1fr}.fx-converter{grid-template-columns:1fr 1fr}.fx-converter span{display:none}.fx-converter .btn{grid-column:1/-1}.fx-result{font-size:20px}}`;document.head.appendChild(s);}
 
-  injectStyles();ensureNav();
+  injectStyles();
   document.addEventListener('panel:view-root-changed',event=>{
-    const view=String(event.detail?.view||'');
-    if(view==='cambio'){
-      if(active&&!event.detail?.root?.querySelector('[data-fx-view]'))schedule(false);
-      return;
-    }
-    if(active){active=false;renderVersion++;restoreChrome();}
+    if(event.detail?.view==='cambio'){
+      if(!event.detail?.root?.querySelector('[data-fx-view]'))schedule(false);
+    }else renderVersion++;
   });
-  document.addEventListener('panel:backend-data-loaded',()=>{if(active)schedule(false);});
+  document.addEventListener('panel:backend-data-loaded',()=>{if(activeView()==='cambio')schedule(false);});
 })();
