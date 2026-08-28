@@ -7,7 +7,7 @@
 
   const COLORS=['#1769ff','#f6c844','#26d07c','#ff667a','#ffad42','#7a8ba5','#8b5cf6','#22d3ee','#f472b6','#a3e635'];
   const MONTH_LABELS=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-  let timer=null;
+  let timer=null,chartMode='cumulative',rawRows=[],dataReady=false;
 
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
@@ -36,40 +36,85 @@
   }
 
   function amount(row,currency){if(currency==='USD')return parseNumber(row['Monto USD']);if(currency==='ARS')return parseNumber(row['Monto ARS']);return parseNumber(row['Monto COP']);}
+  function formatMoney(value,currency){return new Intl.NumberFormat('es-CO',{style:'currency',currency,maximumFractionDigits:currency==='USD'?2:0}).format(Number(value)||0);}
+
+  function injectStyles(){
+    if(document.getElementById('spendChartModeStyles'))return;
+    const style=document.createElement('style');style.id='spendChartModeStyles';style.textContent=`
+      .spend-chart-mode{display:flex;align-items:center;gap:5px;margin-left:auto;padding:3px;border:1px solid #263548;border-radius:9px;background:#0b131e}
+      .spend-chart-mode button{border:0;background:transparent;color:#8393a8;border-radius:6px;padding:6px 9px;font-size:10px;font-weight:700;cursor:pointer}
+      .spend-chart-mode button.active{background:#17345f;color:#dbeaff}
+      .spend-chart-mode[hidden]{display:none!important}
+    `;document.head.appendChild(style);
+  }
+
+  function ensureModeControl(canvas,singleMonth){
+    const panel=canvas.closest('.panel'),header=panel?.querySelector('.panel-header');
+    if(!panel||!header)return;
+    let control=header.querySelector('[data-spend-chart-mode]');
+    if(!control){
+      control=document.createElement('div');control.className='spend-chart-mode';control.dataset.spendChartMode='true';
+      control.innerHTML='<button type="button" data-spend-mode="cumulative">Acumulado</button><button type="button" data-spend-mode="daily">Por día</button>';
+      control.addEventListener('click',event=>{const btn=event.target.closest('[data-spend-mode]');if(!btn)return;const next=String(btn.dataset.spendMode||'cumulative');if(next===chartMode)return;chartMode=next;renderCurrent();});
+      header.appendChild(control);
+    }
+    control.hidden=!singleMonth;
+    control.querySelectorAll('[data-spend-mode]').forEach(btn=>btn.classList.toggle('active',btn.dataset.spendMode===chartMode));
+    const subtitle=panel.querySelector('.panel-title span');
+    if(subtitle)subtitle.textContent=singleMonth?(chartMode==='daily'?'Gasto realizado en cada día':'Acumulado de gasto real día a día'):'Total real por período seleccionado';
+  }
 
   function redraw(rows){
     if(activeView()!=='gastos'||!window.Chart)return;
     const canvas=document.getElementById('spendChart');if(!canvas)return;
-    Chart.getChart(canvas)?.destroy();
     const currency=activeCurrency(),years=selectedGlobal('year'),months=selectedGlobal('month');
     const singleMonth=years.length===1&&months.length===1;
-    let labels=[],values=[];
+    ensureModeControl(canvas,singleMonth);
+    Chart.getChart(canvas)?.destroy();
+
+    let labels=[],values=[],type='line',seriesLabel='Total seleccionado';
     if(singleMonth){
       const year=Number(years[0]),monthIndex=Number(months[0])-1,now=new Date();
       const endDay=year===now.getFullYear()&&monthIndex===now.getMonth()?now.getDate():new Date(year,monthIndex+1,0).getDate();
       const daily=new Map();
       rows.forEach(row=>{const d=parseDate(row['Fecha real']||row['Fecha registrada']);if(!d||d.getFullYear()!==year||d.getMonth()!==monthIndex)return;daily.set(d.getDate(),(daily.get(d.getDate())||0)+amount(row,currency));});
       let running=0;
-      for(let day=1;day<=endDay;day++){running+=daily.get(day)||0;labels.push(`${String(day).padStart(2,'0')}/${String(monthIndex+1).padStart(2,'0')}`);values.push(running);}
+      for(let day=1;day<=endDay;day++){
+        const dayValue=daily.get(day)||0;running+=dayValue;
+        labels.push(`${String(day).padStart(2,'0')}/${String(monthIndex+1).padStart(2,'0')}`);
+        values.push(chartMode==='daily'?dayValue:running);
+      }
+      if(chartMode==='daily'){type='bar';seriesLabel='Gasto del día';}
+      else seriesLabel='Gasto acumulado';
     }else{
       const totals=new Map();
       rows.forEach(row=>{const d=parseDate(row['Fecha real']||row['Fecha registrada']);if(!d)return;const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;totals.set(key,(totals.get(key)||0)+amount(row,currency));});
       const periods=[...totals.keys()].sort();
       labels=periods.map(period=>{const[year,month]=period.split('-').map(Number);return`${MONTH_LABELS[month-1]} ${year}`;});
-      values=periods.map(period=>totals.get(period)||0);
+      values=periods.map(period=>totals.get(period)||0);seriesLabel='Total del período';
     }
-    new Chart(canvas,{type:'line',data:{labels,datasets:[{label:'Total seleccionado',data:values,borderColor:COLORS[0],backgroundColor:COLORS[0],borderWidth:2,tension:.22,pointRadius:2,pointHoverRadius:5,spanGaps:true}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,labels:{color:'#9aa8ba',boxWidth:10,usePointStyle:true}}},scales:{x:{ticks:{color:'#718098',maxRotation:0,autoSkip:true},grid:{color:'#121c29'}},y:{beginAtZero:true,ticks:{color:'#718098'},grid:{color:'#121c29'}}}}});
+
+    new Chart(canvas,{type,data:{labels,datasets:[{label:seriesLabel,data:values,borderColor:COLORS[0],backgroundColor:COLORS[0],borderWidth:2,tension:type==='line'?.22:0,pointRadius:type==='line'?2:0,pointHoverRadius:type==='line'?5:0,spanGaps:true,borderRadius:type==='bar'?4:0}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,labels:{color:'#9aa8ba',boxWidth:10,usePointStyle:true}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${formatMoney(ctx.parsed.y,currency)}`}}},scales:{x:{ticks:{color:'#718098',maxRotation:0,autoSkip:true},grid:{color:'#121c29'}},y:{beginAtZero:true,ticks:{color:'#718098'},grid:{color:'#121c29'}}}}});
   }
 
-  async function apply(force=false){
+  function renderCurrent(){if(!dataReady||activeView()!=='gastos')return;redraw(rawRows.filter(matches));}
+
+  async function load(force=false){
     if(activeView()!=='gastos')return;
+    if(dataReady&&!force){renderCurrent();return;}
     const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return;
-    const data=await getData(force);const rows=parseRows(data?.sources?.[`${FINANCE_ID}|Movimientos!A:Z`]||[]).filter(matches);redraw(rows);
+    const data=await getData(force);rawRows=parseRows(data?.sources?.[`${FINANCE_ID}|Movimientos!A:Z`]||[]);dataReady=true;renderCurrent();
   }
 
-  function schedule(delay=50,force=false){clearTimeout(timer);timer=setTimeout(()=>apply(force).catch(console.error),delay);}
+  function schedule(delay=50,force=false){clearTimeout(timer);timer=setTimeout(()=>load(force).catch(console.error),delay);}
+
+  injectStyles();
   document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='gastos')schedule(20,false);});
-  document.addEventListener('panel:payment-filters-changed',event=>{if(event.detail?.view==='gastos')schedule(20,false);});
-  document.addEventListener('click',event=>{if(event.target.closest('.currency-btn')&&activeView()==='gastos')schedule(20,false);if(event.target.closest('#refreshBtn'))schedule(250,true);},true);
+  document.addEventListener('panel:payment-filters-changed',event=>{if(event.detail?.view==='gastos')schedule(10,false);});
+  document.addEventListener('panel:filters-updated',()=>{if(activeView()==='gastos')schedule(10,false);});
+  document.addEventListener('click',event=>{
+    if(event.target.closest('.currency-btn')&&activeView()==='gastos')setTimeout(renderCurrent,20);
+    if(event.target.closest('#refreshBtn')&&activeView()==='gastos')schedule(250,true);
+  },true);
   queueMicrotask(()=>schedule(80,false));
 })();
