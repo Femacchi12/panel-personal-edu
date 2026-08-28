@@ -10,7 +10,7 @@
 
   const MONTHS = ['ene','feb','mar','abr','may','jun','jul','ago','sept','oct','nov','dic'];
   const COLORS = ['#1769ff','#26d07c','#f6c844','#ff667a','#8b5cf6','#22d3ee'];
-  let cache=null, cacheAt=0, timer=null, rendering=false, charts=[];
+  let timer=null, rendering=false, charts=[];
 
   const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
@@ -39,7 +39,7 @@
 
   function buildTimeline(rows,currency,bounds){const items=rows.map(row=>{const d=parseDate(row.Fecha);return d?{date:d.getTime(),platform:String(row['Plataforma / Bróker']||'Sin plataforma').trim(),value:parseNumber(row[`Valor ${currency}`])}:null;}).filter(Boolean);if(!items.length)return{labels:[],datasets:[]};const platforms=[...new Set(items.map(x=>x.platform))].sort((a,b)=>a.localeCompare(b,'es'));const maps=new Map(platforms.map(p=>[p,new Map()]));items.forEach(x=>{const m=maps.get(x.platform);m.set(x.date,(m.get(x.date)||0)+x.value);});const minAll=Math.min(...items.map(x=>x.date)),maxAll=Math.max(...items.map(x=>x.date));const start=bounds.start?.getTime()??minAll,end=bounds.end?.getTime()??maxAll;const dates=[...new Set(items.map(x=>x.date).filter(t=>t>=start&&t<=end))].sort((a,b)=>a-b);if(bounds.start&&items.some(x=>x.date<start)&&!dates.includes(start))dates.unshift(start);const valueAt=(platform,date)=>{let best=-Infinity,value=null;maps.get(platform)?.forEach((v,t)=>{if(t<=date&&t>best){best=t;value=v;}});return value;};const datasets=[];if(platforms.length>1)datasets.push({label:'Portafolio consolidado',data:dates.map(d=>platforms.reduce((s,p)=>s+(valueAt(p,d)||0),0)),borderColor:COLORS[0],backgroundColor:COLORS[0],borderWidth:3,tension:.22,spanGaps:true});platforms.forEach((p,i)=>datasets.push({label:p,data:dates.map(d=>valueAt(p,d)),borderColor:COLORS[(i+1)%COLORS.length],backgroundColor:COLORS[(i+1)%COLORS.length],borderWidth:2,tension:.22,spanGaps:true}));return{labels:dates.map(t=>dateLabel(new Date(t))),datasets};}
 
-  async function getPayload(force=false){if(!force&&cache&&Date.now()-cacheAt<55_000)return cache;const token=await window.__PANEL_GET_ID_TOKEN__?.(false);if(!token)throw new Error('Sesión Firebase no disponible');const r=await fetch(`${apiBaseUrl}/api/data`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});if(!r.ok)throw new Error(`Backend ${r.status}`);cache=await r.json();cacheAt=Date.now();return cache;}
+  async function getPayload(force=false){const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')throw new Error('Backend de datos no disponible');return getData(force);}
   function destroyCharts(){charts.forEach(c=>{try{c.destroy();}catch(_){}});charts=[];}
   function chartOptions(horizontal=false,allowNegative=false){const currency=currentCurrency();return{responsive:true,maintainAspectRatio:false,animation:false,indexAxis:horizontal?'y':'x',interaction:{mode:'nearest',intersect:false},plugins:{legend:{labels:{color:'#9aa8ba',boxWidth:10,usePointStyle:true}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${money(horizontal?ctx.parsed.x:ctx.parsed.y,currency)}`}}},scales:{x:{ticks:{color:'#718098',maxRotation:0},grid:{color:'#121c29'}},y:{beginAtZero:!allowNegative,ticks:{color:'#718098'},grid:{color:'#121c29'}}}};}
 
@@ -86,11 +86,9 @@
   function schedule(force=false,delay=180){clearTimeout(timer);timer=setTimeout(()=>render(force),delay);}
 
   injectStyles();
-  document.addEventListener('click',event=>{
-    if(event.target.closest('#refreshBtn')){cache=null;cacheAt=0;}
-  });
+  document.addEventListener('panel:view-root-changed',event=>{if(event?.detail?.view==='inversiones'&&!event.detail.root?.querySelector('#investmentPeriodCorrected'))schedule(false,40);});
   document.addEventListener('panel:section-filters-changed',event=>{if(event?.detail?.view==='inversiones')schedule(false,80);});
   document.addEventListener('panel:section-filters-ready',event=>{if(event?.detail?.view==='inversiones')schedule(false,40);});
-  const root=document.getElementById('viewRoot');if(root)new MutationObserver(()=>{if(activeView()==='inversiones'&&!root.querySelector('#investmentPeriodCorrected'))schedule(false,120);}).observe(root,{childList:true,subtree:false});
-  setTimeout(()=>{if(activeView()==='inversiones'){forcePeriodFilters();schedule(false,180);}},220);
+  document.addEventListener('click',event=>{if(event.target.closest('#refreshBtn')&&activeView()==='inversiones')schedule(true,260);},true);
+  queueMicrotask(()=>{if(activeView()==='inversiones'){forcePeriodFilters();schedule(false,80);}});
 })();
