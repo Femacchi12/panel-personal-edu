@@ -261,8 +261,12 @@
     }
     await renderSectionFilters(view);
     document.dispatchEvent(new CustomEvent('panel:section-filters-changed',{detail:{view}}));
-    const button=document.getElementById('refreshBtn');
-    if(button&&!button.disabled)button.click();
+    const reload=window.__PANEL_RELOAD_DATA__;
+    if(typeof reload==='function')await reload(false);
+    else{
+      const button=document.getElementById('refreshBtn');
+      if(button&&!button.disabled)button.click();
+    }
   }
 
   async function syncView(){

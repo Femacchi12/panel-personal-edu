@@ -196,16 +196,25 @@
       health: cfg.healthSpreadsheetId
     };
     const id = ids[src.book];
-    if (!id) throw new Error(`Falta ID del Sheet ${src.book}`);
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(id)}/values/${encodeURIComponent(src.range)}?majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE`;
-    const response = await fetch(url,{headers:{Authorization:`Bearer ${state.token}`}});
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`${response.status} ${response.statusText}: ${body}`);
+    if (!id) throw new Error('Falta ID del Sheet ' + src.book);
+
+    let values;
+    const getSourceValues = window.__PANEL_GET_SOURCE_VALUES__;
+    if (typeof getSourceValues === 'function') {
+      values = await getSourceValues(id, src.range, false);
+    } else {
+      const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent(id) + '/values/' + encodeURIComponent(src.range) + '?majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE';
+      const response = await fetch(url,{headers:{Authorization:'Bearer ' + state.token}});
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(response.status + ' ' + response.statusText + ': ' + body);
+      }
+      values = (await response.json()).values || [];
     }
-    const payload = await response.json();
-    return src.parser === 'rows' ? parseRows(payload.values||[]) : parseRowsSmart(payload.values||[]);
+    return src.parser === 'rows' ? parseRows(values||[]) : parseRowsSmart(values||[]);
   }
+
+  window.__PANEL_RELOAD_DATA__ = loadLiveData;
 
   function parseRows(values, headerIndex=0) {
     if (!Array.isArray(values) || !values.length || !values[headerIndex]) return [];

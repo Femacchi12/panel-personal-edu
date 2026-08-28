@@ -32,11 +32,15 @@
     try{return await cardsPromise;}finally{cardsPromise=null;}
   }
 
-  function refreshCardsView(attempt=0){
+  function refreshCardsView(){
     if(activeView()!=='tarjetas')return;
+    const reload=window.__PANEL_RELOAD_DATA__;
+    if(typeof reload==='function'){
+      Promise.resolve(reload(false)).catch(error=>console.error('No fue posible aplicar el filtro de tarjeta:',error));
+      return;
+    }
     const button=document.getElementById('refreshBtn');
-    if(button&&!button.disabled){button.click();return;}
-    if(attempt<3)setTimeout(()=>refreshCardsView(attempt+1),160);
+    if(button&&!button.disabled)button.click();
   }
 
   function renderOptions(root){
