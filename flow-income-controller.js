@@ -6,8 +6,10 @@
   const apiBaseUrl = String(cfg.apiBaseUrl || '').replace(/\/$/, '');
   if (!FINANCE_ID || !apiBaseUrl) return;
 
-  let timer = null;
+  let renderFrame = 0;
   let applying = false;
+  let rerunRequested = false;
+  let pendingForce = false;
 
   const norm = value => String(value ?? '')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -334,11 +336,16 @@
   }
 
   async function apply(force = false) {
-    if (applying || activeView() !== 'flujo' || !window.RegularIncomeCore) return;
+    if (activeView() !== 'flujo' || !window.RegularIncomeCore) return;
+    if (applying) {
+      rerunRequested = true;
+      pendingForce = pendingForce || force;
+      return;
+    }
     applying = true;
     try {
       const data = await payload(force);
-      if (!data) return;
+      if (!data || activeView() !== 'flujo') return;
       ensureFilters();
       const model = window.RegularIncomeCore.build(data, FINANCE_ID);
       const movements = sourceRows(data, 'Movimientos!A:Z');
@@ -354,18 +361,27 @@
       console.error('Controlador de ingresos y ahorro de Flujo:', error);
     } finally {
       applying = false;
+      if (rerunRequested && activeView() === 'flujo') {
+        rerunRequested = false;
+        schedule(false);
+      }
     }
   }
 
-  const schedule = (force = false, delay = 70) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => apply(force), delay);
+  const schedule = (force = false) => {
+    pendingForce = pendingForce || force;
+    if (renderFrame) return;
+    renderFrame = requestAnimationFrame(() => {
+      renderFrame = 0;
+      const useForce = pendingForce;
+      pendingForce = false;
+      apply(useForce);
+    });
   };
 
-  document.addEventListener('panel:flow-matrix-v3-rendered', () => schedule(false, 15));
-  document.addEventListener('panel:view-root-changed', event => { if (event.detail?.view === 'flujo') schedule(false, 45); });
-  document.addEventListener('panel:payment-filters-changed', event => { if (event.detail?.view === 'flujo') schedule(false, 35); });
-  document.addEventListener('panel:filters-updated', () => { if (activeView() === 'flujo') schedule(false, 35); });
-  document.addEventListener('click', event => { if (event.target.closest('#refreshBtn') && activeView() === 'flujo') schedule(true, 300); }, true);
-  queueMicrotask(() => { if (activeView() === 'flujo') schedule(false, 90); });
+  document.addEventListener('panel:flow-matrix-v3-rendered', () => schedule(false));
+  document.addEventListener('panel:view-root-changed', event => { if (event.detail?.view === 'flujo') schedule(false); });
+  document.addEventListener('panel:payment-filters-changed', event => { if (event.detail?.view === 'flujo') schedule(false); });
+  document.addEventListener('panel:filters-updated', () => { if (activeView() === 'flujo') schedule(false); });
+  queueMicrotask(() => { if (activeView() === 'flujo') schedule(false); });
 })();
