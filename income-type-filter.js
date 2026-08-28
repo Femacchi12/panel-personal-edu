@@ -148,14 +148,11 @@
     });
   }
 
-  function updateChart(root,retry=0) {
+  function syncChart(root) {
     const canvas = root.querySelector('#incomeCompleteChart');
-    if (!canvas || !window.Chart) return;
+    if (!canvas || !window.Chart) return false;
     const chart = Chart.getChart?.(canvas);
-    if (!chart) {
-      if (retry < 4) setTimeout(() => updateChart(root,retry+1),60);
-      return;
-    }
+    if (!chart) return false;
     chart.data.datasets.forEach(dataset => {
       const label = norm(dataset.label);
       if (label.includes('sueldo cop')) dataset.hidden = !selected.has('payroll');
@@ -164,6 +161,14 @@
       else if (label.includes('total consolidado')) dataset.hidden = !allSelected();
     });
     chart.update('none');
+    return true;
+  }
+
+  function updateChart(root,retry=0) {
+    if (syncChart(root) || retry >= 3) return;
+    requestAnimationFrame(() => {
+      if (root.isConnected && isIncomeView()) updateChart(root,retry+1);
+    });
   }
 
   function apply(root=document.getElementById('viewRoot')) {
