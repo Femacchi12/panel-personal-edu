@@ -11,7 +11,7 @@
   const SUMMARY_ORDER = ['Fijo','Fijo + Super','Variable','Variable - Super','Egresos efectivos','Egresos Financiados','Egresos TOTALES'];
   const MIGRATION_START = '2026-01';
 
-  let timer = null, selectedDetail = null, applying = false;
+  let selectedDetail = null, applying = false, rerunRequested = false, renderFrame = 0, pendingForce = false;
   let sortState = { type: 'id', dir: 'asc', month: null };
 
   const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
@@ -182,25 +182,38 @@
   }
 
   async function run(force=false){
-    if(applying||activeView()!=='flujo')return; applying=true;
+    if(activeView()!=='flujo')return;
+    if(applying){rerunRequested=true;pendingForce=pendingForce||force;return;}
+    applying=true;
     try{
+      const p=await payload(force); if(!p||activeView()!=='flujo')return;
       const root=document.getElementById('viewRoot'); if(!root)return;
       const {host,detail}=ensureHosts(root);
-      const p=await payload(force); if(!p)return;
       const movements=rowsFor(p,'Movimientos!A:Z');
       const data={flowRows:rowsFor(p,'Flujo_Mensual!A:J'),movements,concepts:rowsFor(p,'Resumen_Conceptos_Ingresos!A:L')};
       render(host,detail,data);
       document.dispatchEvent(new CustomEvent('panel:flow-matrix-v3-rendered'));
-    }catch(e){console.error('Matriz Flujo v3:',e);}finally{applying=false;}
+    }catch(e){console.error('Matriz Flujo v3:',e);}finally{
+      applying=false;
+      if(rerunRequested&&activeView()==='flujo'){rerunRequested=false;schedule(false);}
+    }
   }
-  function schedule(force=false,delay=55){clearTimeout(timer);timer=setTimeout(()=>run(force),delay);}
+  function schedule(force=false){
+    pendingForce=pendingForce||force;
+    if(renderFrame)return;
+    renderFrame=requestAnimationFrame(()=>{
+      renderFrame=0;
+      const useForce=pendingForce;
+      pendingForce=false;
+      run(useForce);
+    });
+  }
 
   injectStyles();
   document.addEventListener('panel:view-root-changed',event=>{
-    if(event.detail?.view==='flujo'&&!document.getElementById('flowMatrixV3'))schedule(false,20);
+    if(event.detail?.view==='flujo'&&!document.getElementById('flowMatrixV3'))schedule(false);
   });
-  document.addEventListener('panel:payment-filters-changed',event=>{if(event.detail?.view==='flujo')schedule(false,35);});
-  document.addEventListener('panel:filters-updated',()=>{if(activeView()==='flujo')schedule(false,35);});
-  document.addEventListener('click',event=>{if(event.target.closest('#refreshBtn')&&activeView()==='flujo')schedule(true,280);},true);
-  queueMicrotask(()=>{if(activeView()==='flujo')schedule(false,80);});
+  document.addEventListener('panel:payment-filters-changed',event=>{if(event.detail?.view==='flujo')schedule(false);});
+  document.addEventListener('panel:filters-updated',()=>{if(activeView()==='flujo')schedule(false);});
+  queueMicrotask(()=>{if(activeView()==='flujo')schedule(false);});
 })();
