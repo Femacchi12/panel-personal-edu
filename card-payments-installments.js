@@ -8,11 +8,13 @@
   const root = document.getElementById('viewRoot');
   if (!root) return;
 
-  let timer = null;
+  let renderFrame = 0;
+  let requestVersion = 0;
+  let pendingForce = false;
 
   const MONTHS = ['ene','feb','mar','abr','may','jun','jul','ago','sept','oct','nov','dic'];
   const norm = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
 
   function activeView(){ return document.querySelector('.nav-item.active')?.dataset.view || 'general'; }
 
@@ -222,12 +224,13 @@
 
   async function render(force=false){
     if(activeView()!=='tarjetas')return;
+    const version=++requestVersion;
     injectStyles();
     const [cycles,installments]=await Promise.all([
       sourceRows('Pagos_Tarjetas!A:T',force),
       sourceRows('Cuotas!A:T',force)
     ]).catch(()=>[null,null]);
-    if(!cycles||!installments||activeView()!=='tarjetas')return;
+    if(version!==requestVersion||!cycles||!installments||activeView()!=='tarjetas')return;
     const now=new Date();
     const purchases=groupPurchases(installments,cycles,now);
     const selected=selectedCard();
@@ -239,17 +242,23 @@
     host.innerHTML=`${renderPayments(cycles,selected)}${renderInstallments(purchases,projection,selected)}`;
   }
 
-  function scheduleRender(delay=65,force=false){
-    clearTimeout(timer);
-    timer=setTimeout(()=>render(force).catch(console.error),delay);
+  function scheduleRender(force=false){
+    pendingForce=pendingForce||force;
+    if(renderFrame)return;
+    renderFrame=requestAnimationFrame(()=>{
+      renderFrame=0;
+      const useForce=pendingForce;
+      pendingForce=false;
+      render(useForce).catch(console.error);
+    });
   }
   document.addEventListener('panel:view-root-changed',event=>{
-    if(event.detail?.view==='tarjetas')scheduleRender(45,false);
+    if(event.detail?.view==='tarjetas')scheduleRender(false);else requestVersion++;
   });
-  document.addEventListener('panel:card-filter-changed',()=>scheduleRender(45,false));
+  document.addEventListener('panel:card-filter-changed',()=>scheduleRender(false));
   document.addEventListener('panel:section-filters-changed',event=>{
-    if(event.detail?.view==='tarjetas')scheduleRender(45,false);
+    if(event.detail?.view==='tarjetas')scheduleRender(false);
   });
 
-  render(false).catch(console.error);
+  queueMicrotask(()=>scheduleRender(false));
 })();
