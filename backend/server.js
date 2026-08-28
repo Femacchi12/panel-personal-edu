@@ -22,7 +22,6 @@ const SOURCES = [
   { book: 'finance', range: 'Tablas_Flujo!A:T' },
   { book: 'finance', range: 'Tarjetas!A:T' },
   { book: 'finance', range: 'Cuotas!A:T' },
-  { book: 'finance', range: 'Conciliacion_Cuotas_Nu!A:L' },
   { book: 'finance', range: 'Pagos_Tarjetas!A:T' },
   { book: 'finance', range: 'Resumen_Inversiones!A:N' },
   { book: 'finance', range: 'Posiciones!A:X' },
@@ -181,7 +180,7 @@ app.get('/health', (req, res) => {
     ok: true,
     service: 'panel-personal-edu-backend',
     sourceCount: SOURCES.length,
-    revision: 'pension-cuts-nu-installments-2026-08-28'
+    revision: 'single-nu-installment-master-2026-08-28'
   });
 });
 
