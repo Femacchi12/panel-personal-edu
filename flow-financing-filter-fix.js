@@ -90,14 +90,6 @@
     return new Intl.NumberFormat('es-CO',{style:'currency',currency,minimumFractionDigits:digits,maximumFractionDigits:digits}).format(Number(value)||0);
   }
 
-  function removeExpenseKpis(){
-    if(activeView()!=='gastos')return;
-    const root=document.getElementById('viewRoot'); if(!root)return;
-    [...root.querySelectorAll('.kpi-grid')].forEach(grid=>{
-      const labels=[...grid.querySelectorAll('.kpi-label')].map(x=>x.textContent.trim());
-      if(labels.includes('Gasto seleccionado')||labels.includes('Ticket promedio')||labels.includes('Categorías')||labels.includes('Financiado'))grid.remove();
-    });
-  }
   function redrawSpendChart(rows){
     if(activeView()!=='gastos'||!window.Chart)return;
     const canvas=document.getElementById('spendChart'); if(!canvas)return;
@@ -139,7 +131,7 @@
     const data=await payload(force); if(!data)return;
     const movements=sourceRows(data,'Movimientos!A:Z');
     const filtered=movements.filter(r=>movementMatches(r,view));
-    if(view==='gastos'){removeExpenseKpis();redrawSpendChart(filtered);}else renderFinancing(filtered);
+    if(view==='gastos')redrawSpendChart(filtered);else renderFinancing(filtered);
   }
   function schedule(delay=180,force=false){clearTimeout(timer);timer=setTimeout(()=>apply(force).catch(console.error),delay);}
 
