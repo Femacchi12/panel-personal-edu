@@ -2,18 +2,17 @@
   'use strict';
 
   const cfg = window.PANEL_CONFIG || {};
-  const apiBaseUrl = String(cfg.apiBaseUrl || '').replace(/\/$/, '');
   const financeId = String(cfg.financeSpreadsheetId || '');
-  if (!apiBaseUrl || !financeId) return;
+  if (!financeId) return;
 
   window.__PANEL_INVESTMENT_PERIOD_ENHANCED__ = true;
 
   const MONTHS = ['ene','feb','mar','abr','may','jun','jul','ago','sept','oct','nov','dic'];
   const COLORS = ['#1769ff','#26d07c','#f6c844','#ff667a','#8b5cf6','#22d3ee'];
-  let timer=null, rendering=false, charts=[];
+  let frame=0,rendering=false,rerunRequested=false,pendingForce=false,requestVersion=0,charts=[];
 
   const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-  const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
+  const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const activeView = () => document.querySelector('.nav-item.active')?.dataset.view || '';
   const currentCurrency = () => document.querySelector('.currency-btn.active')?.dataset.currency || 'COP';
 
@@ -43,12 +42,15 @@
   function destroyCharts(){charts.forEach(c=>{try{c.destroy();}catch(_){}});charts=[];}
   function chartOptions(horizontal=false,allowNegative=false){const currency=currentCurrency();return{responsive:true,maintainAspectRatio:false,animation:false,indexAxis:horizontal?'y':'x',interaction:{mode:'nearest',intersect:false},plugins:{legend:{labels:{color:'#9aa8ba',boxWidth:10,usePointStyle:true}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${money(horizontal?ctx.parsed.x:ctx.parsed.y,currency)}`}}},scales:{x:{ticks:{color:'#718098',maxRotation:0},grid:{color:'#121c29'}},y:{beginAtZero:!allowNegative,ticks:{color:'#718098'},grid:{color:'#121c29'}}}};}
 
-  async function render(force=false){
-    if(activeView()!=='inversiones'||rendering)return;rendering=true;
+  async function render(force=false,version=requestVersion){
+    if(activeView()!=='inversiones')return;
+    if(rendering){rerunRequested=true;pendingForce=pendingForce||force;return;}
+    rendering=true;
     try{
       forcePeriodFilters();
       const root=document.getElementById('viewRoot');if(!root)return;
-      const p=await getPayload(force).catch(e=>{console.error('Inversiones periodo:',e);return null;});if(!p||activeView()!=='inversiones')return;
+      const p=await getPayload(force).catch(e=>{console.error('Inversiones periodo:',e);return null;});
+      if(!p||version!==requestVersion||activeView()!=='inversiones'||!root.isConnected)return;
       const allPos=parseRows(p?.sources?.[`${financeId}|Posiciones!A:X`]||[]),raw=applyLocalFilters(allPos),summaryAll=parseRows(p?.sources?.[`${financeId}|Resumen_Inversiones!A:N`]||[]);
       const bounds=periodBounds(),snapshot=latestPerPlatformAsOf(raw,bounds.end),currency=currentCurrency(),rates=investmentRates(),timeline=buildTimeline(raw,currency,bounds);
       const summary=latestSummaryAsOf(summaryAll.filter(summaryMatchesPlatform),bounds.end);
@@ -71,6 +73,7 @@
       }
       const byCategory=aggregate(snapshot,r=>r.Categoría||r['Clase de activo']||'Sin categoría',r=>parseNumber(r[`Valor ${currency}`]));
 
+      if(version!==requestVersion||activeView()!=='inversiones'||!root.isConnected)return;
       let host=root.querySelector('#investmentPeriodCorrected');if(!host){host=document.createElement('div');host.id='investmentPeriodCorrected';host.className='investment-corrected';const head=root.querySelector('.section-head');if(head)head.insertAdjacentElement('afterend',host);else root.prepend(host);}
       destroyCharts();
       const note=effectiveMode!=='total'&&categoryFilters?'<div class="investment-truth-note">Clase, Categoría y Subcategoría filtran las posiciones de mercado. Capital y Ganancia/Pérdida solo existen consolidados por plataforma en el Sheet y no se reparten por instrumento.</div>':'';
@@ -79,16 +82,40 @@
       if(!window.Chart)return;
       const pc=document.getElementById('investmentPeriodPlatformChart');if(pc)charts.push(new Chart(pc,{type:'bar',data:{labels:[...byPlatform.keys()],datasets:[{label:modeLabel,data:[...byPlatform.values()]}]},options:chartOptions(false,effectiveMode==='result')}));
       if(effectiveMode==='total'){const cats=[...byCategory.entries()].sort((a,b)=>b[1]-a[1]).slice(0,14),cc=document.getElementById('investmentPeriodCategoryChart');if(cc)charts.push(new Chart(cc,{type:'bar',data:{labels:cats.map(x=>x[0]),datasets:[{label:`Valor ${currency}`,data:cats.map(x=>x[1])}]},options:chartOptions(true)}));const lc=document.getElementById('investmentPeriodTimelineChart');if(lc&&timeline.labels.length)charts.push(new Chart(lc,{type:'line',data:{labels:timeline.labels,datasets:timeline.datasets},options:chartOptions(false)}));}
-    }finally{rendering=false;}
+    }finally{
+      rendering=false;
+      if(rerunRequested&&activeView()==='inversiones'){
+        rerunRequested=false;
+        schedule(false);
+      }
+    }
   }
 
   function injectStyles(){if(document.getElementById('investmentPeriodStyles'))return;const style=document.createElement('style');style.id='investmentPeriodStyles';style.textContent=`#investmentPeriodCorrected{display:grid;gap:16px}#investmentPeriodCorrected .table-scroll{max-height:520px}.investment-truth-note{color:#8b9ab0;font-size:10px;line-height:1.55;padding:10px 12px;border:1px solid var(--border-soft);border-radius:10px;background:rgba(255,255,255,.015)}`;document.head.appendChild(style);}
-  function schedule(force=false,delay=180){clearTimeout(timer);timer=setTimeout(()=>render(force),delay);}
+  function schedule(force=false){
+    pendingForce=pendingForce||force;
+    requestVersion++;
+    if(frame)return;
+    frame=requestAnimationFrame(()=>{
+      frame=0;
+      const version=requestVersion,useForce=pendingForce;
+      pendingForce=false;
+      render(useForce,version).catch(console.error);
+    });
+  }
 
   injectStyles();
-  document.addEventListener('panel:view-root-changed',event=>{if(event?.detail?.view==='inversiones'&&!event.detail.root?.querySelector('#investmentPeriodCorrected'))schedule(false,40);});
-  document.addEventListener('panel:section-filters-changed',event=>{if(event?.detail?.view==='inversiones')schedule(false,80);});
-  document.addEventListener('panel:section-filters-ready',event=>{if(event?.detail?.view==='inversiones')schedule(false,40);});
-  document.addEventListener('click',event=>{if(event.target.closest('#refreshBtn')&&activeView()==='inversiones')schedule(true,260);},true);
-  queueMicrotask(()=>{if(activeView()==='inversiones'){forcePeriodFilters();schedule(false,80);}});
+  document.addEventListener('panel:view-root-changed',event=>{
+    if(event?.detail?.view==='inversiones'){
+      if(!event.detail.root?.querySelector('#investmentPeriodCorrected'))schedule(false);
+    }else{
+      requestVersion++;
+      rerunRequested=false;
+      destroyCharts();
+    }
+  });
+  document.addEventListener('panel:section-filters-changed',event=>{if(event?.detail?.view==='inversiones')schedule(false);});
+  document.addEventListener('panel:section-filters-ready',event=>{if(event?.detail?.view==='inversiones')schedule(false);});
+  document.addEventListener('click',event=>{if(event.target.closest('#refreshBtn')&&activeView()==='inversiones')schedule(true);},true);
+  queueMicrotask(()=>{if(activeView()==='inversiones'){forcePeriodFilters();schedule(false);}});
 })();
