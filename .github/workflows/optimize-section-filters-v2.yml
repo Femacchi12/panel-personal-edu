@@ -1,0 +1,31 @@
+name: optimize section filters v2
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  optimize:
+    if: github.event.head_commit.message != 'Optimize section filter parsing'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply optimization
+        run: python .github/scripts/optimize_section_filters.py
+      - name: Validate JavaScript
+        run: |
+          node --check section-data-filters.js
+          git diff --check
+      - name: Commit optimization
+        shell: bash
+        run: |
+          git config user.name 'Eduardo Macchi'
+          git config user.email 'fernandoemacchi@gmail.com'
+          git add section-data-filters.js
+          git commit -m 'Optimize section filter parsing'
+          git push origin main
