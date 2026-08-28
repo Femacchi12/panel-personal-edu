@@ -206,5 +206,9 @@
     try{return jsonResponse({range,majorDimension:'ROWS',values:await getSourceValues(spreadsheetId,range,false)});}catch(error){return jsonResponse({error:{message:String(error?.message||error)}},502,'Backend Error');}
   };
 
-  document.addEventListener('click',event=>{if(event.isTrusted&&event.target.closest?.('#refreshBtn'))resetBackendCache();},true);
+  document.addEventListener('click',event=>{
+    if(!event.isTrusted||!event.target.closest?.('#refreshBtn'))return;
+    resetBackendCache();
+    document.dispatchEvent(new CustomEvent('panel:backend-refresh-requested'));
+  },true);
 })();
