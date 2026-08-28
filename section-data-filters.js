@@ -9,8 +9,6 @@
   const DOCUMENTS_ID = cfg.documentsSpreadsheetId;
   const HEALTH_ID = cfg.healthSpreadsheetId;
   const localState = {};
-  let backendCache = null;
-  let backendCacheAt = 0;
   const parsedRowsCache = new WeakMap();
   let lastView = null;
   let syncVersion = 0;
@@ -112,12 +110,9 @@
   function localDef(view,key){ return (VIEW_CONFIG[view]?.local||[]).find(def=>def.key===key); }
 
   async function getBackendData(force=false){
-    if(typeof window.__PANEL_GET_BACKEND_DATA__==='function')return window.__PANEL_GET_BACKEND_DATA__(force);
-    if(!force&&backendCache&&Date.now()-backendCacheAt<55_000)return backendCache;
-    const token=await window.__PANEL_GET_ID_TOKEN__?.(false); if(!token)throw new Error('Sesión Firebase no disponible');
-    const response=await fetch(`${apiBaseUrl}/api/data`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});
-    if(!response.ok)throw new Error(`Backend ${response.status}`);
-    backendCache=await response.json(); backendCacheAt=Date.now(); return backendCache;
+    const getData=window.__PANEL_GET_BACKEND_DATA__;
+    if(typeof getData!=='function')throw new Error('Backend central de datos no disponible');
+    return getData(force);
   }
 
   function parsedRowsFor(payload,key){
@@ -312,7 +307,6 @@
         document.dispatchEvent(new CustomEvent('panel:section-filters-changed',{detail:{view}}));
       });
     }
-    if(event.target.closest('#refreshBtn')){backendCache=null;backendCacheAt=0;}
   },true);
 
   const start=()=>syncView(activeView()).catch(console.error);
