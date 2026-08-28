@@ -22,10 +22,12 @@ const SOURCES = [
   { book: 'finance', range: 'Tablas_Flujo!A:T' },
   { book: 'finance', range: 'Tarjetas!A:T' },
   { book: 'finance', range: 'Cuotas!A:T' },
+  { book: 'finance', range: 'Conciliacion_Cuotas_Nu!A:L' },
   { book: 'finance', range: 'Pagos_Tarjetas!A:T' },
   { book: 'finance', range: 'Resumen_Inversiones!A:N' },
   { book: 'finance', range: 'Posiciones!A:X' },
   { book: 'finance', range: 'Pensiones_Cesantias!A:T' },
+  { book: 'finance', range: 'Cortes_Pension_Cesantias!A:R' },
   { book: 'finance', range: 'Resumen_Ingresos!A:H' },
   { book: 'finance', range: 'Ingresos!A:T' },
   { book: 'finance', range: 'Detalle_Ingresos!A:L' },
@@ -109,6 +111,31 @@ async function readWorkbook(spreadsheetId, sourceList) {
   return response.data.valueRanges || [];
 }
 
+async function readRangeUnformatted(spreadsheetId, range) {
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range,
+    majorDimension: 'ROWS',
+    valueRenderOption: 'UNFORMATTED_VALUE'
+  });
+  return response.data.values || [];
+}
+
+function patchPensionUsdColumns(financeSources, financeValues, rawUsdValues) {
+  const sourceIndex = financeSources.findIndex(source => source.range === 'Pensiones_Cesantias!A:T');
+  const values = sourceIndex >= 0 ? financeValues[sourceIndex]?.values : null;
+  if (!Array.isArray(values) || !Array.isArray(rawUsdValues)) return;
+
+  for (let rowIndex = 1; rowIndex < Math.min(values.length, rawUsdValues.length); rowIndex += 1) {
+    const row = values[rowIndex];
+    const rawRow = rawUsdValues[rowIndex];
+    if (!Array.isArray(row) || !Array.isArray(rawRow)) continue;
+    while (row.length < 19) row.push('');
+    if (rawRow[0] !== '' && rawRow[0] != null) row[17] = rawRow[0];
+    if (rawRow[1] !== '' && rawRow[1] != null) row[18] = rawRow[1];
+  }
+}
+
 async function buildPayload() {
   const now = Date.now();
   if (cache.payload && now < cache.expiresAt) return cache.payload;
@@ -117,11 +144,17 @@ async function buildPayload() {
   const documentSources = SOURCES.filter(s => s.book === 'documents');
   const healthSources = SOURCES.filter(s => s.book === 'health');
 
-  const [financeValues, documentValues, healthValues] = await Promise.all([
+  const [financeValues, documentValues, healthValues, pensionUsdValues] = await Promise.all([
     readWorkbook(FINANCE_SPREADSHEET_ID, financeSources),
     readWorkbook(DOCUMENTS_SPREADSHEET_ID, documentSources),
-    readWorkbook(HEALTH_SPREADSHEET_ID, healthSources)
+    readWorkbook(HEALTH_SPREADSHEET_ID, healthSources),
+    readRangeUnformatted(FINANCE_SPREADSHEET_ID, 'Pensiones_Cesantias!R:S')
   ]);
+
+  // Google Sheets conserva valores numéricos correctos en R:S, pero su capa de
+  // formato devuelve #VALUE! para estas dos columnas. Sustituimos únicamente
+  // esas celdas por los valores numéricos efectivos antes de exponer el payload.
+  patchPensionUsdColumns(financeSources, financeValues, pensionUsdValues);
 
   const sources = {};
   financeSources.forEach((src, index) => {
@@ -148,7 +181,7 @@ app.get('/health', (req, res) => {
     ok: true,
     service: 'panel-personal-edu-backend',
     sourceCount: SOURCES.length,
-    revision: 'canonical-movements-a-z-2026-08-27'
+    revision: 'pension-cuts-nu-installments-2026-08-28'
   });
 });
 
