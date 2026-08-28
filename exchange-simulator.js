@@ -7,19 +7,25 @@
   if(!apiBaseUrl||!financeId)return;
 
   const STORAGE_KEY='panel-personal-edu.fx-simulations.v1';
-  let active=false,cache=null,cacheAt=0;
+  let active=false,renderVersion=0;
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   function num(v){if(typeof v==='number')return Number.isFinite(v)?v:0;let s=String(v??'').trim().replace(/[^\d,.\-]/g,'');if(!s)return 0;const c=s.lastIndexOf(','),d=s.lastIndexOf('.');if(c>=0&&d>=0){if(c>d)s=s.replace(/\./g,'').replace(',','.');else s=s.replace(/,/g,'');}else if(c>=0){const p=s.split(',');s=p.length===2&&p[1].length<=2?p[0].replace(/\./g,'')+'.'+p[1]:s.replace(/,/g,'');}else if(d>=0){const p=s.split('.');if(p.length>2||(p.length===2&&p[1].length===3))s=s.replace(/\./g,'');}const n=Number(s);return Number.isFinite(n)?n:0;}
   const fmt=(v,c)=>new Intl.NumberFormat('es-CO',{style:'currency',currency:c,minimumFractionDigits:c==='USD'?2:0,maximumFractionDigits:c==='USD'?2:0}).format(Number(v)||0);
 
-  async function payload(force=false){if(!force&&cache&&Date.now()-cacheAt<55_000)return cache;const token=await window.__PANEL_GET_ID_TOKEN__?.(false);if(!token)throw new Error('Sesión no disponible');const r=await fetch(`${apiBaseUrl}/api/data`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});if(!r.ok)throw new Error(`Backend ${r.status}`);cache=await r.json();cacheAt=Date.now();return cache;}
+  async function payload(force=false){
+    const getData=window.__PANEL_GET_BACKEND_DATA__;
+    if(typeof getData==='function')return getData(force);
+    const token=await window.__PANEL_GET_ID_TOKEN__?.(false);if(!token)throw new Error('Sesión no disponible');
+    const r=await fetch(`${apiBaseUrl}/api/data`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});if(!r.ok)throw new Error(`Backend ${r.status}`);
+    return r.json();
+  }
   function ratesFromMatrix(matrix){return{usdCop:num(matrix?.[3]?.[1])||3150,usdArs:num(matrix?.[4]?.[1])||1500};}
   function convert(amount,from,to,r){if(from===to)return amount;if(from==='USD'&&to==='COP')return amount*r.usdCop;if(from==='USD'&&to==='ARS')return amount*r.usdArs;if(from==='COP'&&to==='USD')return amount/r.usdCop;if(from==='ARS'&&to==='USD')return amount/r.usdArs;if(from==='ARS'&&to==='COP')return amount*(r.usdCop/r.usdArs);if(from==='COP'&&to==='ARS')return amount*(r.usdArs/r.usdCop);return 0;}
   function history(){try{const v=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(v)?v.slice(0,10):[];}catch(_){return[];}}
   function saveHistory(item){const next=[item,...history()].slice(0,10);localStorage.setItem(STORAGE_KEY,JSON.stringify(next));return next;}
 
-  function ensureNav(){if(document.querySelector('[data-view="cambio"]'))return;const anchor=document.querySelector('[data-view="servicios"]');if(!anchor)return;const btn=document.createElement('button');btn.className='nav-item';btn.dataset.view='cambio';btn.innerHTML='<span class="nav-icon">⇄</span><span class="nav-label">Tipo de cambio</span>';anchor.insertAdjacentElement('afterend',btn);btn.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();active=true;document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x===btn));render(true);});}
+  function ensureNav(){if(document.querySelector('[data-view="cambio"]'))return;const anchor=document.querySelector('[data-view="servicios"]');if(!anchor)return;const btn=document.createElement('button');btn.className='nav-item';btn.dataset.view='cambio';btn.innerHTML='<span class="nav-icon">⇄</span><span class="nav-label">Tipo de cambio</span>';anchor.insertAdjacentElement('afterend',btn);btn.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();active=true;document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x===btn));render(false);});}
 
   function setChrome(){document.getElementById('viewEyebrow').textContent='FINANZAS';document.getElementById('viewTitle').textContent='Tipo de cambio';const f=document.getElementById('filterBar');if(f)f.hidden=true;const s=document.getElementById('sectionFilterBar');if(s)s.hidden=true;}
   function restoreChrome(){const f=document.getElementById('filterBar');if(f)f.hidden=false;}
@@ -41,15 +47,22 @@
     root.querySelector('#fxClearHistory').addEventListener('click',()=>{localStorage.removeItem(STORAGE_KEY);root.querySelector('#fxHistory').innerHTML=historyHtml([]);});
   }
 
-  async function render(force=false){if(!active)return;const root=document.getElementById('viewRoot');if(!root)return;setChrome();const p=await payload(force).catch(e=>{console.error('Simulador TC:',e);return null;});const matrix=p?.sources?.[`${financeId}|Simulador_TC!A:J`]||[];paint(root,ratesFromMatrix(matrix),history());}
+  async function render(force=false){
+    if(!active)return;
+    const version=++renderVersion,root=document.getElementById('viewRoot');if(!root)return;
+    setChrome();
+    const p=await payload(force).catch(e=>{console.error('Simulador TC:',e);return null;});
+    if(version!==renderVersion||!active||!p)return;
+    const matrix=p?.sources?.[`${financeId}|Simulador_TC!A:J`]||[];
+    paint(root,ratesFromMatrix(matrix),history());
+  }
 
   function injectStyles(){if(document.getElementById('fxSimulatorStyles'))return;const s=document.createElement('style');s.id='fxSimulatorStyles';s.textContent=`.fx-rate-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:12px}.fx-rate-grid label,.fx-rate-grid>div{background:#0a121c;border:1px solid #172335;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:7px}.fx-rate-grid span,.fx-rate-grid label{font-size:11px;color:#8190a5}.fx-rate-grid input,.fx-converter input,.fx-converter select{background:#0b1420;color:#e9f0fa;border:1px solid #1b2a3e;border-radius:9px;padding:10px;font:inherit}.fx-converter{display:grid;grid-template-columns:140px minmax(160px,1fr) 30px 140px auto;gap:10px;align-items:center}.fx-result{margin-top:14px;font-size:25px;font-weight:800;color:#26d07c}.fx-panel{margin-bottom:14px}@media(max-width:800px){.fx-rate-grid{grid-template-columns:1fr 1fr}.fx-converter{grid-template-columns:1fr 1fr}.fx-converter span{display:none}.fx-converter .btn{grid-column:1/-1}.fx-result{font-size:20px}}`;document.head.appendChild(s);}
 
   injectStyles();ensureNav();
   document.addEventListener('click',event=>{
     const nav=event.target.closest('.nav-item');
-    if(nav&&nav.dataset.view!=='cambio'&&active){active=false;restoreChrome();}
-    if(active&&event.target.closest('.currency-btn'))setTimeout(()=>render(false),120);
-    if(active&&event.target.closest('#refreshBtn')){cache=null;cacheAt=0;setTimeout(()=>render(true),350);}
+    if(nav&&nav.dataset.view!=='cambio'&&active){active=false;renderVersion++;restoreChrome();}
+    if(active&&event.target.closest('#refreshBtn'))setTimeout(()=>render(false),350);
   });
 })();
