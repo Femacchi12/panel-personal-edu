@@ -11,6 +11,7 @@
   const localState = {};
   let backendCache = null;
   let backendCacheAt = 0;
+  const parsedRowsCache = new WeakMap();
   let lastView = null;
   let syncing = false;
 
@@ -119,13 +120,21 @@
     backendCache=await response.json(); backendCacheAt=Date.now(); return backendCache;
   }
 
-  async function getOptions(def){
+  function parsedRowsFor(payload,key){
+    if(!payload||typeof payload!=='object')return parseRows(payload?.sources?.[key]||[]);
+    let cache=parsedRowsCache.get(payload);
+    if(!cache){cache=new Map();parsedRowsCache.set(payload,cache);}
+    if(!cache.has(key))cache.set(key,parseRows(payload?.sources?.[key]||[]));
+    return cache.get(key);
+  }
+
+  async function getOptions(def,payload=null){
     if(Array.isArray(def.options)){
       return def.options.map(option=>typeof option==='string'?{value:option,label:option}:{value:String(option.value??''),label:String(option.label??option.value??'')});
     }
-    const payload=await getBackendData(false),values=new Set();
+    const data=payload||await getBackendData(false),values=new Set();
     def.sources.forEach(source=>{
-      parseRows(payload?.sources?.[sourceKey(source)]||[]).forEach(row=>{const value=pick(row,source.fields);if(value)values.add(value);});
+      parsedRowsFor(data,sourceKey(source)).forEach(row=>{const value=pick(row,source.fields);if(value)values.add(value);});
     });
     return [...values].sort((a,b)=>a.localeCompare(b,'es',{numeric:true,sensitivity:'base'})).map(value=>({value,label:value}));
   }
@@ -217,9 +226,12 @@
     if(!conf.local.length){bar.hidden=true;bar.innerHTML='';return;}
 
     // Resolver todas las opciones antes de tocar el DOM evita que los filtros
-    // aparezcan uno por uno durante la primera entrada a una sección.
+    // aparezcan uno por uno durante la primera entrada a una sección. El backend
+    // se obtiene una sola vez y cada fuente se parsea una sola vez por payload.
     bar.hidden=true;
-    const optionSets=await Promise.all(conf.local.map(def=>getOptions(def).catch(()=>[])));
+    const needsBackend=conf.local.some(def=>!Array.isArray(def.options)&&(def.sources||[]).length);
+    const payload=needsBackend?await getBackendData(false):null;
+    const optionSets=await Promise.all(conf.local.map(def=>getOptions(def,payload).catch(()=>[])));
     if(activeView()!==view)return;
 
     bar.innerHTML=`<div class="filter-head"><div><span class="eyebrow">FILTROS DE LA SECCIÓN</span><strong>${esc(document.getElementById('viewTitle')?.textContent||'')}</strong></div><div class="filter-actions"><button id="clearSectionFilters" class="text-btn">Borrar filtros de sección</button></div></div><div class="section-filter-grid"></div>`;
@@ -253,13 +265,16 @@
 
   async function applyLocalChange(view){
     setCurrentFilterState(view);
+    updateLocalControls(view);
+    document.querySelectorAll('#sectionFilterBar .local-multi-filter.open').forEach(root=>{
+      root.classList.remove('open');
+      root.querySelector('.local-trigger')?.setAttribute('aria-expanded','false');
+    });
     if(view==='inversiones'){
-      updateLocalControls(view);
       document.getElementById('investmentV2ModeFilter')?.remove();
       document.dispatchEvent(new CustomEvent('panel:section-filters-changed',{detail:{view}}));
       return;
     }
-    await renderSectionFilters(view);
     document.dispatchEvent(new CustomEvent('panel:section-filters-changed',{detail:{view}}));
     const reload=window.__PANEL_RELOAD_DATA__;
     if(typeof reload==='function')await reload(false);
@@ -291,9 +306,9 @@
     if(event.target.closest('#clearFilters,#resetCurrentMonth')){
       const view=activeView();
       clearLocal(view);
+      setCurrentFilterState(view);
       setTimeout(()=>{
-        setCurrentFilterState(view);
-        if(view==='inversiones')updateLocalControls(view);else renderSectionFilters(view);
+        updateLocalControls(view);
         document.dispatchEvent(new CustomEvent('panel:section-filters-changed',{detail:{view}}));
       },80);
     }
