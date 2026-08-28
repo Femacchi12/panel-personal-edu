@@ -115,7 +115,5 @@
 
   ensureStyles();
   document.addEventListener('panel:backend-data-loaded',schedule);
-  document.addEventListener('panel:view-root-changed',schedule);
-  document.addEventListener('panel:filters-updated',schedule);
   queueMicrotask(schedule);
 })();
