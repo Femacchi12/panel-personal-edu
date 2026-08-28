@@ -86,7 +86,6 @@
   document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='tarjetas')schedule();else{drawVersion++;cardChart?.destroy();cardChart=null;}});
   document.addEventListener('panel:card-filter-changed',schedule);
   document.addEventListener('panel:filters-updated',()=>{if(activeView()==='tarjetas')schedule();});
-  document.addEventListener('click',event=>{if(event.target.closest('.currency-btn')&&activeView()==='tarjetas')schedule();});
   window.addEventListener('resize',()=>{if(cardChart)requestAnimationFrame(()=>drawFixedYAxis(cardChart));});
   queueMicrotask(schedule);
 })();
