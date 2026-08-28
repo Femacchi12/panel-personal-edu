@@ -115,7 +115,7 @@ async function loadDashboard() {
     await loadScript("card-payment-control.js");
     await loadScript("card-chart-personal-limit.js");
     await loadScript("card-payments-installments.js");
-    await loadScript("flow-savings-enhancements.js");
+    await loadScript("income-regular-controller.js");
     await loadScript("income-type-filter.js");
     await loadScript("table-date-behavior.js");
     await loadScript("expense-table-advanced.js");
