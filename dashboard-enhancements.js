@@ -16,9 +16,17 @@
   function parseNumber(value){if(typeof value==='number')return Number.isFinite(value)?value:0;let s=String(value??'').trim().replace(/[^\d,.\-]/g,'');if(!s)return 0;const comma=s.lastIndexOf(','),dot=s.lastIndexOf('.');if(comma>=0&&dot>=0){if(comma>dot)s=s.replace(/\./g,'').replace(',','.');else s=s.replace(/,/g,'');}else if(comma>=0){const parts=s.split(',');s=parts.length===2&&parts[1].length<=2?parts[0].replace(/\./g,'')+'.'+parts[1]:s.replace(/,/g,'');}else if(dot>=0){const parts=s.split('.');if(parts.length>2||(parts.length===2&&parts[1].length===3))s=s.replace(/\./g,'');}const n=Number(s);return Number.isFinite(n)?n:0;}
   function parseDate(value){const s=String(value??'').trim();if(!s)return null;let m=s.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?/);if(m)return new Date(+m[1],+m[2]-1,+(m[3]||1));m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);const d=new Date(s);return Number.isNaN(d.getTime())?null:d;}
   function rowsFromValues(values){if(!Array.isArray(values)||!values.length)return[];const headers=(values[0]||[]).map(v=>String(v||'').trim());return values.slice(1).filter(row=>row?.some(v=>String(v??'').trim()!=='')).map(row=>Object.fromEntries(headers.map((h,i)=>[h||`Col ${i+1}`,row?.[i]??''])));}
-  function sourceRows(payload,range){return rowsFromValues(payload?.sources?.[`${financeId}|${range}`]||[]);}
   function moneyAmount(row,currency){if(currency==='USD')return parseNumber(pick(row,['Monto USD','USD']));if(currency==='ARS')return parseNumber(pick(row,['Monto ARS','ARS']));return parseNumber(pick(row,['Monto COP','COP']));}
   function isExpense(row){const type=norm(pick(row,['Tipo','Naturaleza']));return!type||type.includes('gasto')||type.includes('egreso')||type.includes('compra');}
+
+  async function sourceRows(range,force=false){
+    const direct=window.__PANEL_GET_SOURCE_VALUES__;
+    if(typeof direct==='function')return rowsFromValues(await direct(financeId,range,force));
+    const getData=window.__PANEL_GET_BACKEND_DATA__;
+    if(typeof getData!=='function')throw new Error('Backend no disponible');
+    const payload=await getData(force);
+    return rowsFromValues(payload?.sources?.[`${financeId}|${range}`]||[]);
+  }
 
   function currentFilteredMovements(rows){
     const years=selectedFilter('year'),months=selectedFilter('month'),categories=selectedFilter('category'),subcategories=selectedFilter('subcategory');
@@ -44,7 +52,17 @@
 
   async function drawCardTrend(panel=renderCardPanelSkeleton()){
     if(!panel||!window.Chart)return;const status=panel.querySelector('[data-card-line-status]'),scroll=panel.querySelector('.card-line-scroll');
-    try{status.textContent='Cargando histórico…';status.hidden=false;scroll.hidden=true;const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')throw new Error('Backend no disponible');const payload=await getData(false),movements=currentFilteredMovements(sourceRows(payload,'Movimientos!A:Z')),cards=sourceRows(payload,'Tarjetas!A:T'),currency=activeCurrency(),built=buildCardSeries(movements,cards,cardMetric,currency);if(!built.labels.length||!built.datasets.length){status.textContent='No hay movimientos de tarjeta para los filtros seleccionados.';return;}const inner=panel.querySelector('.card-line-inner');inner.style.width=`${Math.max(760,built.labels.length*(built.daily?58:90))}px`;scroll.hidden=false;status.hidden=true;cardChart?.destroy();cardChart=new Chart(panel.querySelector('#cardTrendChart'),{type:'line',data:{labels:built.labels,datasets:built.datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,labels:{color:'#9aa8ba',boxWidth:10,usePointStyle:true}},tooltip:{callbacks:{label:ctx=>cardMetric==='limit'?`${ctx.dataset.label}: ${Number(ctx.parsed.y||0).toFixed(1)}%`:`${ctx.dataset.label}: ${new Intl.NumberFormat('es-CO',{style:'currency',currency,maximumFractionDigits:currency==='USD'?2:0}).format(Number(ctx.parsed.y)||0)}`}}},scales:{x:{ticks:{color:'#718098',maxRotation:0,autoSkip:true},grid:{color:'#121c29'}},y:{beginAtZero:true,suggestedMax:cardMetric==='limit'?100:undefined,ticks:{color:'#718098',callback:v=>cardMetric==='limit'?`${v}%`:compactNumber(v)},grid:{color:'#121c29'}}}}});requestAnimationFrame(()=>{scroll.scrollLeft=scroll.scrollWidth;});}catch(error){console.error('Error en gráfico histórico de tarjetas:',error);status.hidden=false;status.textContent='No fue posible cargar el histórico de tarjetas.';scroll.hidden=true;}
+    try{
+      status.textContent='Cargando histórico…';status.hidden=false;scroll.hidden=true;
+      const [movementRows,cards]=await Promise.all([sourceRows('Movimientos!A:Z'),sourceRows('Tarjetas!A:T')]);
+      const movements=currentFilteredMovements(movementRows),currency=activeCurrency(),built=buildCardSeries(movements,cards,cardMetric,currency);
+      if(!built.labels.length||!built.datasets.length){status.textContent='No hay movimientos de tarjeta para los filtros seleccionados.';return;}
+      const inner=panel.querySelector('.card-line-inner');inner.style.width=`${Math.max(760,built.labels.length*(built.daily?58:90))}px`;scroll.hidden=false;status.hidden=true;
+      cardChart?.destroy();
+      cardChart=new Chart(panel.querySelector('#cardTrendChart'),{type:'line',data:{labels:built.labels,datasets:built.datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,labels:{color:'#9aa8ba',boxWidth:10,usePointStyle:true}},tooltip:{callbacks:{label:ctx=>cardMetric==='limit'?`${ctx.dataset.label}: ${Number(ctx.parsed.y||0).toFixed(1)}%`:`${ctx.dataset.label}: ${new Intl.NumberFormat('es-CO',{style:'currency',currency,maximumFractionDigits:currency==='USD'?2:0}).format(Number(ctx.parsed.y)||0)}`}}},scales:{x:{ticks:{color:'#718098',maxRotation:0,autoSkip:true},grid:{color:'#121c29'}},y:{beginAtZero:true,suggestedMax:cardMetric==='limit'?100:undefined,ticks:{color:'#718098',callback:v=>cardMetric==='limit'?`${v}%`:compactNumber(v)},grid:{color:'#121c29'}}}}});
+      document.dispatchEvent(new CustomEvent('panel:card-trend-rendered',{detail:{metric:cardMetric}}));
+      requestAnimationFrame(()=>{scroll.scrollLeft=scroll.scrollWidth;});
+    }catch(error){console.error('Error en gráfico histórico de tarjetas:',error);status.hidden=false;status.textContent='No fue posible cargar el histórico de tarjetas.';scroll.hidden=true;}
   }
 
   function compactNumber(value){const n=Number(value)||0,a=Math.abs(n);if(a>=1e9)return`${(n/1e9).toFixed(1)}B`;if(a>=1e6)return`${(n/1e6).toFixed(1)}M`;if(a>=1e3)return`${(n/1e3).toFixed(0)}K`;return String(Math.round(n));}
