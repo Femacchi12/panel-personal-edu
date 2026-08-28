@@ -131,7 +131,7 @@ text = read(path)
 text = replace_once(text, "section-data-filters.css?v=20260817-2243", "section-data-filters.css?v=20260828-0010", "index filter css cache")
 text = replace_once(text, "investment-period-enhancement.js?v=20260827-1600", "investment-period-enhancement.js?v=20260828-0010", "index investment cache")
 for line, label in [
-    ('  <script src="dashboard-reliability-fixes.js?v=20260827-1720"></script>\n', "index reliability script"),
+    ('  <script src="dashboard-reliability-fixes.js?v=20260827-2248"></script>\n', "index reliability script"),
     ('  <script src="section-structure-cleanup.js?v=20260827-2242"></script>\n', "index structure script"),
 ]:
     text = replace_once(text, line, "", label)
