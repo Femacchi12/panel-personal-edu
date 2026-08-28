@@ -118,7 +118,10 @@
     return response.json();
   }
 
-  function sourceRows(payload, range, spreadsheetId = financeId) {
+  async function getRows(range, spreadsheetId = financeId, force = false) {
+    const direct = window.__PANEL_GET_SOURCE_VALUES__;
+    if (typeof direct === 'function') return parseRows(await direct(spreadsheetId, range, force));
+    const payload = await getPayload(force);
     return parseRows(payload?.sources?.[`${spreadsheetId}|${range}`] || []);
   }
 
@@ -189,13 +192,14 @@
     if (!root || root.querySelector('[data-income-complete]') || root.dataset.incomeLoading === '1') return;
     root.dataset.incomeLoading = '1';
     try {
-      const payload = await getPayload();
-      const nominaAll = sourceRows(payload,'Nomina_Colombia!A:AI');
-      const usdAll = sourceRows(payload,'Ingresos!A:T');
-      const detailAll = sourceRows(payload,'Detalle_Ingresos!A:L');
-      const conceptsAll = sourceRows(payload,'Resumen_Conceptos_Ingresos!A:L');
-      const invoicesAll = sourceRows(payload,'Facturas_USD!A:L');
-      const savingAll = sourceRows(payload,'Flujo_Ahorro!A:P');
+      const [nominaAll, usdAll, detailAll, conceptsAll, invoicesAll, savingAll] = await Promise.all([
+        getRows('Nomina_Colombia!A:AI'),
+        getRows('Ingresos!A:T'),
+        getRows('Detalle_Ingresos!A:L'),
+        getRows('Resumen_Conceptos_Ingresos!A:L'),
+        getRows('Facturas_USD!A:L'),
+        getRows('Flujo_Ahorro!A:P')
+      ]);
 
       const nomina = filterPeriod(nominaAll);
       const usdRows = filterPeriod(usdAll);
@@ -243,8 +247,7 @@
     if (!documentsId || !root || root.querySelector('[data-doc-priority]') || root.dataset.docLoading === '1') return;
     root.dataset.docLoading = '1';
     try {
-      const payload = await getPayload();
-      const docs = sourceRows(payload,'Documentos_Personales!A:L',documentsId)
+      const docs = (await getRows('Documentos_Personales!A:L',documentsId))
         .sort((a,b)=>String(a['Prioridad']||'').localeCompare(String(b['Prioridad']||'')) || String(a['Documento']||'').localeCompare(String(b['Documento']||'')));
       if (!docs.length) return;
       const html = `<div class="panel" data-doc-priority>
@@ -265,19 +268,23 @@
 
   function run() {
     const root = document.getElementById('viewRoot');
-    const title = document.getElementById('viewTitle')?.textContent?.trim();
+    const view = document.querySelector('.nav-item.active')?.dataset.view || '';
     if (!root) return;
-    if (title === 'Ingresos y ahorro') enhanceIncome(root);
-    else if (title === 'Documentos') enhanceDocuments(root);
+    if (view === 'ingresos') enhanceIncome(root);
+    else if (view === 'documentos') enhanceDocuments(root);
   }
 
-  function schedule(delay = 30) {
+  function schedule(delay = 20) {
     clearTimeout(timer);
     timer = setTimeout(run, delay);
   }
 
   injectStyles();
-  const root = document.getElementById('viewRoot');
-  if (root) new MutationObserver(()=>schedule(30)).observe(root,{childList:true});
-  schedule(0);
+  document.addEventListener('panel:view-root-changed',event=>{
+    if(event.detail?.view==='ingresos'||event.detail?.view==='documentos')schedule(10);
+  });
+  document.addEventListener('panel:section-filters-changed',event=>{
+    if(event.detail?.view==='documentos')schedule(10);
+  });
+  queueMicrotask(()=>schedule(0));
 })();
