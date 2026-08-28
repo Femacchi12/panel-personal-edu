@@ -71,7 +71,6 @@
       }
       const byCategory=aggregate(snapshot,r=>r.Categoría||r['Clase de activo']||'Sin categoría',r=>parseNumber(r[`Valor ${currency}`]));
 
-      root.querySelector('#investmentCorrected')?.classList.add('investment-period-hidden');root.querySelector('#investmentV2')?.remove();
       let host=root.querySelector('#investmentPeriodCorrected');if(!host){host=document.createElement('div');host.id='investmentPeriodCorrected';host.className='investment-corrected';const head=root.querySelector('.section-head');if(head)head.insertAdjacentElement('afterend',host);else root.prepend(host);}
       destroyCharts();
       const note=effectiveMode!=='total'&&categoryFilters?'<div class="investment-truth-note">Clase, Categoría y Subcategoría filtran las posiciones de mercado. Capital y Ganancia/Pérdida solo existen consolidados por plataforma en el Sheet y no se reparten por instrumento.</div>':'';
@@ -83,7 +82,7 @@
     }finally{rendering=false;}
   }
 
-  function injectStyles(){if(document.getElementById('investmentPeriodStyles'))return;const style=document.createElement('style');style.id='investmentPeriodStyles';style.textContent=`#investmentCorrected.investment-period-hidden{display:none!important}#investmentTimelinePanel,#investmentV2{display:none!important}#investmentPeriodCorrected{display:grid;gap:16px}#investmentPeriodCorrected .table-scroll{max-height:520px}.investment-truth-note{color:#8b9ab0;font-size:10px;line-height:1.55;padding:10px 12px;border:1px solid var(--border-soft);border-radius:10px;background:rgba(255,255,255,.015)}`;document.head.appendChild(style);}
+  function injectStyles(){if(document.getElementById('investmentPeriodStyles'))return;const style=document.createElement('style');style.id='investmentPeriodStyles';style.textContent=`#investmentPeriodCorrected{display:grid;gap:16px}#investmentPeriodCorrected .table-scroll{max-height:520px}.investment-truth-note{color:#8b9ab0;font-size:10px;line-height:1.55;padding:10px 12px;border:1px solid var(--border-soft);border-radius:10px;background:rgba(255,255,255,.015)}`;document.head.appendChild(style);}
   function schedule(force=false,delay=180){clearTimeout(timer);timer=setTimeout(()=>render(force),delay);}
 
   injectStyles();

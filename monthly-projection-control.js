@@ -111,7 +111,10 @@
     const p=await payload(force);if(!p)return;
     const rows=parseRows(p.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
     const stats=monthlyStats(rows,targetMonth(rows));
-    let host=root.querySelector('#monthlyProjectionSuite');if(!host){host=document.createElement('section');host.id='monthlyProjectionSuite';const head=root.querySelector(':scope > .section-head');if(head)head.insertAdjacentElement('afterend',host);else root.prepend(host);}renderSuite(host,stats);
+    let host=root.querySelector('#monthlyProjectionSuite');if(!host){host=document.createElement('section');host.id='monthlyProjectionSuite';const head=root.querySelector(':scope > .section-head');if(head)head.insertAdjacentElement('afterend',host);else root.prepend(host);}
+    root.querySelectorAll(':scope > .monthly-programmed-panel,:scope > .monthly-comparison-panel').forEach(el=>el.remove());
+    renderSuite(host,stats);
+    ['.monthly-programmed-panel','.monthly-comparison-panel'].forEach(selector=>{const panel=host.querySelector(selector);if(panel)root.appendChild(panel);});
   }
   function schedule(force=false,delay=180){clearTimeout(timer);timer=setTimeout(()=>run(force),delay);}
   injectStyles();

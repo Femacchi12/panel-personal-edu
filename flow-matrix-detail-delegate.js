@@ -19,6 +19,8 @@
     style.id = 'flowMatrixDetailDelegateStyles';
     style.textContent = `
       #flowMatrixV3 .flow-matrix-advanced thead tr:first-child th[data-sort-month]{text-align:center!important}
+      #flowMatrixDetailV3 tfoot[data-auto-total] td{font-weight:800;color:#f4f7fb;border-top:2px solid #2a3a50;background:#0d1622;white-space:nowrap}
+      #flowMatrixDetailV3 tfoot[data-auto-total] td:first-child{color:#26d07c;letter-spacing:.06em}
     `;
     document.head.appendChild(style);
   }
@@ -170,7 +172,8 @@
   function renderDetail(host, rows, cat, key, snap) {
     const total = rows.reduce((s, r) => s + num(r['Monto COP']), 0);
     const cols = ['Fecha real','Categoría','Subcategoría','Descripción / Comercio','Monto original','Moneda original','Cuenta / Tarjeta','Modalidad de pago','Titular','Cuotas','Estado','Monto COP'];
-    host.innerHTML = `<div class="panel-header"><div class="panel-title"><strong>Detalle · ${esc(cat)} · ${esc(monthLabel(key))}</strong><span>${rows.length} movimientos realizados · total ${esc(money(total))}${esc(filterSummary(snap))}</span></div><button type="button" class="text-btn" data-close-flow-detail>Cerrar</button></div>${rows.length ? `<div class="table-scroll expanded"><table class="date-first-table"><thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${cols.map(c => `<td>${esc(r[c] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '<div class="empty-state"><div><strong>Sin movimientos realizados</strong><span>No hay movimientos para esta categoría, mes y filtros.</span></div></div>'}`;
+    const footer = cols.map((col,index) => `<td>${index===0?'TOTAL':col==='Monto COP'?esc(money(total)):''}</td>`).join('');
+    host.innerHTML = `<div class="panel-header"><div class="panel-title"><strong>Detalle · ${esc(cat)} · ${esc(monthLabel(key))}</strong><span>${rows.length} movimientos realizados · total ${esc(money(total))}${esc(filterSummary(snap))}</span></div><button type="button" class="text-btn" data-close-flow-detail>Cerrar</button></div>${rows.length ? `<div class="table-scroll expanded"><table class="date-first-table"><thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${cols.map(c => `<td>${esc(r[c] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody><tfoot data-auto-total><tr class="flow-detail-total-row">${footer}</tr></tfoot></table></div>` : '<div class="empty-state"><div><strong>Sin movimientos realizados</strong><span>No hay movimientos para esta categoría, mes y filtros.</span></div></div>'}`;
     host.hidden = false;
     host.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
