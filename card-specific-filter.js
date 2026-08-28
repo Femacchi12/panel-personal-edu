@@ -5,7 +5,7 @@
   const financeId=String(cfg.financeSpreadsheetId||'');
   if(!financeId)return;
 
-  let cards=[],cardsPromise=null,activeCardId='',uiTimer=null,trendTimers=[];
+  let cards=[],cardsPromise=null,activeCardId='',uiTimer=null;
   const norm=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
@@ -18,15 +18,25 @@
   async function loadCards(force=false){
     if(force){cards=[];cardsPromise=null;}
     if(cards.length)return cards;if(cardsPromise)return cardsPromise;
-    cardsPromise=(async()=>{const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return[];const payload=await getData(force);cards=parseRows(payload?.sources?.[`${financeId}|Tarjetas!A:T`]||[]).filter(card=>cardId(card)&&norm(card?.Activa||'sí')!=='no');return cards;})();
+    cardsPromise=(async()=>{
+      let values=[];
+      const direct=window.__PANEL_GET_SOURCE_VALUES__;
+      if(typeof direct==='function')values=await direct(financeId,'Tarjetas!A:T',force);
+      else {
+        const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return[];
+        const payload=await getData(force);values=payload?.sources?.[`${financeId}|Tarjetas!A:T`]||[];
+      }
+      cards=parseRows(values).filter(card=>cardId(card)&&norm(card?.Activa||'sí')!=='no');
+      return cards;
+    })();
     try{return await cardsPromise;}finally{cardsPromise=null;}
   }
 
   function refreshCardsView(attempt=0){
     if(activeView()!=='tarjetas')return;
     const button=document.getElementById('refreshBtn');
-    if(button&&!button.disabled){button.click();scheduleTrendFilter();return;}
-    if(attempt<5)setTimeout(()=>refreshCardsView(attempt+1),180);
+    if(button&&!button.disabled){button.click();return;}
+    if(attempt<3)setTimeout(()=>refreshCardsView(attempt+1),160);
   }
 
   function renderOptions(root){
@@ -52,14 +62,13 @@
     renderOptions(root);wireSectionClear(bar);
   }
 
-  function filterTrendChart(){
-    if(!activeCardId||activeView()!=='tarjetas'||!window.Chart)return;const canvas=document.getElementById('cardTrendChart');if(!canvas)return;const chart=Chart.getChart(canvas),card=selectedCard();if(!chart||!card)return;const wanted=norm(cardLabel(card)),matching=chart.data.datasets.filter(dataset=>norm(dataset.label)===wanted);if(!matching.length)return;if(chart.data.datasets.length!==matching.length||chart.data.datasets.some((dataset,index)=>dataset!==matching[index])){chart.data.datasets=matching;chart.update('none');}
-  }
-  function scheduleTrendFilter(){trendTimers.forEach(clearTimeout);trendTimers=[0,100,300].map(delay=>setTimeout(filterTrendChart,delay));}
-  function scheduleUI(delay=20){clearTimeout(uiTimer);uiTimer=setTimeout(()=>{ensureCardFilterUI();scheduleTrendFilter();},delay);}
+  function scheduleUI(delay=20){clearTimeout(uiTimer);uiTimer=setTimeout(ensureCardFilterUI,delay);}
 
   document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='tarjetas')scheduleUI(10);});
-  document.addEventListener('click',event=>{if(!event.target.closest('[data-card-specific-filter]'))document.querySelector('[data-card-specific-filter].open')?.classList.remove('open');if(event.target.closest('[data-card-line-mode]'))scheduleTrendFilter();if(event.target.closest('.currency-btn')&&activeView()==='tarjetas')scheduleTrendFilter();if(event.target.closest('#refreshBtn')&&event.isTrusted){loadCards(true).then(()=>scheduleUI(20)).catch(()=>{});}},true);
+  document.addEventListener('click',event=>{
+    if(!event.target.closest('[data-card-specific-filter]'))document.querySelector('[data-card-specific-filter].open')?.classList.remove('open');
+    if(event.target.closest('#refreshBtn')&&event.isTrusted){loadCards(true).then(()=>scheduleUI(20)).catch(()=>{});}
+  },true);
 
   window.__PANEL_ACTIVE_CARD_ID__='';
   loadCards().then(()=>scheduleUI(0)).catch(error=>console.error('No fue posible cargar el filtro de tarjetas:',error));
