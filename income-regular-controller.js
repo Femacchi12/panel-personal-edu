@@ -5,12 +5,14 @@
   const financeId=String(cfg.financeSpreadsheetId||'');
   if(!financeId)return;
 
-  let timer=null;
+  let renderFrame=0;
   let applying=false;
+  let rerunRequested=false;
+  let pendingForce=false;
   const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
   const activeCurrency=()=>document.querySelector('.currency-btn.active')?.dataset.currency||'COP';
   const selectedYear=()=>{const years=[...document.querySelectorAll('.multi-filter[data-filter="year"] .multi-filter-option.selected')].map(x=>String(x.dataset.value||'')).filter(Boolean);return years.length===1?years[0]:String(new Date().getFullYear());};
-  const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
+  const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   function convertCop(value,currency,model){const n=Number(value)||0;if(currency==='USD')return n/(model.usdCopReference||3150);if(currency==='ARS')return n/2.1;return n;}
   function formatMoney(value,currency){return new Intl.NumberFormat('es-CO',{style:'currency',currency,minimumFractionDigits:currency==='USD'?2:0,maximumFractionDigits:currency==='USD'?2:0}).format(Number(value)||0);}
@@ -36,21 +38,35 @@
   function placePanels(root,baseline,scenario){root.querySelector('#incomeRegularBaselinePanel')?.remove();root.querySelector('#savingsScenarioPanel')?.remove();const complete=root.querySelector('[data-income-complete]');if(!complete)return;const chartPanel=complete.querySelector('.panel');if(chartPanel){chartPanel.insertAdjacentElement('afterend',baseline);baseline.insertAdjacentElement('afterend',scenario);}else{complete.prepend(scenario);complete.prepend(baseline);}}
 
   async function apply(force=false){
-    if(applying||activeView()!=='ingresos'||!window.RegularIncomeCore)return;
+    if(activeView()!=='ingresos'||!window.RegularIncomeCore)return;
+    if(applying){rerunRequested=true;pendingForce=pendingForce||force;return;}
     const root=document.getElementById('viewRoot');if(!root?.querySelector('[data-income-complete]'))return;
     const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return;
     applying=true;
     try{
-      const data=await getData(force);const model=window.RegularIncomeCore.build(data,financeId);window.__PANEL_REGULAR_INCOME_MODEL__=model;
+      const data=await getData(force);
+      if(activeView()!=='ingresos'||!root.isConnected||!root.querySelector('[data-income-complete]'))return;
+      const model=window.RegularIncomeCore.build(data,financeId);window.__PANEL_REGULAR_INCOME_MODEL__=model;
       const year=selectedYear(),avg=model.average(year)||model.average();if(!avg)return;
       const currency=activeCurrency(),holder=document.createElement('div');holder.innerHTML=baselineHtml(model,avg,year,currency)+scenarioHtml(avg,currency,model,year);
       const baseline=holder.children[0],scenario=holder.children[1];if(!baseline||!scenario)return;placePanels(root,baseline,scenario);
       document.dispatchEvent(new CustomEvent('panel:income-regular-controller-applied'));
-    }catch(error){console.error('Controlador de ingreso regular:',error);}finally{applying=false;}
+    }catch(error){console.error('Controlador de ingreso regular:',error);}finally{
+      applying=false;
+      if(rerunRequested&&activeView()==='ingresos'){rerunRequested=false;schedule(false);}
+    }
   }
 
-  function schedule(delay=20,force=false){clearTimeout(timer);timer=setTimeout(()=>apply(force),delay);}
-  document.addEventListener('panel:income-doc-rendered',()=>schedule(10,false));
-  document.addEventListener('click',event=>{if(event.target.closest('#refreshBtn')&&activeView()==='ingresos')schedule(250,true);},true);
-  queueMicrotask(()=>schedule(100,false));
+  function schedule(force=false){
+    pendingForce=pendingForce||force;
+    if(renderFrame)return;
+    renderFrame=requestAnimationFrame(()=>{
+      renderFrame=0;
+      const useForce=pendingForce;
+      pendingForce=false;
+      apply(useForce);
+    });
+  }
+  document.addEventListener('panel:income-doc-rendered',()=>schedule(false));
+  queueMicrotask(()=>schedule(false));
 })();
