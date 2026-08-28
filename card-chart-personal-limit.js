@@ -2,15 +2,12 @@
   'use strict';
 
   const cfg = window.PANEL_CONFIG || {};
-  const apiBaseUrl = String(cfg.apiBaseUrl || '').replace(/\/$/,'');
-  const financeId = cfg.financeSpreadsheetId;
+  const financeId = String(cfg.financeSpreadsheetId || '');
   const usdCop = Number(cfg.regularIncome?.usdCopReference || 3150);
+  if(!financeId) return;
 
   let timer = null;
   let limitMode = 'control';
-  let debtCache = null;
-  let debtCacheAt = 0;
-  let debtPromise = null;
   window.__PANEL_CARD_LIMIT_MODE__ = limitMode;
 
   const norm = value => String(value ?? '')
@@ -52,6 +49,15 @@
       .map(row=>Object.fromEntries(headers.map((header,index)=>[header||`Col ${index+1}`,row?.[index]??''])));
   }
 
+  async function sourceRows(range,force=false){
+    const direct=window.__PANEL_GET_SOURCE_VALUES__;
+    if(typeof direct==='function') return parseRows(await direct(financeId,range,force));
+    const getData=window.__PANEL_GET_BACKEND_DATA__;
+    if(typeof getData!=='function') return [];
+    const payload=await getData(force);
+    return parseRows(payload?.sources?.[`${financeId}|${range}`]||[]);
+  }
+
   function parseDate(value){
     const s=String(value??'').trim();
     if(!s) return null;
@@ -87,41 +93,26 @@
   const pad=n=>String(n).padStart(2,'0');
   const shortDate=d=>`${pad(d.getDate())}/${pad(d.getMonth()+1)}`;
 
-  function headerIndex(headers,tests){
-    return headers.findIndex(h=>tests.some(test=>h.includes(test)));
+  function cardsFromRows(rows){
+    return rows.map(row=>{
+      const issuer=String(row.Emisor||'').trim();
+      const owner=String(row.Titular||'').trim();
+      const real=parseNumber(row['Cupo total actual']||row['Cupo total']||row['Límite real']);
+      const used=parseNumber(row['Cupo usado']||row.Utilizado||row['Saldo usado']);
+      const configured=parseNumber(row['Límite personal de gasto']||row['Límite de control']);
+      const control=configured>0?configured:real;
+      return {issuer,owner,real,used,control,key:norm(`${issuer} ${owner}`)};
+    }).filter(card=>card.issuer&&card.real>0);
   }
 
-  function readCardTable(){
-    const tables=[...document.querySelectorAll('#viewRoot table')];
-    for(const table of tables){
-      const headerCells=[...table.querySelectorAll('thead th')];
-      if(!headerCells.length) continue;
-      const headers=headerCells.map(th=>norm(th.textContent));
-      const ix={
-        issuer:headerIndex(headers,['emisor']),
-        owner:headerIndex(headers,['titular']),
-        real:headerIndex(headers,['cupo total actual','cupo total','limite real']),
-        used:headerIndex(headers,['cupo usado','utilizado','saldo usado']),
-        control:headerIndex(headers,['limite personal de gasto','limite de control']),
-        controlPct:headerIndex(headers,['% uso limite personal','% uso limite de control'])
-      };
-      if(ix.issuer<0||ix.owner<0||ix.real<0||ix.used<0||ix.control<0) continue;
-
-      if(headerCells[ix.control]) headerCells[ix.control].textContent='Límite de control';
-      if(ix.controlPct>=0&&headerCells[ix.controlPct]) headerCells[ix.controlPct].textContent='% uso límite de control';
-
-      return [...table.querySelectorAll('tbody tr')].map(row=>{
-        const cells=[...row.cells];
-        const issuer=String(cells[ix.issuer]?.textContent||'').trim();
-        const owner=String(cells[ix.owner]?.textContent||'').trim();
-        const real=parseNumber(cells[ix.real]?.textContent);
-        const used=parseNumber(cells[ix.used]?.textContent);
-        const configured=parseNumber(cells[ix.control]?.textContent);
-        const control=configured>0?configured:real;
-        return {issuer,owner,real,used,control,key:norm(`${issuer} ${owner}`)};
-      }).filter(card=>card.issuer&&card.real>0);
-    }
-    return [];
+  function normalizeCardTableHeaders(){
+    document.querySelectorAll('#viewRoot table thead tr').forEach(row=>{
+      [...row.cells].forEach(cell=>{
+        const text=norm(cell.textContent);
+        if(text==='limite personal de gasto') cell.textContent='Límite de control';
+        if(text==='% uso limite personal') cell.textContent='% uso límite de control';
+      });
+    });
   }
 
   function matchCard(label,cards){
@@ -132,55 +123,30 @@
   }
 
   async function loadArqDebt(force=false){
-    if(!apiBaseUrl||!financeId) return null;
-    if(!force&&debtCache&&Date.now()-debtCacheAt<50000) return debtCache;
-    if(!force&&debtPromise) return debtPromise;
+    const rows=await sourceRows('Movimientos!A:Z',force);
+    const {start,end}=currentCycle(6);
+    const sums={COP:0,USD:0};
 
-    debtPromise=(async()=>{
-      let payload=null;
-      if(typeof window.__PANEL_GET_BACKEND_DATA__==='function'){
-        payload=await window.__PANEL_GET_BACKEND_DATA__(force);
-      }else{
-        const getIdToken=window.__PANEL_GET_ID_TOKEN__;
-        if(typeof getIdToken!=='function') return null;
-        const token=await getIdToken(false);
-        if(!token) return null;
-        const response=await fetch(`${apiBaseUrl}/api/data`,{
-          headers:{Authorization:`Bearer ${token}`},cache:'no-store'
-        });
-        if(!response.ok) return null;
-        payload=await response.json();
-      }
-      const rows=parseRows(payload?.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
-      const {start,end}=currentCycle(6);
-      const sums={COP:0,USD:0};
+    rows.forEach(row=>{
+      if(norm(row.Tipo)!=='gasto') return;
+      if(!norm(row['Cuenta / Tarjeta']).includes('arq')) return;
+      const isActual=window.MovementStatusCore?.isActual
+        ? window.MovementStatusCore.isActual(row.Estado)
+        : !/proyecc|proyect|programad/.test(norm(row.Estado));
+      if(!isActual) return;
+      const date=parseDate(row['Fecha real']||row['Fecha registrada']);
+      if(!date||date<start||date>end) return;
+      const currency=String(row['Moneda original']||'').trim().toUpperCase();
+      if(currency!=='COP'&&currency!=='USD') return;
+      sums[currency]+=parseNumber(row['Monto original']);
+    });
 
-      rows.forEach(row=>{
-        if(norm(row.Tipo)!=='gasto') return;
-        if(!norm(row['Cuenta / Tarjeta']).includes('arq')) return;
-        const isActual=window.MovementStatusCore?.isActual
-          ? window.MovementStatusCore.isActual(row.Estado)
-          : !/proyecc|proyect|programad/.test(norm(row.Estado));
-        if(!isActual) return;
-        const date=parseDate(row['Fecha real']||row['Fecha registrada']);
-        if(!date||date<start||date>end) return;
-        const currency=String(row['Moneda original']||'').trim().toUpperCase();
-        if(currency!=='COP'&&currency!=='USD') return;
-        sums[currency]+=parseNumber(row['Monto original']);
-      });
-
-      debtCache={
-        cop:sums.COP,
-        usd:sums.USD,
-        equivalent:sums.COP+sums.USD*usdCop,
-        start,end
-      };
-      debtCacheAt=Date.now();
-      return debtCache;
-    })();
-
-    try{return await debtPromise;}
-    finally{debtPromise=null;}
+    return {
+      cop:sums.COP,
+      usd:sums.USD,
+      equivalent:sums.COP+sums.USD*usdCop,
+      start,end
+    };
   }
 
   function currentLimit(card){
@@ -211,7 +177,7 @@
             limitMode=next;
             window.__PANEL_CARD_LIMIT_MODE__=limitMode;
             syncSelectorState();
-            applyAll(true);
+            applyAll(false);
           });
         });
       }
@@ -227,7 +193,7 @@
     });
   }
 
-  function applyCardsChart(cards,force=false){
+  function applyCardsChart(cards){
     const canvas=document.getElementById('cardsChart');
     const chart=canvas&&window.Chart?Chart.getChart(canvas):null;
     if(!chart) return;
@@ -247,7 +213,7 @@
     });
     const label=limitMode==='real'?'Disponible según límite real':'Disponible según límite de control';
     if(availableDs.label!==label){availableDs.label=label;changed=true;}
-    if(changed||force) chart.update('none');
+    if(changed) chart.update('none');
 
     const panel=canvas.closest('.panel');
     const subtitle=panel?.querySelector('.panel-title span');
@@ -304,7 +270,7 @@
     });
   }
 
-  function applyTrendChart(cards,force=false){
+  function applyTrendChart(cards){
     const canvas=document.getElementById('cardTrendChart');
     const chart=canvas&&window.Chart?Chart.getChart(canvas):null;
     if(!chart) return;
@@ -325,40 +291,37 @@
       if(currentSig!==nextSig){ds.data=next;changed=true;}
       ds.__panelRenderedSig=nextSig;
     });
-    if(changed||force) chart.update('none');
+    if(changed) chart.update('none');
   }
 
   async function applyAll(force=false){
     if(activeView()!=='tarjetas'||!window.Chart) return;
-    const cards=readCardTable();
+    const [cardRows,debt]=await Promise.all([sourceRows('Tarjetas!A:T',force),loadArqDebt(force)]);
+    if(activeView()!=='tarjetas') return;
+    const cards=cardsFromRows(cardRows);
     if(!cards.length) return;
-    const debt=await loadArqDebt(force);
     const arq=cards.find(card=>norm(card.issuer).includes('arq'));
     if(arq&&debt) arq.used=debt.equivalent;
+    normalizeCardTableHeaders();
     ensureSelectors();
     enhanceCards(cards,debt);
-    applyCardsChart(cards,force);
-    applyTrendChart(cards,force);
+    applyCardsChart(cards);
+    applyTrendChart(cards);
   }
 
-  function schedule(delay=120,force=false){
+  function schedule(delay=80,force=false){
     clearTimeout(timer);
-    timer=setTimeout(()=>applyAll(force),delay);
+    timer=setTimeout(()=>applyAll(force).catch(error=>console.error('Control de límites de tarjeta:',error)),delay);
   }
 
   document.addEventListener('panel:view-root-changed',event=>{
-    if(event.detail?.view==='tarjetas'){
-      schedule(40,false);
-      setTimeout(()=>schedule(180,false),80);
-    }
+    if(event.detail?.view==='tarjetas') schedule(60,false);
   });
-  document.addEventListener('panel:card-filter-changed',()=>schedule(50,false));
+  document.addEventListener('panel:card-filter-changed',()=>schedule(35,false));
   document.addEventListener('panel:section-filters-changed',event=>{
-    if(event.detail?.view==='tarjetas')schedule(50,false);
+    if(event.detail?.view==='tarjetas')schedule(35,false);
   });
-  document.addEventListener('click',event=>{
-    if(event.target.closest('[data-card-line-mode]'))schedule(60,false);
-  },true);
+  document.addEventListener('panel:card-trend-rendered',()=>schedule(0,false));
 
   if(!document.getElementById('cardLimitControlStyles')){
     const style=document.createElement('style');
@@ -390,5 +353,5 @@
     document.head.appendChild(style);
   }
 
-  schedule(260,true);
+  schedule(220,false);
 })();
