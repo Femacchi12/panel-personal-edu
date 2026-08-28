@@ -1,0 +1,5 @@
+.chart-scroll{position:relative;isolation:isolate}
+.fixed-y-axis{position:sticky;left:0;top:0;float:left;width:72px;min-width:72px;margin-right:-72px;z-index:40;background:linear-gradient(90deg,#0b111a 0%,#0b111a 82%,rgba(11,17,26,.94) 92%,rgba(11,17,26,0) 100%);pointer-events:none;border-right:1px solid rgba(27,38,55,.62)}
+.fixed-y-tick{position:absolute;right:10px;transform:translateY(-50%);max-width:58px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#718098;font-size:10px;line-height:1;font-variant-numeric:tabular-nums;text-align:right}
+@media(max-width:900px){.fixed-y-axis{width:62px;min-width:62px;margin-right:-62px}.fixed-y-tick{max-width:49px;font-size:9px}}
+@media(max-width:720px){.fixed-y-axis{width:58px;min-width:58px;margin-right:-58px}.fixed-y-tick{max-width:45px}}
