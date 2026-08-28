@@ -2,9 +2,8 @@
   'use strict';
 
   const cfg=window.PANEL_CONFIG||{};
-  const apiBaseUrl=String(cfg.apiBaseUrl||'').replace(/\/$/,'');
   const financeId=String(cfg.financeSpreadsheetId||'');
-  if(!apiBaseUrl||!financeId)return;
+  if(!financeId)return;
 
   let lookupPromise=null;
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
@@ -12,12 +11,14 @@
   function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const h=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(r=>r?.some(v=>String(v??'').trim()!=='')).map(r=>Object.fromEntries(h.map((x,i)=>[x||`Col ${i+1}`,r?.[i]??''])));}
   function key(desc,account,holder,amount){return`${norm(desc)}|${norm(account)}|${norm(holder)}|${Math.round(num(amount))}`;}
 
-  async function lookup(){
+  async function lookup(force=false){
+    if(force) lookupPromise=null;
     if(lookupPromise)return lookupPromise;
     lookupPromise=(async()=>{
-      const token=await window.__PANEL_GET_ID_TOKEN__?.(false);if(!token)return new Map();
-      const r=await fetch(`${apiBaseUrl}/api/data`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});if(!r.ok)return new Map();
-      const p=await r.json(),rows=parseRows(p?.sources?.[`${financeId}|Movimientos!A:Z`]||[]),map=new Map();
+      const getData=window.__PANEL_GET_BACKEND_DATA__;
+      if(typeof getData!=='function')return new Map();
+      const p=await getData(force);
+      const rows=parseRows(p?.sources?.[`${financeId}|Movimientos!A:Z`]||[]),map=new Map();
       rows.filter(row=>(!row.Tipo||norm(row.Tipo)==='gasto')&&(window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado)))).forEach(row=>{
         const value=/^(si|sí|true|1)$/i.test(String(row['Es fijo']||''))?'Fijo':'Variable';
         const k=key(row['Descripción / Comercio'],row['Cuenta / Tarjeta'],row.Titular,row['Monto COP']);
@@ -42,21 +43,26 @@
     if(!table.isConnected)return;
     const header=table.querySelector('thead tr');if(!header)return;
     const th=document.createElement('th');th.textContent='Tipo de gasto';
-    const ref=header.children[typeIndex]||null;header.insertBefore(th,ref);
+    header.insertBefore(th,header.children[typeIndex]||null);
     table.querySelectorAll('tbody tr').forEach(tr=>{
       const cells=[...tr.cells];
-      const desc=cells[descIndex]?.textContent||'';
-      const amount=cells[amountIndex]?.textContent||'';
-      const account=accountIndex>=0?cells[accountIndex]?.textContent||'':'';
-      const holder=holderIndex>=0?cells[holderIndex]?.textContent||'':'';
-      const value=map.get(key(desc,account,holder,amount))||'Variable';
+      const value=map.get(key(
+        cells[descIndex]?.textContent||'',
+        accountIndex>=0?cells[accountIndex]?.textContent||'':'',
+        holderIndex>=0?cells[holderIndex]?.textContent||'':'',
+        cells[amountIndex]?.textContent||''
+      ))||'Variable';
       const td=document.createElement('td');td.textContent=value;td.className=value==='Fijo'?'movement-fixed':'movement-variable';
       tr.insertBefore(td,tr.children[typeIndex]||null);
     });
     table.dataset.movementTypeDone='1';
   }
 
-  function scan(root=document){root.querySelectorAll?.('table').forEach(t=>enhance(t));}
-  const style=document.createElement('style');style.textContent='.movement-fixed{color:#26d07c;font-weight:700}.movement-variable{color:#a8b5c7}';document.head.appendChild(style);
-  scan();const root=document.getElementById('viewRoot')||document.body;new MutationObserver(m=>m.forEach(x=>x.addedNodes.forEach(n=>{if(n instanceof Element){if(n.matches?.('table'))enhance(n);scan(n);}}))).observe(root,{childList:true,subtree:false});
+  function scan(root=document.getElementById('viewRoot')){root?.querySelectorAll('table').forEach(table=>enhance(table));}
+  if(!document.getElementById('movementTypeColumnStyles')){const style=document.createElement('style');style.id='movementTypeColumnStyles';style.textContent='.movement-fixed{color:#26d07c;font-weight:700}.movement-variable{color:#a8b5c7}';document.head.appendChild(style);}
+
+  document.addEventListener('panel:view-root-changed',event=>scan(event.detail?.root));
+  document.addEventListener('panel:payment-filters-changed',()=>scan());
+  document.addEventListener('click',event=>{if(event.target.closest('#refreshBtn')){lookup(true).catch(()=>{});}});
+  queueMicrotask(()=>scan());
 })();
