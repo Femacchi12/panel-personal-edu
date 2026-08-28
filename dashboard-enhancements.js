@@ -6,7 +6,7 @@
   if(!financeId)return;
 
   const COLORS=['#1769ff','#f6c844','#26d07c','#ff667a','#ffad42','#7a8ba5','#8b5cf6','#22d3ee','#f472b6','#a3e635'];
-  let cardMetric='spend',cardChart=null,drawTimer=null;
+  let cardMetric='spend',cardChart=null,drawFrame=0,drawVersion=0;
   const norm=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const pick=(row,keys)=>{for(const key of keys){if(row?.[key]!=null&&String(row[key]).trim()!=='')return String(row[key]).trim();}return'';};
   const selectedFilter=key=>[...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)].map(el=>String(el.dataset.value||'').trim()).filter(Boolean);
@@ -48,21 +48,25 @@
     return{labels,datasets,daily};
   }
 
-  function renderCardPanelSkeleton(){if(activeView()!=='tarjetas')return null;const existing=document.querySelector('[data-card-line-panel]');if(existing)return existing;const anchor=document.getElementById('cardsChart')?.closest('.panel');if(!anchor)return null;const panel=document.createElement('div');panel.className='panel card-line-panel';panel.dataset.cardLinePanel='true';panel.innerHTML=`<div class="panel-header card-line-header"><div class="panel-title"><strong>Evolución por tarjeta</strong><span>Consulta gastos o porcentaje del límite utilizado</span></div><div class="chart-mode-switch" role="group" aria-label="Métrica del gráfico"><button type="button" class="chart-mode-btn${cardMetric==='spend'?' active':''}" data-card-line-mode="spend">Gastos</button><button type="button" class="chart-mode-btn${cardMetric==='limit'?' active':''}" data-card-line-mode="limit">Límite utilizado</button></div></div><div class="card-line-status" data-card-line-status>Cargando histórico…</div><div class="chart-scroll card-line-scroll" hidden><div class="chart-inner card-line-inner" style="width:760px;min-width:100%;height:330px"><canvas id="cardTrendChart"></canvas></div></div>`;anchor.insertAdjacentElement('afterend',panel);panel.querySelectorAll('[data-card-line-mode]').forEach(btn=>btn.addEventListener('click',()=>{cardMetric=btn.dataset.cardLineMode||'spend';panel.querySelectorAll('[data-card-line-mode]').forEach(x=>x.classList.toggle('active',x===btn));drawCardTrend(panel);}));return panel;}
+  function renderCardPanelSkeleton(){if(activeView()!=='tarjetas')return null;const existing=document.querySelector('[data-card-line-panel]');if(existing)return existing;const anchor=document.getElementById('cardsChart')?.closest('.panel');if(!anchor)return null;const panel=document.createElement('div');panel.className='panel card-line-panel';panel.dataset.cardLinePanel='true';panel.innerHTML=`<div class="panel-header card-line-header"><div class="panel-title"><strong>Evolución por tarjeta</strong><span>Consulta gastos o porcentaje del límite utilizado</span></div><div class="chart-mode-switch" role="group" aria-label="Métrica del gráfico"><button type="button" class="chart-mode-btn${cardMetric==='spend'?' active':''}" data-card-line-mode="spend">Gastos</button><button type="button" class="chart-mode-btn${cardMetric==='limit'?' active':''}" data-card-line-mode="limit">Límite utilizado</button></div></div><div class="card-line-status" data-card-line-status>Cargando histórico…</div><div class="chart-scroll card-line-scroll" hidden><div class="chart-inner card-line-inner" style="width:760px;min-width:100%;height:330px"><canvas id="cardTrendChart"></canvas></div></div>`;anchor.insertAdjacentElement('afterend',panel);panel.querySelectorAll('[data-card-line-mode]').forEach(btn=>btn.addEventListener('click',()=>{cardMetric=btn.dataset.cardLineMode||'spend';panel.querySelectorAll('[data-card-line-mode]').forEach(x=>x.classList.toggle('active',x===btn));schedule();}));return panel;}
 
   async function drawCardTrend(panel=renderCardPanelSkeleton()){
-    if(!panel||!window.Chart)return;const status=panel.querySelector('[data-card-line-status]'),scroll=panel.querySelector('.card-line-scroll');
+    if(!panel||!window.Chart||activeView()!=='tarjetas')return;
+    const version=++drawVersion,status=panel.querySelector('[data-card-line-status]'),scroll=panel.querySelector('.card-line-scroll');
+    if(!status||!scroll)return;
     try{
       status.textContent='Cargando histórico…';status.hidden=false;scroll.hidden=true;
       const [movementRows,cards]=await Promise.all([sourceRows('Movimientos!A:Z'),sourceRows('Tarjetas!A:T')]);
+      if(version!==drawVersion||activeView()!=='tarjetas'||!panel.isConnected)return;
       const movements=currentFilteredMovements(movementRows),currency=activeCurrency(),built=buildCardSeries(movements,cards,cardMetric,currency);
-      if(!built.labels.length||!built.datasets.length){status.textContent='No hay movimientos de tarjeta para los filtros seleccionados.';return;}
-      const inner=panel.querySelector('.card-line-inner');inner.style.width=`${Math.max(760,built.labels.length*(built.daily?58:90))}px`;scroll.hidden=false;status.hidden=true;
+      if(!built.labels.length||!built.datasets.length){cardChart?.destroy();cardChart=null;status.textContent='No hay movimientos de tarjeta para los filtros seleccionados.';return;}
+      const inner=panel.querySelector('.card-line-inner'),canvas=panel.querySelector('#cardTrendChart');if(!inner||!canvas)return;
+      inner.style.width=`${Math.max(760,built.labels.length*(built.daily?58:90))}px`;scroll.hidden=false;status.hidden=true;
       cardChart?.destroy();
-      cardChart=new Chart(panel.querySelector('#cardTrendChart'),{type:'line',data:{labels:built.labels,datasets:built.datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,labels:{color:'#9aa8ba',boxWidth:10,usePointStyle:true}},tooltip:{callbacks:{label:ctx=>cardMetric==='limit'?`${ctx.dataset.label}: ${Number(ctx.parsed.y||0).toFixed(1)}%`:`${ctx.dataset.label}: ${new Intl.NumberFormat('es-CO',{style:'currency',currency,maximumFractionDigits:currency==='USD'?2:0}).format(Number(ctx.parsed.y)||0)}`}}},scales:{x:{ticks:{color:'#718098',maxRotation:0,autoSkip:true},grid:{color:'#121c29'}},y:{beginAtZero:true,suggestedMax:cardMetric==='limit'?100:undefined,ticks:{color:'#718098',callback:v=>cardMetric==='limit'?`${v}%`:compactNumber(v)},grid:{color:'#121c29'}}}}});
+      cardChart=new Chart(canvas,{type:'line',data:{labels:built.labels,datasets:built.datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,labels:{color:'#9aa8ba',boxWidth:10,usePointStyle:true}},tooltip:{callbacks:{label:ctx=>cardMetric==='limit'?`${ctx.dataset.label}: ${Number(ctx.parsed.y||0).toFixed(1)}%`:`${ctx.dataset.label}: ${new Intl.NumberFormat('es-CO',{style:'currency',currency,maximumFractionDigits:currency==='USD'?2:0}).format(Number(ctx.parsed.y)||0)}`}}},scales:{x:{ticks:{color:'#718098',maxRotation:0,autoSkip:true},grid:{color:'#121c29'}},y:{beginAtZero:true,suggestedMax:cardMetric==='limit'?100:undefined,ticks:{color:'#718098',callback:v=>cardMetric==='limit'?`${v}%`:compactNumber(v)},grid:{color:'#121c29'}}}}});
       document.dispatchEvent(new CustomEvent('panel:card-trend-rendered',{detail:{metric:cardMetric}}));
-      requestAnimationFrame(()=>{scroll.scrollLeft=scroll.scrollWidth;});
-    }catch(error){console.error('Error en gráfico histórico de tarjetas:',error);status.hidden=false;status.textContent='No fue posible cargar el histórico de tarjetas.';scroll.hidden=true;}
+      requestAnimationFrame(()=>{if(panel.isConnected)scroll.scrollLeft=scroll.scrollWidth;});
+    }catch(error){if(version!==drawVersion||!panel.isConnected)return;console.error('Error en gráfico histórico de tarjetas:',error);status.hidden=false;status.textContent='No fue posible cargar el histórico de tarjetas.';scroll.hidden=true;}
   }
 
   function compactNumber(value){const n=Number(value)||0,a=Math.abs(n);if(a>=1e9)return`${(n/1e9).toFixed(1)}B`;if(a>=1e6)return`${(n/1e6).toFixed(1)}M`;if(a>=1e3)return`${(n/1e3).toFixed(0)}K`;return String(Math.round(n));}
@@ -70,11 +74,19 @@
   function drawFixedYAxis(chart){const scroller=chart?.canvas?.closest('.chart-scroll'),scale=chart?.scales?.y;if(!scroller||!scale)return;let axis=scroller.querySelector(':scope > .fixed-y-axis');if(!axis){axis=document.createElement('div');axis.className='fixed-y-axis';scroller.prepend(axis);}axis.style.height=`${chart.height}px`;axis.innerHTML='';(scale.ticks||[]).forEach((tick,index)=>{const y=scale.getPixelForTick(index);if(!Number.isFinite(y))return;const item=document.createElement('span');item.className='fixed-y-tick';item.style.top=`${y}px`;const label=formatAxisLabel(scale,tick,index);item.textContent=label.length>18?`${label.slice(0,17)}…`:label;item.title=label;axis.appendChild(item);});}
   if(window.Chart&&!window.__PANEL_FIXED_AXIS_REGISTERED__){window.__PANEL_FIXED_AXIS_REGISTERED__=true;window.Chart.register({id:'panelFixedYAxis',afterRender(chart){drawFixedYAxis(chart);},resize(chart){requestAnimationFrame(()=>drawFixedYAxis(chart));}});}
 
-  function schedule(delay=30){clearTimeout(drawTimer);drawTimer=setTimeout(()=>{const panel=renderCardPanelSkeleton();if(panel)drawCardTrend(panel);},delay);}
-  document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='tarjetas')schedule(10);});
-  document.addEventListener('panel:card-filter-changed',()=>schedule(20));
-  document.addEventListener('panel:filters-updated',()=>{if(activeView()==='tarjetas')schedule(20);});
-  document.addEventListener('click',event=>{if(event.target.closest('.currency-btn')&&activeView()==='tarjetas')schedule(20);});
+  function schedule(){
+    if(activeView()!=='tarjetas')return;
+    if(drawFrame)return;
+    drawFrame=requestAnimationFrame(()=>{
+      drawFrame=0;
+      const panel=renderCardPanelSkeleton();
+      if(panel)drawCardTrend(panel);
+    });
+  }
+  document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='tarjetas')schedule();else{drawVersion++;cardChart?.destroy();cardChart=null;}});
+  document.addEventListener('panel:card-filter-changed',schedule);
+  document.addEventListener('panel:filters-updated',()=>{if(activeView()==='tarjetas')schedule();});
+  document.addEventListener('click',event=>{if(event.target.closest('.currency-btn')&&activeView()==='tarjetas')schedule();});
   window.addEventListener('resize',()=>{if(cardChart)requestAnimationFrame(()=>drawFixedYAxis(cardChart));});
-  queueMicrotask(()=>schedule(80));
+  queueMicrotask(schedule);
 })();
