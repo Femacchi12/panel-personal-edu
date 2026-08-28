@@ -67,6 +67,15 @@
     return next;
   }
 
+  function sourceValuesFromPayload(payload,spreadsheetId,range){
+    const sourceValues=payload?.sources?.[`${spreadsheetId}|${range}`];
+    if(!Array.isArray(sourceValues))throw new Error(`Fuente no permitida: ${range}`);
+    const actualValues=applyMovementStateFilter(sourceValues,range),sectionValues=applySectionFilters(actualValues,range);
+    return spreadsheetId===financeId?applyCardFilter(sectionValues,range,payload):sectionValues;
+  }
+  async function getSourceValues(spreadsheetId,range,force=false){return sourceValuesFromPayload(await getBackendData(force),spreadsheetId,range);}
+  window.__PANEL_GET_SOURCE_VALUES__=getSourceValues;
+
   window.fetch=async function(input,init){
     const rawUrl=typeof input==='string'?input:input?.url,method=String(init?.method||input?.method||'GET').toUpperCase(),normalizedUrl=String(rawUrl||'').replace(/\/$/,'');
     if(normalizedUrl===`${apiBaseUrl}/api/data`&&method==='GET'){
@@ -75,11 +84,7 @@
     if(!rawUrl||!rawUrl.startsWith('https://sheets.googleapis.com/v4/spreadsheets/'))return originalFetch(input,init);
     const url=new URL(rawUrl),match=url.pathname.match(/^\/v4\/spreadsheets\/([^/]+)\/values\/(.+)$/);if(!match)return originalFetch(input,init);
     const spreadsheetId=decodeURIComponent(match[1]),range=decodeURIComponent(match[2]);
-    try{
-      const payload=await getBackendData(),sourceValues=payload?.sources?.[`${spreadsheetId}|${range}`];if(!Array.isArray(sourceValues))return jsonResponse({error:{message:`Fuente no permitida: ${range}`}},404,'Not Found');
-      const actualValues=applyMovementStateFilter(sourceValues,range),sectionValues=applySectionFilters(actualValues,range),values=spreadsheetId===financeId?applyCardFilter(sectionValues,range,payload):sectionValues;
-      return jsonResponse({range,majorDimension:'ROWS',values});
-    }catch(error){return jsonResponse({error:{message:String(error?.message||error)}},502,'Backend Error');}
+    try{return jsonResponse({range,majorDimension:'ROWS',values:await getSourceValues(spreadsheetId,range,false)});}catch(error){return jsonResponse({error:{message:String(error?.message||error)}},502,'Backend Error');}
   };
 
   document.addEventListener('click',event=>{if(event.isTrusted&&event.target.closest?.('#refreshBtn'))resetBackendCache();},true);
