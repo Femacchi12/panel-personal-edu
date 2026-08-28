@@ -2,15 +2,12 @@
   'use strict';
 
   const cfg = window.PANEL_CONFIG || {};
-  const apiBaseUrl = String(cfg.apiBaseUrl || '').replace(/\/$/, '');
   const financeId = String(cfg.financeSpreadsheetId || '');
-  if (!apiBaseUrl || !financeId) return;
+  if (!financeId) return;
 
   const root = document.getElementById('viewRoot');
   if (!root) return;
 
-  let cache = null;
-  let cacheAt = 0;
   let timer = null;
 
   const MONTHS = ['ene','feb','mar','abr','may','jun','jul','ago','sept','oct','nov','dic'];
@@ -24,6 +21,15 @@
     const headers=(values[0]||[]).map(v=>String(v??'').trim());
     return values.slice(1).filter(r=>r?.some(v=>String(v??'').trim()!==''))
       .map(r=>Object.fromEntries(headers.map((h,i)=>[h||`Col ${i+1}`,r?.[i]??''])));
+  }
+
+  async function sourceRows(range,force=false){
+    const direct=window.__PANEL_GET_SOURCE_VALUES__;
+    if(typeof direct==='function')return parseRows(await direct(financeId,range,force));
+    const getData=window.__PANEL_GET_BACKEND_DATA__;
+    if(typeof getData!=='function')return[];
+    const payload=await getData(force);
+    return parseRows(payload?.sources?.[`${financeId}|${range}`]||[]);
   }
 
   function parseNumber(value){
@@ -86,19 +92,6 @@
     const p=norm(row?.Pagado);
     return ['si','sí','pagado','pago','yes','true'].includes(p)||!!parseDate(row?.['Fecha pago'])||parseNumber(row?.['Monto pagado real'])>0;
   }
-
-  async function getPayload(force=false){
-    if(typeof window.__PANEL_GET_BACKEND_DATA__==='function')return window.__PANEL_GET_BACKEND_DATA__(force);
-    if(!force&&cache&&Date.now()-cacheAt<55_000)return cache;
-    const getIdToken=window.__PANEL_GET_ID_TOKEN__;
-    if(typeof getIdToken!=='function')throw new Error('Sesión Firebase no disponible');
-    const token=await getIdToken(false);
-    const res=await fetch(`${apiBaseUrl}/api/data`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});
-    if(!res.ok)throw new Error(`Backend ${res.status}`);
-    cache=await res.json();cacheAt=Date.now();return cache;
-  }
-
-  function source(payload,range){return parseRows(payload?.sources?.[`${financeId}|${range}`]);}
 
   function latestClosedCycle(cycles,id,now){
     return cycles.filter(r=>cardId(r.Tarjeta,r.Titular)===id)
@@ -204,7 +197,7 @@
     const pendingTotal=pending.reduce((s,p)=>s+p.pendingTotal,0);
     const pendingCount=pending.reduce((s,p)=>s+p.pending.length,0);
     const currentMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1);
-    const currentTotal=projection.filter(x=>!selected||true).find(x=>monthKey(x.date)===monthKey(currentMonth))?.total||0;
+    const currentTotal=projection.find(x=>monthKey(x.date)===monthKey(currentMonth))?.total||0;
     const futureTotal=Math.max(0,pendingTotal-currentTotal);
     const lastMonth=pending.flatMap(p=>p.pending.map(r=>r.__pendingInfo.scheduled)).sort((a,b)=>b-a)[0]||null;
 
@@ -230,10 +223,11 @@
   async function render(force=false){
     if(activeView()!=='tarjetas')return;
     injectStyles();
-    const payload=await getPayload(force).catch(()=>null);
-    if(!payload||activeView()!=='tarjetas')return;
-    const cycles=source(payload,'Pagos_Tarjetas!A:T');
-    const installments=source(payload,'Cuotas!A:T');
+    const [cycles,installments]=await Promise.all([
+      sourceRows('Pagos_Tarjetas!A:T',force),
+      sourceRows('Cuotas!A:T',force)
+    ]).catch(()=>[null,null]);
+    if(!cycles||!installments||activeView()!=='tarjetas')return;
     const now=new Date();
     const purchases=groupPurchases(installments,cycles,now);
     const selected=selectedCard();
@@ -245,16 +239,16 @@
     host.innerHTML=`${renderPayments(cycles,selected)}${renderInstallments(purchases,projection,selected)}`;
   }
 
-  function scheduleRender(delay=80,force=false){
+  function scheduleRender(delay=65,force=false){
     clearTimeout(timer);
     timer=setTimeout(()=>render(force).catch(console.error),delay);
   }
   document.addEventListener('panel:view-root-changed',event=>{
-    if(event.detail?.view==='tarjetas')scheduleRender(60,false);
+    if(event.detail?.view==='tarjetas')scheduleRender(45,false);
   });
-  document.addEventListener('panel:card-filter-changed',()=>scheduleRender(70,false));
+  document.addEventListener('panel:card-filter-changed',()=>scheduleRender(45,false));
   document.addEventListener('panel:section-filters-changed',event=>{
-    if(event.detail?.view==='tarjetas')scheduleRender(70,false);
+    if(event.detail?.view==='tarjetas')scheduleRender(45,false);
   });
 
   render(false).catch(console.error);
