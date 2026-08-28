@@ -8,7 +8,7 @@
 
   const STORAGE_KEY='panel-personal-edu.include-monthly-projection';
   const MONTHS=['ene','feb','mar','abr','may','jun','jul','ago','sept','oct','nov','dic'];
-  let cache=null,cacheAt=0,timer=null;
+  let timer=null;
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -65,7 +65,7 @@
     return true;
   }
 
-  async function payload(force=false){if(!force&&cache&&Date.now()-cacheAt<50000)return cache;const token=await window.__PANEL_GET_ID_TOKEN__?.(false);if(!token)return null;const r=await fetch(`${apiBaseUrl}/api/data`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});if(!r.ok)return null;cache=await r.json();cacheAt=Date.now();return cache;}
+  async function payload(force=false){const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return null;return getData(force);}
   function sum(rows){return rows.reduce((a,r)=>a+parseNumber(r['Monto COP']),0);}
 
   function monthlyStats(rows,key){
@@ -108,18 +108,27 @@
   async function run(force=false){
     const view=activeView();if(view!=='gastos'&&view!=='flujo')return;
     const root=document.getElementById('viewRoot');if(!root)return;
-    const p=await payload(force);if(!p)return;
+    const p=await payload(force);if(!p||activeView()!==view)return;
     const rows=parseRows(p.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
     const stats=monthlyStats(rows,targetMonth(rows));
-    let host=root.querySelector('#monthlyProjectionSuite');if(!host){host=document.createElement('section');host.id='monthlyProjectionSuite';const head=root.querySelector(':scope > .section-head');if(head)head.insertAdjacentElement('afterend',host);else root.prepend(host);}
-    root.querySelectorAll(':scope > .monthly-programmed-panel,:scope > .monthly-comparison-panel').forEach(el=>el.remove());
+    let host=root.querySelector('#monthlyProjectionSuite');
+    if(!host){
+      host=document.createElement('section');host.id='monthlyProjectionSuite';
+      const head=root.querySelector(':scope > .section-head');
+      if(head)head.insertAdjacentElement('afterend',host);else root.prepend(host);
+    }
     renderSuite(host,stats);
-    ['.monthly-programmed-panel','.monthly-comparison-panel'].forEach(selector=>{const panel=host.querySelector(selector);if(panel)root.appendChild(panel);});
   }
-  function schedule(force=false,delay=180){clearTimeout(timer);timer=setTimeout(()=>run(force),delay);}
+  function schedule(force=false,delay=70){clearTimeout(timer);timer=setTimeout(()=>run(force).catch(console.error),delay);}
   injectStyles();
-  document.addEventListener('click',e=>{if(e.target.closest('.nav-item,.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters'))schedule(false,320);if(e.target.closest('#refreshBtn')){cache=null;cacheAt=0;schedule(true,650);}},true);
-  document.addEventListener('panel:payment-filters-changed',event=>{const view=activeView();if(event.detail?.view===view)schedule(false,260);});
-  document.addEventListener('panel:filters-updated',()=>schedule(false,260));
-  schedule(false,500);
+  document.addEventListener('panel:view-root-changed',event=>{
+    const view=event.detail?.view;
+    if(view==='gastos'||view==='flujo')schedule(false,20);
+  });
+  document.addEventListener('panel:payment-filters-changed',event=>{
+    const view=activeView();if(event.detail?.view===view&&(view==='gastos'||view==='flujo'))schedule(false,35);
+  });
+  document.addEventListener('panel:filters-updated',()=>{const view=activeView();if(view==='gastos'||view==='flujo')schedule(false,35);});
+  document.addEventListener('click',event=>{if(event.target.closest('#refreshBtn'))schedule(true,260);},true);
+  queueMicrotask(()=>schedule(false,80));
 })();

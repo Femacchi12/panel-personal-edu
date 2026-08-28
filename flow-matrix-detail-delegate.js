@@ -6,9 +6,6 @@
   const financeId = String(cfg.financeSpreadsheetId || '');
   if (!apiBaseUrl || !financeId) return;
 
-  let cache = null;
-  let cacheAt = 0;
-
   const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
   const money = v => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(Number(v) || 0);
@@ -124,17 +121,9 @@
   }
 
   async function payload() {
-    if (cache && Date.now() - cacheAt < 55000) return cache;
-    const token = await window.__PANEL_GET_ID_TOKEN__?.(false);
-    if (!token) return null;
-    const r = await fetch(`${apiBaseUrl}/api/data`, {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: 'no-store'
-    });
-    if (!r.ok) throw new Error(`Backend ${r.status}`);
-    cache = await r.json();
-    cacheAt = Date.now();
-    return cache;
+    const getData = window.__PANEL_GET_BACKEND_DATA__;
+    if (typeof getData !== 'function') return null;
+    return getData(false);
   }
 
   function rowsFor(data, range) {
@@ -216,10 +205,4 @@
     }
   }, true);
 
-  document.addEventListener('click', e => {
-    if (e.target.closest('#refreshBtn')) {
-      cache = null;
-      cacheAt = 0;
-    }
-  }, true);
 })();

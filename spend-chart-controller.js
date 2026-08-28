@@ -41,12 +41,24 @@
     if(activeView()!=='gastos'||!window.Chart)return;
     const canvas=document.getElementById('spendChart');if(!canvas)return;
     Chart.getChart(canvas)?.destroy();
-    const currency=activeCurrency();
-    const periods=[...new Set(rows.map(row=>{const d=parseDate(row['Fecha real']||row['Fecha registrada']);return d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`:'';}).filter(Boolean))].sort();
-    const series=[...new Set(rows.map(row=>String(row['Categoría']||'Total')).filter(Boolean))].slice(0,10);
-    const datasets=series.map((seriesName,i)=>({label:seriesName,data:periods.map(period=>rows.filter(row=>{const d=parseDate(row['Fecha real']||row['Fecha registrada']);return d&&`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`===period&&String(row['Categoría']||'Total')===seriesName;}).reduce((sum,row)=>sum+amount(row,currency),0)),borderColor:COLORS[i%COLORS.length],backgroundColor:COLORS[i%COLORS.length],borderWidth:2,tension:.25}));
-    const labels=periods.map(period=>{const[year,month]=period.split('-').map(Number);return`${MONTH_LABELS[month-1]} ${year}`;});
-    new Chart(canvas,{type:'line',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9aa8ba',boxWidth:10,usePointStyle:true}}},scales:{x:{ticks:{color:'#718098'},grid:{color:'#121c29'}},y:{beginAtZero:true,ticks:{color:'#718098'},grid:{color:'#121c29'}}}}});
+    const currency=activeCurrency(),years=selectedGlobal('year'),months=selectedGlobal('month');
+    const singleMonth=years.length===1&&months.length===1;
+    let labels=[],values=[];
+    if(singleMonth){
+      const year=Number(years[0]),monthIndex=Number(months[0])-1,now=new Date();
+      const endDay=year===now.getFullYear()&&monthIndex===now.getMonth()?now.getDate():new Date(year,monthIndex+1,0).getDate();
+      const daily=new Map();
+      rows.forEach(row=>{const d=parseDate(row['Fecha real']||row['Fecha registrada']);if(!d||d.getFullYear()!==year||d.getMonth()!==monthIndex)return;daily.set(d.getDate(),(daily.get(d.getDate())||0)+amount(row,currency));});
+      let running=0;
+      for(let day=1;day<=endDay;day++){running+=daily.get(day)||0;labels.push(`${String(day).padStart(2,'0')}/${String(monthIndex+1).padStart(2,'0')}`);values.push(running);}
+    }else{
+      const totals=new Map();
+      rows.forEach(row=>{const d=parseDate(row['Fecha real']||row['Fecha registrada']);if(!d)return;const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;totals.set(key,(totals.get(key)||0)+amount(row,currency));});
+      const periods=[...totals.keys()].sort();
+      labels=periods.map(period=>{const[year,month]=period.split('-').map(Number);return`${MONTH_LABELS[month-1]} ${year}`;});
+      values=periods.map(period=>totals.get(period)||0);
+    }
+    new Chart(canvas,{type:'line',data:{labels,datasets:[{label:'Total seleccionado',data:values,borderColor:COLORS[0],backgroundColor:COLORS[0],borderWidth:2,tension:.22,pointRadius:2,pointHoverRadius:5,spanGaps:true}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,labels:{color:'#9aa8ba',boxWidth:10,usePointStyle:true}}},scales:{x:{ticks:{color:'#718098',maxRotation:0,autoSkip:true},grid:{color:'#121c29'}},y:{beginAtZero:true,ticks:{color:'#718098'},grid:{color:'#121c29'}}}}});
   }
 
   async function apply(force=false){

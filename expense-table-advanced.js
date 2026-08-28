@@ -17,6 +17,7 @@
 
   function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const headers=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(row=>row?.some(v=>String(v??'').trim()!=='')).map(row=>Object.fromEntries(headers.map((h,i)=>[h||`Col ${i+1}`,row?.[i]??''])));}
   function parseNumber(value){if(typeof value==='number')return Number.isFinite(value)?value:0;let s=String(value??'').trim().replace(/[^\d,.\-]/g,'');if(!s)return 0;const comma=s.lastIndexOf(','),dot=s.lastIndexOf('.');if(comma>=0&&dot>=0){if(comma>dot)s=s.replace(/\./g,'').replace(',','.');else s=s.replace(/,/g,'');}else if(comma>=0){const p=s.split(',');s=p.length===2&&p[1].length<=2?p[0].replace(/\./g,'')+'.'+p[1]:s.replace(/,/g,'');}else if(dot>=0){const p=s.split('.');if(p.length>2||(p.length===2&&p[1].length===3))s=s.replace(/\./g,'');}const n=Number(s);return Number.isFinite(n)?n:0;}
+  function formatOriginal(row){const raw=row['Monto original'];const value=parseNumber(raw);const source=String(raw??'').trim();const decimalMatch=source.match(/[,.](\d{1,2})$/);const decimals=decimalMatch?decimalMatch[1].length:0;return `$${value.toLocaleString('es-CO',{minimumFractionDigits:decimals,maximumFractionDigits:decimals})}`;}
   function parseDate(value){const s=String(value??'').trim();if(!s)return null;let m=s.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?/);if(m)return new Date(+m[1],+m[2]-1,+(m[3]||1));m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);const d=new Date(s);return Number.isNaN(d.getTime())?null:d;}
 
   function effectiveDate(row){
@@ -52,7 +53,7 @@
     const payload=await getData(force);return parseRows(payload?.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
   }
 
-  function valueFor(row,col){if(col==='Fecha real')return dateLabel(row);if(col==='Tipo de gasto')return expenseType(row);if(col==='Modalidad de pago')return method(row);return row[col]??'';}
+  function valueFor(row,col){if(col==='Fecha real')return dateLabel(row);if(col==='Tipo de gasto')return expenseType(row);if(col==='Monto original')return formatOriginal(row);if(col==='Modalidad de pago')return method(row);return row[col]??'';}
   function compare(a,b,col){if(col==='Fecha real')return dateKey(a)-dateKey(b);if(['Monto original','Monto COP','Monto ARS','Monto USD','Cuotas','N° cuota'].includes(col))return parseNumber(a[col])-parseNumber(b[col]);return String(valueFor(a,col)).localeCompare(String(valueFor(b,col)),'es',{numeric:true,sensitivity:'base'});}
   const columns=['Fecha real','Tipo de gasto','Tipo','Categoría','Subcategoría','Descripción / Comercio','Monto original','Moneda original','Cuenta / Tarjeta','Modalidad de pago','Titular','Cuotas','N° cuota','Estado','Monto COP','Monto ARS','Monto USD'];
 

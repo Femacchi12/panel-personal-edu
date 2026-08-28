@@ -6,8 +6,6 @@
   const apiBaseUrl = String(cfg.apiBaseUrl || '').replace(/\/$/, '');
   if (!FINANCE_ID || !apiBaseUrl) return;
 
-  let cache = null;
-  let cacheAt = 0;
   let timer = null;
   let applying = false;
 
@@ -46,17 +44,9 @@
   }
 
   async function payload(force = false) {
-    if (!force && cache && Date.now() - cacheAt < 55_000) return cache;
-    const token = await window.__PANEL_GET_ID_TOKEN__?.(false);
-    if (!token) return null;
-    const response = await fetch(`${apiBaseUrl}/api/data`, {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: 'no-store'
-    });
-    if (!response.ok) throw new Error(`Backend ${response.status}`);
-    cache = await response.json();
-    cacheAt = Date.now();
-    return cache;
+    const getData = window.__PANEL_GET_BACKEND_DATA__;
+    if (typeof getData !== 'function') return null;
+    return getData(force);
   }
 
   const sourceRows = (data, range) => parseRows(data?.sources?.[`${FINANCE_ID}|${range}`] || []);
@@ -278,8 +268,8 @@
   function updateMatrix(model) {
     const table = document.querySelector('.flow-matrix-advanced');
     if (!table) return;
-    const months = [...table.querySelectorAll('thead tr:first-child th[data-flow-sort-month]')]
-      .map(th => th.dataset.flowSortMonth || '');
+    const months = [...table.querySelectorAll('thead tr:first-child th[data-sort-month]')]
+      .map(th => th.dataset.sortMonth || '');
     table.querySelectorAll('tbody tr').forEach(row => months.forEach((key, i) => {
       const base = model.months.get(key)?.totalCop;
       if (!(base > 0)) return;
@@ -367,29 +357,15 @@
     }
   }
 
-  const schedule = (force = false, delay = 180) => {
+  const schedule = (force = false, delay = 70) => {
     clearTimeout(timer);
     timer = setTimeout(() => apply(force), delay);
   };
 
-  document.addEventListener('panel:flow-matrix-v3-rendered', () => schedule(false, 80));
-  document.addEventListener('panel:payment-filters-changed', () => schedule(false, 130));
-  document.addEventListener('panel:filters-updated', () => schedule(false, 150));
-  document.addEventListener('click', event => {
-    if (event.target.closest('#refreshBtn')) {
-      cache = null;
-      cacheAt = 0;
-      schedule(true, 500);
-      return;
-    }
-    if (event.target.closest('.nav-item')) {
-      schedule(false, 360);
-      return;
-    }
-    if (event.target.closest('.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters,.currency-btn')) {
-      schedule(false, 200);
-    }
-  }, true);
-
-  setTimeout(() => apply(false), 700);
+  document.addEventListener('panel:flow-matrix-v3-rendered', () => schedule(false, 15));
+  document.addEventListener('panel:view-root-changed', event => { if (event.detail?.view === 'flujo') schedule(false, 45); });
+  document.addEventListener('panel:payment-filters-changed', event => { if (event.detail?.view === 'flujo') schedule(false, 35); });
+  document.addEventListener('panel:filters-updated', () => { if (activeView() === 'flujo') schedule(false, 35); });
+  document.addEventListener('click', event => { if (event.target.closest('#refreshBtn') && activeView() === 'flujo') schedule(true, 300); }, true);
+  queueMicrotask(() => { if (activeView() === 'flujo') schedule(false, 90); });
 })();

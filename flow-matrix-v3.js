@@ -11,7 +11,7 @@
   const SUMMARY_ORDER = ['Fijo','Fijo + Super','Variable','Variable - Super','Egresos efectivos','Egresos Financiados','Egresos TOTALES'];
   const MIGRATION_START = '2026-01';
 
-  let cache = null, cacheAt = 0, timer = null, selectedDetail = null, applying = false;
+  let timer = null, selectedDetail = null, applying = false;
   let sortState = { type: 'id', dir: 'asc', month: null };
 
   const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
@@ -85,10 +85,8 @@
   }
 
   async function payload(force=false){
-    if(!force&&cache&&Date.now()-cacheAt<55000)return cache;
-    const token=await window.__PANEL_GET_ID_TOKEN__?.(false); if(!token)return null;
-    const r=await fetch(`${apiBaseUrl}/api/data`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'}); if(!r.ok)throw new Error(`Backend ${r.status}`);
-    cache=await r.json(); cacheAt=Date.now(); return cache;
+    const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return null;
+    return getData(force);
   }
   const rowsFor=(data,range)=>parseRows(data?.sources?.[`${financeId}|${range}`]||[]);
 
@@ -150,7 +148,7 @@
     const values=new Map(historical);
     months.forEach(m=>{if(shouldUseMovements(m,current))categories.forEach(cat=>values.set(`${m}|${norm(cat)}`,mdata(m).byCat.get(norm(cat))||0));});
     const ordered=sortedCategories(categories,values),arrow=(type,month=null)=>sortState.type===type&&(type!=='month'||sortState.month===month)?(sortState.dir==='asc'?' ↑':' ↓'):'';
-    host.innerHTML=`<div class="panel-header"><div class="panel-title"><strong>Matriz mensual por categoría</strong><span>2026 desde Movimientos · histórico anterior como respaldo · monto + % sobre ingreso regular</span></div><button type="button" class="text-btn" id="flowOriginalOrderV3">Orden original</button></div><div class="flow-matrix-scroll"><table class="flow-matrix-advanced"><thead><tr><th class="sticky-id" rowspan="2" data-sort="id">ID${arrow('id')}</th><th class="sticky-cat" rowspan="2" data-sort="category">Categoría${arrow('category')}</th>${months.map(m=>`<th colspan="2" data-sort-month="${m}">${esc(monthLabel(m))}${arrow('month',m)}</th>`).join('')}</tr><tr>${months.map(()=>'<th>Monto</th><th>% ingreso</th>').join('')}</tr></thead><tbody>${ordered.map(({cat,id})=>`<tr><td class="sticky-id">${id}</td><td class="sticky-cat">${esc(cat)}</td>${months.map(m=>{const amount=values.get(`${m}|${norm(cat)}`)||0,base=salary.map.get(m)||0,share=base?amount/base:0;return`<td><button type="button" class="matrix-amount-btn" data-detail data-category="${esc(cat)}" data-month="${m}">${esc(money(amount))}</button></td><td><span class="matrix-pct ${pctClass(share)}">${base?esc(pct(share)):'—'}</span></td>`;}).join('')}</tr>`).join('')}<tr class="matrix-total-row"><td class="sticky-id"></td><td class="sticky-cat">Total gastado por categorías</td>${months.map(m=>{const total=shouldUseMovements(m,current)?mdata(m).total:categories.reduce((s,c)=>s+(values.get(`${m}|${norm(c)}`)||0),0),base=salary.map.get(m)||0,share=base?total/base:0;return`<td>${esc(money(total))}</td><td><span class="matrix-pct ${pctClass(share)}">${base?esc(pct(share)):'—'}</span></td>`;}).join('')}</tr>${SUMMARY_ORDER.map(label=>`<tr class="matrix-summary-row"><td class="sticky-id"></td><td class="sticky-cat">${esc(label)}</td>${months.map(m=>{const amount=shouldUseMovements(m,current)?(mdata(m).summary.get(norm(label))||0):(historical.get(`${m}|${norm(label)}`)||0),base=salary.map.get(m)||0,share=base?amount/base:0;return`<td>${esc(money(amount))}</td><td><span class="matrix-pct ${pctClass(share)}">${base?esc(pct(share)):'—'}</span></td>`;}).join('')}</tr>`).join('')}</tbody></table></div><div class="salary-reference"><strong>Salario / ingreso regular usado para los porcentajes</strong><div class="salary-reference-grid">${months.map(m=>`<div><span>${esc(monthLabel(m))}</span><strong>${salary.map.has(m)?esc(money(salary.map.get(m))):'—'}</strong><small>${esc(salary.source.get(m)||'Sin base disponible')}</small></div>`).join('')}</div></div><div class="matrix-color-legend"><span>0–5% blanco</span><span>6–10% verde</span><span>11–15% amarillo</span><span>&gt;15% rojo</span></div>`;
+    host.innerHTML=`<div class="panel-header"><div class="panel-title"><strong>Matriz mensual por categoría</strong><span>${esc(year)} desde Movimientos · histórico anterior como respaldo · monto + % sobre ingreso regular</span></div><button type="button" class="text-btn" id="flowOriginalOrderV3">Orden original</button></div><div class="flow-matrix-scroll"><table class="flow-matrix-advanced"><thead><tr><th class="sticky-id" rowspan="2" data-sort="id">ID${arrow('id')}</th><th class="sticky-cat" rowspan="2" data-sort="category">Categoría${arrow('category')}</th>${months.map(m=>`<th colspan="2" data-sort-month="${m}">${esc(monthLabel(m))}${arrow('month',m)}</th>`).join('')}</tr><tr>${months.map(()=>'<th>Monto</th><th>% ingreso</th>').join('')}</tr></thead><tbody>${ordered.map(({cat,id})=>`<tr><td class="sticky-id">${id}</td><td class="sticky-cat">${esc(cat)}</td>${months.map(m=>{const amount=values.get(`${m}|${norm(cat)}`)||0,base=salary.map.get(m)||0,share=base?amount/base:0;return`<td><button type="button" class="matrix-amount-btn" data-detail data-category="${esc(cat)}" data-month="${m}">${esc(money(amount))}</button></td><td><span class="matrix-pct ${pctClass(share)}">${base?esc(pct(share)):'—'}</span></td>`;}).join('')}</tr>`).join('')}<tr class="matrix-total-row"><td class="sticky-id"></td><td class="sticky-cat">Total gastado por categorías</td>${months.map(m=>{const total=shouldUseMovements(m,current)?mdata(m).total:categories.reduce((s,c)=>s+(values.get(`${m}|${norm(c)}`)||0),0),base=salary.map.get(m)||0,share=base?total/base:0;return`<td>${esc(money(total))}</td><td><span class="matrix-pct ${pctClass(share)}">${base?esc(pct(share)):'—'}</span></td>`;}).join('')}</tr>${SUMMARY_ORDER.map(label=>`<tr class="matrix-summary-row"><td class="sticky-id"></td><td class="sticky-cat">${esc(label)}</td>${months.map(m=>{const amount=shouldUseMovements(m,current)?(mdata(m).summary.get(norm(label))||0):(historical.get(`${m}|${norm(label)}`)||0),base=salary.map.get(m)||0,share=base?amount/base:0;return`<td>${esc(money(amount))}</td><td><span class="matrix-pct ${pctClass(share)}">${base?esc(pct(share)):'—'}</span></td>`;}).join('')}</tr>`).join('')}</tbody></table></div><div class="salary-reference"><strong>Salario / ingreso regular usado para los porcentajes</strong><div class="salary-reference-grid">${months.map(m=>`<div><span>${esc(monthLabel(m))}</span><strong>${salary.map.has(m)?esc(money(salary.map.get(m))):'—'}</strong><small>${esc(salary.source.get(m)||'Sin base disponible')}</small></div>`).join('')}</div></div><div class="matrix-color-legend"><span>0–5% blanco</span><span>6–10% verde</span><span>11–15% amarillo</span><span>&gt;15% rojo</span></div>`;
     host.querySelector('#flowOriginalOrderV3')?.addEventListener('click',()=>{sortState={type:'id',dir:'asc',month:null};render(host,detail,data);});
     host.querySelector('[data-sort="id"]')?.addEventListener('click',()=>{sortState={type:'id',dir:sortState.type==='id'&&sortState.dir==='asc'?'desc':'asc',month:null};render(host,detail,data);});
     host.querySelector('[data-sort="category"]')?.addEventListener('click',()=>{sortState={type:'category',dir:sortState.type==='category'&&sortState.dir==='asc'?'desc':'asc',month:null};render(host,detail,data);});
@@ -195,22 +193,14 @@
       document.dispatchEvent(new CustomEvent('panel:flow-matrix-v3-rendered'));
     }catch(e){console.error('Matriz Flujo v3:',e);}finally{applying=false;}
   }
-  function schedule(force=false,delay=260){clearTimeout(timer);timer=setTimeout(()=>run(force),delay);}
+  function schedule(force=false,delay=55){clearTimeout(timer);timer=setTimeout(()=>run(force),delay);}
 
   injectStyles();
-  document.addEventListener('click',e=>{
-    if(e.target.closest('.nav-item'))schedule(false,450);
-    if(e.target.closest('.multi-filter-option,[data-clear-filter],#resetCurrentMonth,#clearFilters,.currency-btn'))schedule(false,420);
-    if(e.target.closest('#refreshBtn')){cache=null;cacheAt=0;schedule(true,700);}
-  },true);
-  document.addEventListener('panel:filters-updated',()=>schedule(false,320));
-  document.addEventListener('panel:payment-filters-changed',()=>schedule(false,320));
-
-  // Único guard del renderer: si app.js reconstruye la vista, reponer la matriz v3 directamente.
-  const root=document.getElementById('viewRoot');
-  if(root)new MutationObserver(()=>{
-    if(activeView()==='flujo'&&!root.querySelector('#flowMatrixV3'))schedule(false,180);
-  }).observe(root,{childList:true,subtree:false});
-
-  [500,1100].forEach(ms=>setTimeout(()=>run(false),ms));
+  document.addEventListener('panel:view-root-changed',event=>{
+    if(event.detail?.view==='flujo'&&!document.getElementById('flowMatrixV3'))schedule(false,20);
+  });
+  document.addEventListener('panel:payment-filters-changed',event=>{if(event.detail?.view==='flujo')schedule(false,35);});
+  document.addEventListener('panel:filters-updated',()=>{if(activeView()==='flujo')schedule(false,35);});
+  document.addEventListener('click',event=>{if(event.target.closest('#refreshBtn')&&activeView()==='flujo')schedule(true,280);},true);
+  queueMicrotask(()=>{if(activeView()==='flujo')schedule(false,80);});
 })();
