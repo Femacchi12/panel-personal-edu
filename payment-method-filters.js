@@ -7,8 +7,8 @@
 
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let reconcileFrame=0,reconcileVersion=0,scheduledForce=false;
   const state={gastos:{account:[],method:[]},flujo:{account:[],method:[]}};
+  let reconcileFrame=0,reconcileVersion=0,lastPayload=null,cachedRows=[];
 
   function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const headers=(values[0]||[]).map(v=>String(v||'').trim());return values.slice(1).filter(r=>r?.some(v=>String(v??'').trim()!=='')).map(r=>Object.fromEntries(headers.map((h,i)=>[h||`Col ${i+1}`,r?.[i]??''])));}
   function account(row){const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);if(n.includes('efectivo'))return'Efectivo';if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';if(n.includes('arq'))return'ARQ Edu';if(n.includes('nu')){if(n.includes(' ro')||n.endsWith('ro')||holder.includes('rocio')||holder==='ro')return'Nu Ro';if(n.includes('edu')||holder.includes('edu'))return'Nu Edu';return'Nu';}if(n.includes('transferencia'))return'Transferencia sin cuenta';if(n.includes('debito'))return'Débito sin cuenta';return raw||'Sin especificar';}
@@ -18,21 +18,22 @@
   const globalSelected=key=>[...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)].map(x=>String(x.dataset.value||'').trim()).filter(Boolean);
   function parseDate(s){const v=String(s||'').trim();let m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);return null;}
 
-  function periodMatch(row){
+  function buildPeriodContext(){return{years:new Set(globalSelected('year')),months:new Set(globalSelected('month')),categories:new Set(globalSelected('category'))};}
+  function periodMatch(row,ctx){
     if(!(window.MovementStatusCore?.isActual(row.Estado)??!/proyecc|proyect|programad/.test(norm(row.Estado))))return false;
     const d=parseDate(row['Fecha real']||row['Fecha registrada']);if(!d)return false;
-    const ys=globalSelected('year'),ms=globalSelected('month'),cs=globalSelected('category');
-    if(ys.length&&!ys.includes(String(d.getFullYear())))return false;
-    if(ms.length&&!ms.includes(String(d.getMonth()+1)))return false;
-    if(cs.length&&!cs.includes(String(row['Categoría']||'')))return false;
+    if(ctx.years.size&&!ctx.years.has(String(d.getFullYear())))return false;
+    if(ctx.months.size&&!ctx.months.has(String(d.getMonth()+1)))return false;
+    if(ctx.categories.size&&!ctx.categories.has(String(row['Categoría']||'')))return false;
     return true;
   }
 
-  async function load(force=false){
+  async function load(){
     const getData=window.__PANEL_GET_BACKEND_DATA__;
     if(typeof getData!=='function')return[];
-    const data=await getData(force);
-    return parseRows(data?.sources?.[`${FINANCE_ID}|Movimientos!A:Z`]||[]);
+    const data=await getData(false);
+    if(data!==lastPayload){lastPayload=data;cachedRows=parseRows(data?.sources?.[`${FINANCE_ID}|Movimientos!A:Z`]||[]);}
+    return cachedRows;
   }
 
   function ensureStyle(){if(document.getElementById('stablePaymentFilterStyles'))return;const style=document.createElement('style');style.id='stablePaymentFilterStyles';style.textContent=`#paymentMethodFilterBar{margin-top:-1px!important;border-top:0!important;border-top-left-radius:0!important;border-top-right-radius:0!important;padding-top:0!important}#paymentMethodFilterBar>.filter-head{display:none!important}#paymentMethodFilterBar::before{content:"";display:block;height:1px;background:var(--border-soft);margin:0 0 10px}#paymentMethodFilterBar .section-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}#paymentMethodFilterBar .multi-filter{min-width:0}.main>#filterBar:not([hidden]):has(+ #paymentMethodFilterBar:not([hidden])){margin-bottom:0!important;border-bottom-left-radius:0!important;border-bottom-right-radius:0!important;border-bottom-color:transparent!important;padding-bottom:10px!important}#paymentMethodFilterBar[hidden]{display:none!important}@media(max-width:720px){#paymentMethodFilterBar .section-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}#paymentMethodFilterBar .multi-filter-trigger{padding-left:8px;padding-right:8px;font-size:11px}.multi-filter-menu{min-width:180px}}`;document.head.appendChild(style);}
@@ -49,56 +50,52 @@
     const box=root.querySelector('.pay-options');box.innerHTML=options.length?options.map(value=>{const on=values.includes(value);return`<button type="button" class="multi-filter-option pay-option${on?' selected':''}" data-value="${esc(value)}" aria-pressed="${on}"><span class="multi-filter-check">${on?'✓':''}</span><span>${esc(value)}</span></button>`;}).join(''):'<div class="multi-filter-empty">Sin opciones</div>';
     root.querySelector('.pay-trigger')?.addEventListener('click',event=>{event.stopPropagation();document.querySelectorAll('.stable-payment-filter.open').forEach(x=>{if(x!==root){x.classList.remove('open');x.querySelector('.pay-trigger')?.setAttribute('aria-expanded','false')}});root.classList.toggle('open');root.querySelector('.pay-trigger')?.setAttribute('aria-expanded',root.classList.contains('open')?'true':'false');if(root.classList.contains('open'))requestAnimationFrame(()=>root.querySelector('.pay-search')?.focus());});
     root.querySelector('.pay-search')?.addEventListener('input',event=>{const q=norm(event.target.value);root.querySelectorAll('.pay-option').forEach(btn=>btn.hidden=!!q&&!norm(btn.dataset.value).includes(q));});
-    root.querySelectorAll('.pay-option').forEach(btn=>btn.addEventListener('click',event=>{event.stopPropagation();const value=btn.dataset.value,list=selected(view,def.key),i=list.indexOf(value);if(i>=0)list.splice(i,1);else list.push(value);state[view][def.key]=list;schedule(true);}));
+    root.querySelectorAll('.pay-option').forEach(btn=>btn.addEventListener('click',event=>{event.stopPropagation();const value=String(btn.dataset.value||''),list=selected(view,def.key),i=list.indexOf(value);if(i>=0)list.splice(i,1);else list.push(value);state[view][def.key]=list;schedule();}));
     return root;
   }
 
-  function renderBar(view,rows){
+  function renderBar(view,periodRows){
     const bar=ensureBar();if(!bar)return;if(!supported(view)){bar.hidden=true;return;}bar.hidden=false;
-    const data=(rows||[]).filter(periodMatch);if(activeView()!==view)return;
     const grid=bar.querySelector('.section-filter-grid');grid.innerHTML='';
-    defs.forEach(def=>{const options=[...new Set(data.map(def.getter).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true,sensitivity:'base'}));grid.appendChild(renderFilter(def,options,view));});
+    defs.forEach(def=>{const options=[...new Set(periodRows.map(def.getter).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true,sensitivity:'base'}));grid.appendChild(renderFilter(def,options,view));});
   }
 
   function alignGlobalFilters(view){const filterBar=document.getElementById('filterBar');if(!filterBar)return;const sub=document.querySelector('#globalFilters .multi-filter[data-filter="subcategory"]'),cat=document.querySelector('#globalFilters .multi-filter[data-filter="category"]');if(supported(view)){if(sub)sub.hidden=true;if(cat)cat.hidden=false;filterBar.hidden=false;}}
   function rowMatchesPayment(row,view){const st=state[view];return(!st.account.length||st.account.includes(account(row)))&&(!st.method.length||st.method.includes(method(row)));}
 
-  function apply(view,rows){
-    if(!supported(view))return;
-    const data=(rows||[]).filter(r=>periodMatch(r)&&rowMatchesPayment(r,view));
-    if(activeView()!==view)return;
+  function apply(view,periodRows){
+    if(!supported(view)||activeView()!==view)return;
+    const data=periodRows.filter(row=>rowMatchesPayment(row,view));
     window.__PAYMENT_FILTER_STATE__={view,account:[...state[view].account],method:[...state[view].method]};
     window.__PAYMENT_FILTERED_MOVEMENTS__=data;
     document.dispatchEvent(new CustomEvent('panel:payment-filters-changed',{detail:window.__PAYMENT_FILTER_STATE__}));
   }
 
-  async function reconcile(forceApply=false){
+  async function reconcile(){
     const version=++reconcileVersion,view=activeView();
     ensureStyle();ensureBar();alignGlobalFilters(view);
-    const rows=supported(view)?await load(false):[];
+    if(!supported(view)){ensureBar()?.setAttribute('hidden','');return;}
+    const rows=await load();
     if(version!==reconcileVersion||activeView()!==view)return;
-    renderBar(view,rows);
+    const ctx=buildPeriodContext(),periodRows=rows.filter(row=>periodMatch(row,ctx));
+    renderBar(view,periodRows);
     if(version!==reconcileVersion||activeView()!==view)return;
-    if(forceApply||supported(view))apply(view,rows);
-  }
-  function schedule(force=false){
-    scheduledForce=scheduledForce||force;
-    if(reconcileFrame)return;
-    reconcileFrame=requestAnimationFrame(()=>{
-      reconcileFrame=0;
-      const useForce=scheduledForce;
-      scheduledForce=false;
-      reconcile(useForce).catch(console.error);
-    });
+    apply(view,periodRows);
   }
 
-  document.addEventListener('panel:view-root-changed',event=>{const view=event.detail?.view;if(supported(view))schedule(true);else{reconcileVersion++;ensureBar()?.setAttribute('hidden','');}});
-  document.addEventListener('panel:filters-updated',()=>schedule(true));
+  function schedule(){
+    if(reconcileFrame)return;
+    reconcileFrame=requestAnimationFrame(()=>{reconcileFrame=0;reconcile().catch(console.error);});
+  }
+
+  document.addEventListener('panel:view-root-changed',event=>{const view=event.detail?.view;if(supported(view))schedule();else{reconcileVersion++;ensureBar()?.setAttribute('hidden','');}});
+  document.addEventListener('panel:filters-updated',()=>schedule());
+  document.addEventListener('panel:backend-refresh-requested',()=>{lastPayload=null;cachedRows=[];});
   document.addEventListener('click',event=>{
     if(!event.target.closest('.stable-payment-filter'))document.querySelectorAll('.stable-payment-filter.open').forEach(x=>{x.classList.remove('open');x.querySelector('.pay-trigger')?.setAttribute('aria-expanded','false')});
     const view=activeView();
-    if(event.target.closest('#resetCurrentMonth,#clearFilters')){clearPaymentState(view);queueMicrotask(()=>schedule(true));}
+    if(event.target.closest('#resetCurrentMonth,#clearFilters')){clearPaymentState(view);queueMicrotask(schedule);}
   },true);
 
-  ensureStyle();ensureBar();queueMicrotask(()=>schedule(true));
+  ensureStyle();ensureBar();queueMicrotask(schedule);
 })();
