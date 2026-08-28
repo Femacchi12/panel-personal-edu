@@ -10,7 +10,7 @@
   const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
 
-  function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const headers=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(row=>row?.some(v=>String(v??'').trim()!=='')).map(row=>Object.fromEntries(headers.map((header,index)=>[header||`Col ${index+1}`,row?.[i]??''])));}
+  function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const headers=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(row=>row?.some(v=>String(v??'').trim()!=='')).map(row=>Object.fromEntries(headers.map((header,index)=>[header||`Col ${index+1}`,row?.[index]??''])));}
   const cardId=card=>String(card?.['ID tarjeta']||'').trim();
   function cardLabel(card){const issuer=String(card?.Emisor||'Tarjeta').trim(),owner=String(card?.Titular||'').trim(),base=owner?`${issuer} · ${owner}`:issuer,duplicates=cards.filter(item=>norm(item?.Emisor)===norm(card?.Emisor)&&norm(item?.Titular)===norm(card?.Titular));return duplicates.length>1&&card?.Producto?`${base} · ${String(card.Producto).trim()}`:base;}
   const selectedCard=()=>cards.find(card=>cardId(card)===activeCardId)||null;
