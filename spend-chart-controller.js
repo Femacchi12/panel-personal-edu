@@ -7,7 +7,7 @@
 
   const COLORS=['#1769ff','#f6c844','#26d07c','#ff667a','#ffad42','#7a8ba5','#8b5cf6','#22d3ee','#f472b6','#a3e635'];
   const MONTH_LABELS=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-  let timer=null,chartMode='cumulative',rawRows=[],dataReady=false;
+  let renderFrame=0,loadVersion=0,chartMode='cumulative',rawRows=[],lastPayload=null;
 
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
@@ -97,24 +97,32 @@
     new Chart(canvas,{type,data:{labels,datasets:[{label:seriesLabel,data:values,borderColor:COLORS[0],backgroundColor:COLORS[0],borderWidth:2,tension:type==='line'?.22:0,pointRadius:type==='line'?2:0,pointHoverRadius:type==='line'?5:0,spanGaps:true,borderRadius:type==='bar'?4:0}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,labels:{color:'#9aa8ba',boxWidth:10,usePointStyle:true}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${formatMoney(ctx.parsed.y,currency)}`}}},scales:{x:{ticks:{color:'#718098',maxRotation:0,autoSkip:true},grid:{color:'#121c29'}},y:{beginAtZero:true,ticks:{color:'#718098'},grid:{color:'#121c29'}}}}});
   }
 
-  function renderCurrent(){if(!dataReady||activeView()!=='gastos')return;redraw(rawRows.filter(matches));}
+  function renderCurrent(){if(!lastPayload||activeView()!=='gastos')return;redraw(rawRows.filter(matches));}
 
-  async function load(force=false){
+  async function load(){
     if(activeView()!=='gastos')return;
-    if(dataReady&&!force){renderCurrent();return;}
     const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return;
-    const data=await getData(force);rawRows=parseRows(data?.sources?.[`${FINANCE_ID}|Movimientos!A:Z`]||[]);dataReady=true;renderCurrent();
+    const version=++loadVersion;
+    const data=await getData(false);
+    if(version!==loadVersion||activeView()!=='gastos')return;
+    if(data!==lastPayload){
+      lastPayload=data;
+      rawRows=parseRows(data?.sources?.[`${FINANCE_ID}|Movimientos!A:Z`]||[]);
+    }
+    renderCurrent();
   }
 
-  function schedule(delay=50,force=false){clearTimeout(timer);timer=setTimeout(()=>load(force).catch(console.error),delay);}
+  function schedule(){
+    if(renderFrame)return;
+    renderFrame=requestAnimationFrame(()=>{
+      renderFrame=0;
+      load().catch(console.error);
+    });
+  }
 
   injectStyles();
-  document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='gastos')schedule(20,false);});
-  document.addEventListener('panel:payment-filters-changed',event=>{if(event.detail?.view==='gastos')schedule(10,false);});
-  document.addEventListener('panel:filters-updated',()=>{if(activeView()==='gastos')schedule(10,false);});
-  document.addEventListener('click',event=>{
-    if(event.target.closest('.currency-btn')&&activeView()==='gastos')setTimeout(renderCurrent,20);
-    if(event.target.closest('#refreshBtn')&&activeView()==='gastos')schedule(250,true);
-  },true);
-  queueMicrotask(()=>schedule(80,false));
+  document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='gastos')schedule();else loadVersion++;});
+  document.addEventListener('panel:payment-filters-changed',event=>{if(event.detail?.view==='gastos')schedule();});
+  document.addEventListener('panel:filters-updated',()=>{if(activeView()==='gastos')schedule();});
+  queueMicrotask(()=>schedule());
 })();
