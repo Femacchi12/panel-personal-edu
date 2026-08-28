@@ -5,7 +5,9 @@
   const financeId = String(cfg.financeSpreadsheetId || '');
   if (!financeId) return;
 
-  let timer = null;
+  let renderFrame = 0;
+  let renderVersion = 0;
+  let pendingForce = false;
 
   const norm = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -206,6 +208,7 @@
 
   async function run(force=false) {
     if (document.querySelector('.nav-item.active')?.dataset.view !== 'tarjetas') return;
+    const version=++renderVersion;
     const cards = [...document.querySelectorAll('#viewRoot .credit-card')];
     if (!cards.length) return;
     try {
@@ -213,27 +216,33 @@
         sourceRows('Tarjetas!A:T',force),
         sourceRows('Pagos_Tarjetas!A:T',force)
       ]);
-      if (document.querySelector('.nav-item.active')?.dataset.view !== 'tarjetas') return;
+      if(version!==renderVersion||document.querySelector('.nav-item.active')?.dataset.view !== 'tarjetas') return;
       const now = new Date();
       cards.forEach(card=>{
+        if(!card.isConnected)return;
         const id = cardIdFromDom(card);
         const row = cardRows.find(r=>String(r['ID tarjeta']||'').trim()===id);
         if (row) enhanceCard(card,row,cycles,now);
       });
     } catch (error) {
-      console.error('No se pudo cargar el control de pagos de tarjetas:',error);
+      if(version===renderVersion)console.error('No se pudo cargar el control de pagos de tarjetas:',error);
     }
   }
 
-  function schedule(delay=70,force=false){ clearTimeout(timer); timer=setTimeout(()=>run(force),delay); }
+  function schedule(force=false){
+    pendingForce=pendingForce||force;
+    if(renderFrame)return;
+    renderFrame=requestAnimationFrame(()=>{
+      renderFrame=0;
+      const useForce=pendingForce;
+      pendingForce=false;
+      run(useForce);
+    });
+  }
 
   injectStyles();
-  document.addEventListener('panel:view-root-changed',event=>{
-    if(event.detail?.view==='tarjetas')schedule(35,false);
-  });
-  document.addEventListener('panel:card-filter-changed',()=>schedule(35,false));
-  document.addEventListener('panel:section-filters-changed',event=>{
-    if(event.detail?.view==='tarjetas')schedule(35,false);
-  });
-  schedule(90,false);
+  document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='tarjetas')schedule(false);else renderVersion++;});
+  document.addEventListener('panel:card-filter-changed',()=>schedule(false));
+  document.addEventListener('panel:section-filters-changed',event=>{if(event.detail?.view==='tarjetas')schedule(false);});
+  queueMicrotask(()=>schedule(false));
 })();
