@@ -53,9 +53,9 @@
     return root;
   }
 
-  async function renderBar(view){
+  function renderBar(view,rows){
     const bar=ensureBar();if(!bar)return;if(!supported(view)){bar.hidden=true;return;}bar.hidden=false;
-    const data=(await load()).filter(periodMatch);if(activeView()!==view)return;
+    const data=(rows||[]).filter(periodMatch);if(activeView()!==view)return;
     const grid=bar.querySelector('.section-filter-grid');grid.innerHTML='';
     defs.forEach(def=>{const options=[...new Set(data.map(def.getter).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true,sensitivity:'base'}));grid.appendChild(renderFilter(def,options,view));});
   }
@@ -63,9 +63,9 @@
   function alignGlobalFilters(view){const filterBar=document.getElementById('filterBar');if(!filterBar)return;const sub=document.querySelector('#globalFilters .multi-filter[data-filter="subcategory"]'),cat=document.querySelector('#globalFilters .multi-filter[data-filter="category"]');if(supported(view)){if(sub)sub.hidden=true;if(cat)cat.hidden=false;filterBar.hidden=false;}}
   function rowMatchesPayment(row,view){const st=state[view];return(!st.account.length||st.account.includes(account(row)))&&(!st.method.length||st.method.includes(method(row)));}
 
-  async function apply(view){
+  function apply(view,rows){
     if(!supported(view))return;
-    const data=(await load()).filter(r=>periodMatch(r)&&rowMatchesPayment(r,view));
+    const data=(rows||[]).filter(r=>periodMatch(r)&&rowMatchesPayment(r,view));
     if(activeView()!==view)return;
     window.__PAYMENT_FILTER_STATE__={view,account:[...state[view].account],method:[...state[view].method]};
     window.__PAYMENT_FILTERED_MOVEMENTS__=data;
@@ -75,9 +75,11 @@
   async function reconcile(forceApply=false){
     const version=++reconcileVersion,view=activeView();
     ensureStyle();ensureBar();alignGlobalFilters(view);
-    await renderBar(view);
+    const rows=supported(view)?await load(false):[];
     if(version!==reconcileVersion||activeView()!==view)return;
-    if(forceApply||supported(view))await apply(view);
+    renderBar(view,rows);
+    if(version!==reconcileVersion||activeView()!==view)return;
+    if(forceApply||supported(view))apply(view,rows);
   }
   function schedule(force=false){
     scheduledForce=scheduledForce||force;
