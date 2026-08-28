@@ -56,11 +56,13 @@
       .expense-reconciliation-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
       .expense-reconciliation-head strong{display:block;color:#f6c844;font-size:11px;margin-bottom:3px}
       .expense-reconciliation-head span{color:#8fa0b6}
+      .expense-reconciliation-note{display:block;margin-top:4px;color:#aebbd0!important;font-weight:600}
       .expense-reconciliation-toggle{border:1px solid #5f5125;background:#17160f;color:#f6c844;border-radius:8px;padding:6px 8px;font-size:9px;font-weight:700;cursor:pointer;white-space:nowrap}
       .expense-reconciliation-detail{display:grid;gap:5px;margin-top:9px;padding-top:8px;border-top:1px solid rgba(246,200,68,.16)}
       .expense-reconciliation-detail[hidden]{display:none!important}
-      .expense-reconciliation-row{display:grid;grid-template-columns:minmax(100px,1.2fr) 1fr 1fr 1fr;gap:8px;align-items:center;color:#91a1b5}
+      .expense-reconciliation-row{display:grid;grid-template-columns:minmax(120px,1.25fr) 1fr 1fr 1fr;gap:8px;align-items:center;color:#91a1b5}
       .expense-reconciliation-row strong{color:#e6edf7;font-size:10px}
+      .expense-reconciliation-row span b{color:#b9c6d6;font-weight:700}
       @media(max-width:720px){.expense-reconciliation-row{grid-template-columns:1fr 1fr}.expense-reconciliation-head{flex-direction:column}}
     `;
     document.head.appendChild(style);
@@ -93,7 +95,7 @@
     const summary=[monthlyCount?`${monthlyCount} total${monthlyCount===1?'':'es'} mensual${monthlyCount===1?'':'es'}`:'',categoryCount?`${categoryCount} categoría${categoryCount===1?'':'s'}`:''].filter(Boolean).join(' y ');
     const latestLabel=latest.kind==='category'?`${monthLabel(latest.month)} · ${latest.category}`:monthLabel(latest.month);
     host.hidden=false;
-    host.innerHTML=`<div class="expense-reconciliation-head"><div><strong>Conciliación de gastos pendiente</strong><span>Detecté diferencias en ${summary}. El dashboard usa exclusivamente Movimientos como fuente oficial de gasto real y no incorporó ninguna diferencia automáticamente. Última: ${latestLabel} · diferencia ${money(latest.differenceCop)}.</span></div><button type="button" class="expense-reconciliation-toggle">Ver detalle</button></div><div class="expense-reconciliation-detail" hidden>${issues.slice().sort((a,b)=>b.month.localeCompare(a.month)||String(a.category||'').localeCompare(String(b.category||''),'es')).slice(0,20).map(item=>`<div class="expense-reconciliation-row"><strong>${monthLabel(item.month)}${item.kind==='category'?` · ${item.category}`:''}</strong><span>Movimientos: ${money(item.canonicalCop)}</span><span>${item.source}: ${money(item.summaryCop)}</span><span>Diferencia: ${money(item.differenceCop)}</span></div>`).join('')}</div>`;
+    host.innerHTML=`<div class="expense-reconciliation-head"><div><strong>Conciliación de gastos pendiente</strong><span>Es un control de consistencia: compara Movimientos (fuente oficial) contra resúmenes derivados. Detecté diferencias en ${summary}. Última: ${latestLabel} · diferencia del resumen ${money(latest.differenceCop)}.</span><span class="expense-reconciliation-note">No es un gasto nuevo y no se agregó nada automáticamente. Si hay diferencia, se conserva Movimientos y revisamos el resumen.</span></div><button type="button" class="expense-reconciliation-toggle">Ver detalle</button></div><div class="expense-reconciliation-detail" hidden>${issues.slice().sort((a,b)=>b.month.localeCompare(a.month)||String(a.category||'').localeCompare(String(b.category||''),'es')).slice(0,20).map(item=>`<div class="expense-reconciliation-row"><strong>${item.kind==='category'?'Categoría':'Total mensual'} · ${monthLabel(item.month)}${item.kind==='category'?` · ${item.category}`:''}</strong><span><b>Oficial · Movimientos:</b> ${money(item.canonicalCop)}</span><span><b>Resumen · ${item.source}:</b> ${money(item.summaryCop)}</span><span><b>Resumen − oficial:</b> ${money(item.differenceCop)}</span></div>`).join('')}</div>`;
     const button=host.querySelector('.expense-reconciliation-toggle'),detail=host.querySelector('.expense-reconciliation-detail');
     button?.addEventListener('click',()=>{const open=detail?.hidden!==false;if(detail)detail.hidden=!open;if(button)button.textContent=open?'Ocultar detalle':'Ver detalle';});
   }
