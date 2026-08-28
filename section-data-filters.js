@@ -13,7 +13,7 @@
   let backendCacheAt = 0;
   const parsedRowsCache = new WeakMap();
   let lastView = null;
-  let syncing = false;
+  let syncVersion = 0;
 
   const norm = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -186,7 +186,7 @@
       document.querySelectorAll('.local-multi-filter.open').forEach(x=>{if(x!==root)x.classList.remove('open')});
       root.classList.toggle('open');
       root.querySelector('.local-trigger')?.setAttribute('aria-expanded',root.classList.contains('open')?'true':'false');
-      if(root.classList.contains('open'))setTimeout(()=>root.querySelector('.local-search')?.focus(),0);
+      if(root.classList.contains('open'))requestAnimationFrame(()=>root.querySelector('.local-search')?.focus());
     });
     root.querySelector('.local-search')?.addEventListener('input',event=>{
       const q=norm(event.target.value);
@@ -225,9 +225,6 @@
     const conf=VIEW_CONFIG[view]||VIEW_CONFIG.general;
     if(!conf.local.length){bar.hidden=true;bar.innerHTML='';return;}
 
-    // Resolver todas las opciones antes de tocar el DOM evita que los filtros
-    // aparezcan uno por uno durante la primera entrada a una sección. El backend
-    // se obtiene una sola vez y cada fuente se parsea una sola vez por payload.
     bar.hidden=true;
     const needsBackend=conf.local.some(def=>!Array.isArray(def.options)&&(def.sources||[]).length);
     const payload=needsBackend?await getBackendData(false):null;
@@ -284,37 +281,40 @@
     }
   }
 
-  async function syncView(){
-    if(syncing)return;
-    syncing=true;
-    try{
-      const view=activeView();
-      updateGlobalFilterVisibility(view);
+  async function syncView(requestedView=activeView()){
+    const view=requestedView||activeView();
+    const version=++syncVersion;
+    updateGlobalFilterVisibility(view);
+    setCurrentFilterState(view);
+    await renderSectionFilters(view);
+    if(version!==syncVersion||activeView()!==view)return;
+    lastView=view;
+    if(view==='inversiones'){
       setCurrentFilterState(view);
-      await renderSectionFilters(view);
-      lastView=view;
-      if(view==='inversiones'){
-        setCurrentFilterState(view);
-        document.dispatchEvent(new CustomEvent('panel:section-filters-ready',{detail:{view}}));
-      }
-    }finally{syncing=false;}
+      document.dispatchEvent(new CustomEvent('panel:section-filters-ready',{detail:{view}}));
+    }
   }
+
+  document.addEventListener('panel:view-root-changed',event=>{
+    const view=String(event.detail?.view||activeView());
+    if(view&&view!==lastView)syncView(view).catch(console.error);
+  });
 
   document.addEventListener('click',event=>{
     if(!event.target.closest('.local-multi-filter'))document.querySelectorAll('.local-multi-filter.open').forEach(x=>x.classList.remove('open'));
-    if(event.target.closest('.nav-item'))setTimeout(()=>syncView().catch(console.error),30);
     if(event.target.closest('#clearFilters,#resetCurrentMonth')){
       const view=activeView();
       clearLocal(view);
       setCurrentFilterState(view);
-      setTimeout(()=>{
+      queueMicrotask(()=>{
+        if(activeView()!==view)return;
         updateLocalControls(view);
         document.dispatchEvent(new CustomEvent('panel:section-filters-changed',{detail:{view}}));
-      },80);
+      });
     }
     if(event.target.closest('#refreshBtn')){backendCache=null;backendCacheAt=0;}
   },true);
 
-  const start=()=>syncView().catch(console.error);
+  const start=()=>syncView(activeView()).catch(console.error);
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
