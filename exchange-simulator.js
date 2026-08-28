@@ -76,5 +76,5 @@
       if(!event.detail?.root?.querySelector('[data-fx-view]'))schedule(false);
     }else renderVersion++;
   });
-  document.addEventListener('panel:backend-data-loaded',()=>{if(activeView()==='cambio')schedule(false);});
+  document.addEventListener('panel:backend-refresh-requested',()=>{if(activeView()==='cambio')schedule(true);});
 })();
