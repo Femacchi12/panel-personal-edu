@@ -58,6 +58,7 @@
       .expense-reconciliation-head span{color:#8fa0b6}
       .expense-reconciliation-toggle{border:1px solid #5f5125;background:#17160f;color:#f6c844;border-radius:8px;padding:6px 8px;font-size:9px;font-weight:700;cursor:pointer;white-space:nowrap}
       .expense-reconciliation-detail{display:grid;gap:5px;margin-top:9px;padding-top:8px;border-top:1px solid rgba(246,200,68,.16)}
+      .expense-reconciliation-detail[hidden]{display:none!important}
       .expense-reconciliation-row{display:grid;grid-template-columns:minmax(100px,1.2fr) 1fr 1fr 1fr;gap:8px;align-items:center;color:#91a1b5}
       .expense-reconciliation-row strong{color:#e6edf7;font-size:10px}
       @media(max-width:720px){.expense-reconciliation-row{grid-template-columns:1fr 1fr}.expense-reconciliation-head{flex-direction:column}}
