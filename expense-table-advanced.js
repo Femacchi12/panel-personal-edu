@@ -6,7 +6,8 @@
   if(!financeId)return;
 
   const MONTHS=['ene','feb','mar','abr','may','jun','jul','ago','sept','oct','nov','dic'];
-  let timer=null;
+  let frame=0;
+  let scheduledForce=false;
   let sort={col:'Fecha real',dir:'desc'};
   let query='';
   let expanded=false;
@@ -69,12 +70,22 @@
     if(activeView()!=='gastos')return;const root=document.getElementById('viewRoot');if(!root)return;
     const original=[...root.querySelectorAll(':scope > .panel')].find(panel=>panel.querySelector('.panel-title strong')?.textContent?.trim()==='Movimientos');if(!original)return;original.style.display='none';
     let host=root.querySelector('#expenseAdvancedPanel');if(!host){host=document.createElement('div');host.id='expenseAdvancedPanel';host.className='panel table-panel';original.insertAdjacentElement('afterend',host);}
-    const data=await rows(force).catch(error=>{console.error('Tabla avanzada de gastos:',error);return[];});renderTable(host,filteredRows(data));
+    const data=await rows(force).catch(error=>{console.error('Tabla avanzada de gastos:',error);return[];});
+    if(activeView()!=='gastos'||!host.isConnected)return;
+    renderTable(host,filteredRows(data));
   }
 
-  function schedule(force=false,delay=60){clearTimeout(timer);timer=setTimeout(()=>run(force),delay);}
-  document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='gastos')schedule(false,20);});
-  document.addEventListener('panel:payment-filters-changed',event=>{if(event.detail?.view==='gastos')schedule(false,20);});
-  document.addEventListener('click',event=>{if(event.target.closest('#refreshBtn'))schedule(true,250);});
-  queueMicrotask(()=>schedule(false,80));
+  function schedule(force=false){
+    scheduledForce=scheduledForce||force;
+    if(frame)return;
+    frame=requestAnimationFrame(()=>{
+      frame=0;
+      const useForce=scheduledForce;
+      scheduledForce=false;
+      run(useForce).catch(error=>console.error('Tabla avanzada de gastos:',error));
+    });
+  }
+  document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='gastos')schedule(false);});
+  document.addEventListener('panel:payment-filters-changed',event=>{if(event.detail?.view==='gastos')schedule(false);});
+  queueMicrotask(()=>schedule(false));
 })();
