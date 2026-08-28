@@ -10,7 +10,7 @@
   const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
 
-  function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const headers=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(row=>row?.some(v=>String(v??'').trim()!=='')).map(row=>Object.fromEntries(headers.map((header,index)=>[header||`Col ${index+1}`,row?.[index]??''])));}
+  function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const headers=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(row=>row?.some(v=>String(v??'').trim()!=='')).map(row=>Object.fromEntries(headers.map((header,index)=>[header||`Col ${index+1}`,row?.[i]??''])));}
   const cardId=card=>String(card?.['ID tarjeta']||'').trim();
   function cardLabel(card){const issuer=String(card?.Emisor||'Tarjeta').trim(),owner=String(card?.Titular||'').trim(),base=owner?`${issuer} · ${owner}`:issuer,duplicates=cards.filter(item=>norm(item?.Emisor)===norm(card?.Emisor)&&norm(item?.Titular)===norm(card?.Titular));return duplicates.length>1&&card?.Producto?`${base} · ${String(card.Producto).trim()}`:base;}
   const selectedCard=()=>cards.find(card=>cardId(card)===activeCardId)||null;
@@ -20,13 +20,9 @@
     if(cards.length)return cards;
     if(cardsPromise)return cardsPromise;
     cardsPromise=(async()=>{
-      let values=[];
-      const direct=window.__PANEL_GET_SOURCE_VALUES__;
-      if(typeof direct==='function')values=await direct(financeId,'Tarjetas!A:T',force);
-      else {
-        const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return[];
-        const payload=await getData(force);values=payload?.sources?.[`${financeId}|Tarjetas!A:T`]||[];
-      }
+      const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return[];
+      const payload=await getData(force);
+      const values=payload?.sources?.[`${financeId}|Tarjetas!A:T`]||[];
       cards=parseRows(values).filter(card=>cardId(card)&&norm(card?.Activa||'sí')!=='no');
       return cards;
     })();
@@ -121,13 +117,7 @@
   }
 
   document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='tarjetas')syncUI();});
-  document.addEventListener('click',event=>{
-    if(!event.target.closest('[data-card-specific-filter]')){
-      const open=document.querySelector('[data-card-specific-filter].open');
-      if(open){open.classList.remove('open');open.querySelector('.card-specific-trigger')?.setAttribute('aria-expanded','false');}
-    }
-    if(event.target.closest('#refreshBtn')&&event.isTrusted){cards=[];cardsPromise=null;}
-  },true);
+  document.addEventListener('panel:backend-refresh-requested',()=>{cards=[];cardsPromise=null;});
 
   window.__PANEL_ACTIVE_CARD_ID__='';
   syncUI();
