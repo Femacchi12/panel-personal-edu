@@ -88,6 +88,7 @@
   }
 
   async function getPayload(force=false){
+    if(typeof window.__PANEL_GET_BACKEND_DATA__==='function')return window.__PANEL_GET_BACKEND_DATA__(force);
     if(!force&&cache&&Date.now()-cacheAt<55_000)return cache;
     const getIdToken=window.__PANEL_GET_ID_TOKEN__;
     if(typeof getIdToken!=='function')throw new Error('Sesión Firebase no disponible');
@@ -112,6 +113,10 @@
     if(!first)return null;
     const scheduled=addMonths(first,installment-1);
     const id=cardId(row.Tarjeta,row.Titular);
+    const detail=norm(row['Estado detalle']);
+    const status=norm(row.Estado);
+    if(detail.includes('pagad')||status.includes('pagad'))return {pending:false,scheduled,id};
+    if(detail==='por pagar'||detail.includes('programad')||detail.includes('pend'))return {pending:true,scheduled,id};
     const cycle=latestClosedCycle(cycles,id,now);
     const currentMonth=new Date(now.getFullYear(),now.getMonth(),1);
     if(!cycle)return {pending:scheduled>=currentMonth,scheduled,id};
@@ -127,7 +132,7 @@
     rows.forEach(row=>{
       const id=cardId(row.Tarjeta,row.Titular);
       const total=parseNumber(row['Total compra']);
-      const key=[id,row['Fecha compra'],norm(row.Descripción||row.Comercio),total].join('|');
+      const key=String(row['ID compra']||'').trim()||[id,row['Fecha compra'],norm(row.Descripción||row.Comercio),total].join('|');
       if(!groups.has(key))groups.set(key,{id,fecha:row['Fecha compra'],comercio:row.Comercio||'',descripcion:row.Descripción||'',titular:row.Titular||'',total,moneda:row.Moneda||'COP',rows:[]});
       const pendingInfo=pendingInstallment(row,cycles,now);
       groups.get(key).rows.push({...row,__pendingInfo:pendingInfo,__n:Math.max(1,Math.round(parseNumber(row['N° cuotas']))||1),__cuota:Math.max(1,Math.round(parseNumber(row['Cuota actual']))||1),__valor:parseNumber(row['Valor cuota'])});
