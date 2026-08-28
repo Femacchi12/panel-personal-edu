@@ -55,6 +55,7 @@
       filter('serviceType','Tipo de servicio',[src('Servicios!A:O',['Tipo de servicio'])]),
       filter('serviceStatus','Estado',[src('Servicios!A:O',['Estado mes'])])
     ]},
+    cambio: { global:[], local:[] },
     salud: { global:['year','month'], local:[
       filter('healthPatient','Paciente',[
         src('Citas_Medicas!A:N',['Paciente'],HEALTH_ID),src('Tratamientos!A:X',['Paciente'],HEALTH_ID),
