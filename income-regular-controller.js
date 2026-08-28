@@ -10,6 +10,7 @@
   let cacheAt = 0;
   let timer = null;
   let applying = false;
+  let readinessAttempts = 0;
 
   const activeView = () => document.querySelector('.nav-item.active')?.dataset.view || '';
   const activeCurrency = () => document.querySelector('.currency-btn.active')?.dataset.currency || 'COP';
@@ -134,9 +135,19 @@
   }
 
   async function apply(force = false) {
-    if (applying || activeView() !== 'ingresos' || !window.RegularIncomeCore) return;
+    if (applying || activeView() !== 'ingresos' || !window.RegularIncomeCore) {
+      readinessAttempts = 0;
+      return;
+    }
     const root = document.getElementById('viewRoot');
-    if (!root?.querySelector('[data-income-complete]')) return;
+    if (!root?.querySelector('[data-income-complete]')) {
+      if (readinessAttempts < 10) {
+        readinessAttempts += 1;
+        schedule(250, false);
+      }
+      return;
+    }
+    readinessAttempts = 0;
     applying = true;
     try {
       const data = await payload(force);
@@ -176,6 +187,7 @@
       return;
     }
     if (event.target.closest('.nav-item')) {
+      readinessAttempts = 0;
       schedule(320, false);
       return;
     }
