@@ -110,6 +110,7 @@ async function loadDashboard() {
     if (BACKEND_MODE) await loadScript("data-backend-adapter.js");
     await loadScript("regular-income-core.js");
     await loadScript("app.js");
+    if (BACKEND_MODE) await loadScript("expense-reconciliation-guard.js");
     await loadScript("income-doc-enhancements.js");
     await loadScript("card-specific-filter.js");
     await loadScript("card-payment-control.js");
