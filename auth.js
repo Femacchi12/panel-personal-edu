@@ -119,7 +119,6 @@ async function loadDashboard() {
     await loadScript("table-date-behavior.js");
     await loadScript("expense-table-advanced.js");
     await loadScript("flow-matrix-v3.js");
-    await loadScript("flow-matrix-detail-delegate.js");
     await loadScript("monthly-projection-control.js");
     await loadScript("exchange-simulator.js");
     await loadScript("movement-type-columns.js");
