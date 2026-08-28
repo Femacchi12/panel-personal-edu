@@ -3,7 +3,7 @@
 
   const cfg=window.PANEL_CONFIG||{};
   const financeId=String(cfg.financeSpreadsheetId||'');
-  let frame=0,requestVersion=0;
+  let frame=0,requestVersion=0,lastPayload=null;
   const DISPLAY_TOLERANCE_COP=5;
   const money=value=>new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(Number(value)||0);
   const norm=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
@@ -103,7 +103,8 @@
     if(!policy||typeof policy.reconcile!=='function'||typeof getData!=='function')return;
     try{
       const payload=await getData(false);
-      if(version!==requestVersion)return;
+      if(version!==requestVersion||payload===lastPayload)return;
+      lastPayload=payload;
       paint(policy.reconcile(payload),categoryReconciliation(payload,policy));
     }catch(error){console.error('Conciliación de gastos:',error);}
   }
