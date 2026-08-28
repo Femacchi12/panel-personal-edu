@@ -2,12 +2,9 @@
   'use strict';
 
   const cfg = window.PANEL_CONFIG || {};
-  const apiBaseUrl = String(cfg.apiBaseUrl || '').replace(/\/$/, '');
   const financeId = String(cfg.financeSpreadsheetId || '');
-  if (!apiBaseUrl || !financeId) return;
+  if (!financeId) return;
 
-  let payloadPromise = null;
-  let cacheUntil = 0;
   let timer = null;
 
   const norm = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
@@ -19,6 +16,15 @@
     return values.slice(1)
       .filter(row => row?.some(v => String(v ?? '').trim() !== ''))
       .map(row => Object.fromEntries(headers.map((h,i) => [h || `Col ${i+1}`, row?.[i] ?? ''])));
+  }
+
+  async function sourceRows(range,force=false) {
+    const direct=window.__PANEL_GET_SOURCE_VALUES__;
+    if(typeof direct==='function') return parseRows(await direct(financeId,range,force));
+    const getData=window.__PANEL_GET_BACKEND_DATA__;
+    if(typeof getData!=='function') return [];
+    const payload=await getData(force);
+    return parseRows(payload?.sources?.[`${financeId}|${range}`]||[]);
   }
 
   function parseNumber(value) {
@@ -56,26 +62,6 @@
 
   function money(value) {
     return new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(value)||0);
-  }
-
-  async function getPayload(force=false) {
-    if (typeof window.__PANEL_GET_BACKEND_DATA__ === 'function') return window.__PANEL_GET_BACKEND_DATA__(force);
-    if (!force && payloadPromise && Date.now() < cacheUntil) return payloadPromise;
-    payloadPromise = (async()=>{
-      const getIdToken = window.__PANEL_GET_ID_TOKEN__;
-      if (typeof getIdToken !== 'function') throw new Error('Sesión Firebase no disponible');
-      const token = await getIdToken(false);
-      const response = await fetch(`${apiBaseUrl}/api/data`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});
-      if (!response.ok) throw new Error(`Backend ${response.status}`);
-      return response.json();
-    })();
-    cacheUntil = Date.now() + 55_000;
-    try { return await payloadPromise; }
-    catch (error) { payloadPromise=null; cacheUntil=0; throw error; }
-  }
-
-  function matrix(payload, range) {
-    return payload?.sources?.[`${financeId}|${range}`] || [];
   }
 
   function cardIdFromDom(card) {
@@ -173,56 +159,18 @@
       .card-cycle-item span{display:block;color:#667a94;font-size:8px;text-transform:uppercase;letter-spacing:.05em;font-weight:700}
       .card-cycle-item strong{display:block;margin-top:4px;color:#dce6f3;font-size:10px;white-space:normal;line-height:1.35}
       .card-cycle-item.wide{grid-column:1/-1}
-      .card-real-limit{margin-top:7px;color:#697b93;font-size:9px;line-height:1.45}
-      .card-limit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:2px}
-      .card-limit-grid>div{padding:7px 9px;border-radius:9px;background:rgba(23,105,255,.045);border:1px solid rgba(23,105,255,.12)}
-      .card-limit-grid span{display:block;font-size:8px;color:#7087a5;text-transform:uppercase;font-weight:700}
-      .card-limit-grid strong{display:block;margin-top:4px;font-size:10px;color:#dce7f6}
-      .credit-card.personal-limit-card .credit-sub{white-space:normal;line-height:1.45}
-      @media(max-width:720px){.card-cycle-grid,.card-limit-grid{grid-template-columns:1fr}}
+      @media(max-width:720px){.card-cycle-grid{grid-template-columns:1fr}}
     `;
     document.head.appendChild(style);
   }
 
   function enhanceCard(card,cardRow,cycles,now) {
     const id = String(cardRow['ID tarjeta'] || '');
-    const realLimit = parseNumber(cardRow['Cupo total actual']);
-    const used = parseNumber(cardRow['Cupo usado']);
-    const personalLimit = parseNumber(cardRow['Límite personal de gasto']);
-    const usePersonal = id === 'TC-ARQ-EDU' && personalLimit > 0;
-    const controlLimit = usePersonal ? personalLimit : realLimit;
-    const controlAvailable = controlLimit - used;
-    const realAvailable = realLimit - used;
-    const pct = controlLimit > 0 ? used/controlLimit*100 : 0;
-
-    card.classList.toggle('personal-limit-card',usePersonal);
-    const amount = card.querySelector('.credit-amount');
-    const sub = card.querySelector('.credit-sub');
-    const fill = card.querySelector('.usage-fill');
-    const stats = [...card.querySelectorAll('.credit-stat')];
-
-    if (amount) amount.textContent = money(used);
-    if (sub) {
-      sub.innerHTML = usePersonal
-        ? `Usado de <strong>${esc(money(personalLimit))}</strong> límite personal · Margen ${esc(money(Math.max(0,controlAvailable)))}<div class="card-real-limit">Cupo bancario real ${esc(money(realLimit))} · Disponible real ${esc(money(Math.max(0,realAvailable)))}</div>`
-        : `Usado de ${esc(money(realLimit))} · Disponible ${esc(money(Math.max(0,realAvailable)))}`;
-    }
-    if (fill) {
-      fill.style.width = `${Math.max(0,Math.min(100,pct))}%`;
-      fill.classList.toggle('high',pct>=70 && pct<85);
-      fill.classList.toggle('critical',pct>=85);
-    }
-    if (stats[0]) {
-      const label = stats[0].querySelector('span');
-      const value = stats[0].querySelector('strong');
-      if (label) label.textContent = usePersonal ? 'Uso límite personal' : 'Utilización';
-      if (value) value.textContent = `${pct.toLocaleString('es-CO',{maximumFractionDigits:1,minimumFractionDigits:pct%1?1:0})}%`;
-    }
-
     const closed = latestClosedCycle(cycles,id,now);
     const open = openCycle(cycles,id,now);
     const current = deriveCurrentPeriod(cardRow,closed,open,now);
     const state = paymentState(closed);
+    const stats = [...card.querySelectorAll('.credit-stat')];
 
     if (stats[1]) {
       const value = stats[1].querySelector('strong');
@@ -252,26 +200,20 @@
         <div class="card-cycle-item"><span>Pago mínimo</span><strong>${closed ? esc(money(minDue)) : '—'}</strong></div>
         <div class="card-cycle-item"><span>Pago total corte</span><strong>${closed ? esc(money(totalDue)) : '—'}</strong></div>
         ${state.key==='paid' ? `<div class="card-cycle-item wide"><span>Fecha de pago</span><strong>${esc(paymentDate)}</strong></div>` : ''}
-      </div>
-      ${usePersonal ? `<div class="card-limit-grid">
-        <div><span>Límite personal</span><strong>${esc(money(personalLimit))}</strong></div>
-        <div><span>Margen personal</span><strong>${esc(money(Math.max(0,controlAvailable)))}</strong></div>
-        <div><span>Cupo real</span><strong>${esc(money(realLimit))}</strong></div>
-        <div><span>Disponible real</span><strong>${esc(money(Math.max(0,realAvailable)))}</strong></div>
-      </div>` : ''}`;
+      </div>`;
     card.appendChild(block);
   }
 
-  async function run() {
-    const active = document.querySelector('.nav-item.active')?.dataset.view;
-    if (active !== 'tarjetas') return;
+  async function run(force=false) {
+    if (document.querySelector('.nav-item.active')?.dataset.view !== 'tarjetas') return;
     const cards = [...document.querySelectorAll('#viewRoot .credit-card')];
     if (!cards.length) return;
     try {
-      const payload = await getPayload();
+      const [cardRows,cycles] = await Promise.all([
+        sourceRows('Tarjetas!A:T',force),
+        sourceRows('Pagos_Tarjetas!A:T',force)
+      ]);
       if (document.querySelector('.nav-item.active')?.dataset.view !== 'tarjetas') return;
-      const cardRows = parseRows(matrix(payload,'Tarjetas!A:T'));
-      const cycles = parseRows(matrix(payload,'Pagos_Tarjetas!A:T'));
       const now = new Date();
       cards.forEach(card=>{
         const id = cardIdFromDom(card);
@@ -283,15 +225,15 @@
     }
   }
 
-  function schedule(delay=90){ clearTimeout(timer); timer=setTimeout(run,delay); }
+  function schedule(delay=70,force=false){ clearTimeout(timer); timer=setTimeout(()=>run(force),delay); }
 
   injectStyles();
   document.addEventListener('panel:view-root-changed',event=>{
-    if(event.detail?.view==='tarjetas')schedule(30);
+    if(event.detail?.view==='tarjetas')schedule(35,false);
   });
-  document.addEventListener('panel:card-filter-changed',()=>schedule(40));
+  document.addEventListener('panel:card-filter-changed',()=>schedule(35,false));
   document.addEventListener('panel:section-filters-changed',event=>{
-    if(event.detail?.view==='tarjetas')schedule(40);
+    if(event.detail?.view==='tarjetas')schedule(35,false);
   });
-  schedule();
+  schedule(90,false);
 })();
