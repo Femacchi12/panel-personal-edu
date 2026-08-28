@@ -1,0 +1,96 @@
+name: Merge Flow financing ownership
+
+on:
+  push:
+    paths:
+      - .github/workflows/merge-flow-financing.yml
+
+permissions:
+  contents: write
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Consolidate Flow financing
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('flow-income-controller.js')
+          text = path.read_text(encoding='utf-8')
+          anchor = "  function updatePrimaryKpis(model, movements) {\n"
+          if text.count(anchor) != 1:
+              raise SystemExit('updatePrimaryKpis anchor mismatch')
+          helper = '''  function movementAmount(row, currency) {
+    if (currency === 'USD') return parseNumber(row['Monto USD']);
+    if (currency === 'ARS') return parseNumber(row['Monto ARS']);
+    return parseNumber(row['Monto COP']);
+  }
+
+  function renderFinancing(rows, currency) {
+    const root = document.getElementById('viewRoot');
+    if (!root || activeView() !== 'flujo') return;
+    const primary = [...root.querySelectorAll('.kpi-grid')].find(grid => {
+      const labels = [...grid.querySelectorAll('.kpi-label')].map(x => x.textContent.trim());
+      return labels.includes('Egresos') && labels.includes('Ahorro') &&
+        labels.some(x => x === 'Ingresos' || x === 'Ingresos promedio' || x === 'Ingresos regulares');
+    });
+    if (!primary) return;
+    let one = 0, multi = 0;
+    rows.forEach(row => {
+      if (norm(method(row)) !== 'credito') return;
+      const installments = Math.max(1, Math.round(parseNumber(row.Cuotas) || 1));
+      const value = movementAmount(row, currency);
+      if (installments > 1) multi += value;
+      else one += value;
+    });
+    let host = root.querySelector('#flowFinancingKpis');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'flowFinancingKpis';
+      host.className = 'kpi-grid flow-financing-kpis';
+      host.style.gridTemplateColumns = 'repeat(3,minmax(0,1fr))';
+      primary.insertAdjacentElement('afterend', host);
+    }
+    const total = one + multi;
+    const html = `<div class="kpi-card"><span class="kpi-label">Financiado · 1 cuota</span><strong class="kpi-value">${formatMoney(one, currency)}</strong><div class="kpi-meta"><span>Compras a crédito en una sola cuota</span></div></div><div class="kpi-card"><span class="kpi-label">Financiado · más de 1 cuota</span><strong class="kpi-value gold">${formatMoney(multi, currency)}</strong><div class="kpi-meta"><span>Compras a crédito en 2 o más cuotas</span></div></div><div class="kpi-card"><span class="kpi-label">Financiado total</span><strong class="kpi-value gold">${formatMoney(total, currency)}</strong><div class="kpi-meta"><span>Total comprado a crédito</span></div></div>`;
+    if (host.innerHTML !== html) host.innerHTML = html;
+  }
+
+'''
+          text = text.replace(anchor, helper + anchor, 1)
+          call_anchor = "    setCard(cards.rate, 'Tasa de ahorro', formatPct(rate), 'Ahorro / ingreso regular');\n"
+          if text.count(call_anchor) != 1:
+              raise SystemExit('rate card anchor mismatch')
+          text = text.replace(call_anchor, call_anchor + "    renderFinancing(filtered, currency);\n", 1)
+          path.write_text(text, encoding='utf-8')
+
+          auth = Path('auth.js')
+          a = auth.read_text(encoding='utf-8')
+          old = '    await loadScript("flow-financing-filter-fix.js");'
+          new = '    await loadScript("spend-chart-controller.js");'
+          if a.count(old) != 1:
+              raise SystemExit('auth financing loader mismatch')
+          auth.write_text(a.replace(old, new, 1), encoding='utf-8')
+
+          legacy = Path('flow-financing-filter-fix.js')
+          if not legacy.exists():
+              raise SystemExit('legacy financing file missing')
+          legacy.unlink()
+          PY
+      - name: Validate consolidation
+        run: |
+          node --check flow-income-controller.js
+          node --check spend-chart-controller.js
+          test ! -e flow-financing-filter-fix.js
+          grep -F 'spend-chart-controller.js' auth.js
+          ! grep -F 'flow-financing-filter-fix.js' auth.js
+      - name: Commit consolidation
+        run: |
+          git config user.name 'Eduardo Macchi'
+          git config user.email 'fernandoemacchi@gmail.com'
+          git add flow-income-controller.js spend-chart-controller.js auth.js flow-financing-filter-fix.js
+          git commit -m 'Consolidate Flow financing ownership'
+          git push
