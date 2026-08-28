@@ -27,6 +27,7 @@ const ALLOWED_EMAILS = new Set([
 
 const TOKEN_STORAGE_KEY = "panel-personal-edu.google-oauth";
 const TOKEN_MAX_AGE_MS = 50 * 60 * 1000;
+const ASSET_VERSION = String(document.lastModified || 'panel').replace(/\D/g, '') || 'panel';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -94,7 +95,7 @@ function showDenied(email) {
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = src;
+    script.src = `${src}?v=${encodeURIComponent(ASSET_VERSION)}`;
     script.async = false;
     script.onload = resolve;
     script.onerror = reject;
