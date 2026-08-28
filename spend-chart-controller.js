@@ -20,17 +20,27 @@
   function account(row){const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);if(n.includes('efectivo'))return'Efectivo';if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';if(n.includes('arq'))return'ARQ Edu';if(n.includes('nu')){if(n.includes(' ro')||n.endsWith('ro')||holder==='ro'||holder.includes('rocio'))return'Nu Ro';if(n.includes('edu')||holder.includes('edu'))return'Nu Edu';return'Nu';}return raw||'Sin especificar';}
   function method(row){const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;const raw=norm(row['Cuenta / Tarjeta']);if(raw.includes('credito'))return'Crédito';if(raw.includes('transferencia'))return'Transferencia';if(raw.includes('debito'))return'Débito';if(raw.includes('efectivo'))return'Efectivo';if(parseNumber(row.Cuotas)>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';return'Sin especificar';}
 
-  function matches(row){
+  function filterContext(){
+    const payment=window.__PAYMENT_FILTER_STATE__?.view==='gastos'?window.__PAYMENT_FILTER_STATE__:{account:[],method:[]};
+    return{
+      years:new Set(selectedGlobal('year')),
+      months:new Set(selectedGlobal('month')),
+      categories:new Set(selectedGlobal('category')),
+      subcategories:new Set(selectedGlobal('subcategory')),
+      accounts:new Set(payment.account||[]),
+      methods:new Set(payment.method||[])
+    };
+  }
+
+  function matches(row,ctx){
     if(!(window.MovementStatusCore?.isActual(row.Estado)??!/proyecc|proyect|programad/.test(norm(row.Estado))))return false;
     const d=parseDate(row['Fecha real']||row['Fecha registrada']);
-    const years=selectedGlobal('year'),months=selectedGlobal('month'),categories=selectedGlobal('category'),subcategories=selectedGlobal('subcategory');
-    if(years.length&&(!d||!years.includes(String(d.getFullYear()))))return false;
-    if(months.length&&(!d||!months.includes(String(d.getMonth()+1))))return false;
-    if(categories.length&&!categories.includes(String(row['Categoría']||'')))return false;
-    if(subcategories.length&&!subcategories.includes(String(row['Subcategoría']||'')))return false;
-    const payment=window.__PAYMENT_FILTER_STATE__?.view==='gastos'?window.__PAYMENT_FILTER_STATE__:{account:[],method:[]};
-    if(payment.account?.length&&!payment.account.includes(account(row)))return false;
-    if(payment.method?.length&&!payment.method.includes(method(row)))return false;
+    if(ctx.years.size&&(!d||!ctx.years.has(String(d.getFullYear()))))return false;
+    if(ctx.months.size&&(!d||!ctx.months.has(String(d.getMonth()+1))))return false;
+    if(ctx.categories.size&&!ctx.categories.has(String(row['Categoría']||'')))return false;
+    if(ctx.subcategories.size&&!ctx.subcategories.has(String(row['Subcategoría']||'')))return false;
+    if(ctx.accounts.size&&!ctx.accounts.has(account(row)))return false;
+    if(ctx.methods.size&&!ctx.methods.has(method(row)))return false;
     const type=norm(row.Tipo||row.Naturaleza||'gasto');
     return type.includes('gasto')||norm(row.Naturaleza).includes('egreso')||!String(row.Tipo||'').trim();
   }
@@ -64,13 +74,27 @@
     if(subtitle)subtitle.textContent=singleMonth?(chartMode==='daily'?'Gasto realizado en cada día':'Acumulado de gasto real día a día'):'Total real por período seleccionado';
   }
 
+  function chartOptions(currency){return{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,labels:{color:'#9aa8ba',boxWidth:10,usePointStyle:true}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${formatMoney(ctx.parsed.y,currency)}`}}},scales:{x:{ticks:{color:'#718098',maxRotation:0,autoSkip:true},grid:{color:'#121c29'}},y:{beginAtZero:true,ticks:{color:'#718098'},grid:{color:'#121c29'}}}};}
+
+  function drawChart(canvas,type,labels,dataset,currency){
+    const existing=Chart.getChart(canvas);
+    if(existing&&existing.config.type===type){
+      existing.data.labels=labels;
+      existing.data.datasets=[dataset];
+      existing.options.plugins.tooltip.callbacks.label=ctx=>`${ctx.dataset.label}: ${formatMoney(ctx.parsed.y,currency)}`;
+      existing.update('none');
+      return;
+    }
+    existing?.destroy();
+    new Chart(canvas,{type,data:{labels,datasets:[dataset]},options:chartOptions(currency)});
+  }
+
   function redraw(rows){
     if(activeView()!=='gastos'||!window.Chart)return;
     const canvas=document.getElementById('spendChart');if(!canvas)return;
     const currency=activeCurrency(),years=selectedGlobal('year'),months=selectedGlobal('month');
     const singleMonth=years.length===1&&months.length===1;
     ensureModeControl(canvas,singleMonth);
-    Chart.getChart(canvas)?.destroy();
 
     let labels=[],values=[],type='line',seriesLabel='Total seleccionado';
     if(singleMonth){
@@ -94,10 +118,11 @@
       values=periods.map(period=>totals.get(period)||0);seriesLabel='Total del período';
     }
 
-    new Chart(canvas,{type,data:{labels,datasets:[{label:seriesLabel,data:values,borderColor:COLORS[0],backgroundColor:COLORS[0],borderWidth:2,tension:type==='line'?.22:0,pointRadius:type==='line'?2:0,pointHoverRadius:type==='line'?5:0,spanGaps:true,borderRadius:type==='bar'?4:0}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,labels:{color:'#9aa8ba',boxWidth:10,usePointStyle:true}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${formatMoney(ctx.parsed.y,currency)}`}}},scales:{x:{ticks:{color:'#718098',maxRotation:0,autoSkip:true},grid:{color:'#121c29'}},y:{beginAtZero:true,ticks:{color:'#718098'},grid:{color:'#121c29'}}}}});
+    const dataset={label:seriesLabel,data:values,borderColor:COLORS[0],backgroundColor:COLORS[0],borderWidth:2,tension:type==='line'?.22:0,pointRadius:type==='line'?2:0,pointHoverRadius:type==='line'?5:0,spanGaps:true,borderRadius:type==='bar'?4:0};
+    drawChart(canvas,type,labels,dataset,currency);
   }
 
-  function renderCurrent(){if(!lastPayload||activeView()!=='gastos')return;redraw(rawRows.filter(matches));}
+  function renderCurrent(){if(!lastPayload||activeView()!=='gastos')return;const ctx=filterContext();redraw(rawRows.filter(row=>matches(row,ctx)));}
 
   async function load(){
     if(activeView()!=='gastos')return;
@@ -105,24 +130,18 @@
     const version=++loadVersion;
     const data=await getData(false);
     if(version!==loadVersion||activeView()!=='gastos')return;
-    if(data!==lastPayload){
-      lastPayload=data;
-      rawRows=parseRows(data?.sources?.[`${FINANCE_ID}|Movimientos!A:Z`]||[]);
-    }
+    if(data!==lastPayload){lastPayload=data;rawRows=parseRows(data?.sources?.[`${FINANCE_ID}|Movimientos!A:Z`]||[]);}
     renderCurrent();
   }
 
   function schedule(){
     if(renderFrame)return;
-    renderFrame=requestAnimationFrame(()=>{
-      renderFrame=0;
-      load().catch(console.error);
-    });
+    renderFrame=requestAnimationFrame(()=>{renderFrame=0;load().catch(console.error);});
   }
 
   injectStyles();
   document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='gastos')schedule();else loadVersion++;});
   document.addEventListener('panel:payment-filters-changed',event=>{if(event.detail?.view==='gastos')schedule();});
   document.addEventListener('panel:filters-updated',()=>{if(activeView()==='gastos')schedule();});
-  queueMicrotask(()=>schedule());
+  queueMicrotask(schedule);
 })();
