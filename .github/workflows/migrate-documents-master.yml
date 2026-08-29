@@ -1,0 +1,36 @@
+name: migrate documents master
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/migrate-documents-master.yml'
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Patch dashboard document architecture
+        run: python .github/scripts/migrate_documents_master.py
+      - name: Validate JavaScript
+        run: |
+          node --check app.js
+          node --check auth.js
+          node --check section-data-filters.js
+          node --check documents-master-controller.js
+          node --check backend/server.js
+          git diff --check
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.js auth.js section-data-filters.js index.html backend/server.js
+          git commit -m 'Migrate dashboard to documents master'
+          git push origin main
