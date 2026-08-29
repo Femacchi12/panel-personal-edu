@@ -8,11 +8,12 @@
   const MONTHS=['ene','feb','mar','abr','may','jun','jul','ago','sept','oct','nov','dic'];
   let frame=0;
   let scheduledForce=false;
+  let lastPayload=null,lastRows=[];
   let sort={col:'Fecha real',dir:'desc'};
   let query='';
   let expanded=false;
 
-  const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
   const norm=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
 
@@ -51,7 +52,11 @@
 
   async function rows(force=false){
     const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return[];
-    const payload=await getData(force);return parseRows(payload?.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
+    const payload=await getData(force);
+    if(payload===lastPayload)return lastRows;
+    lastPayload=payload;
+    lastRows=parseRows(payload?.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
+    return lastRows;
   }
 
   function valueFor(row,col){if(col==='Fecha real')return dateLabel(row);if(col==='Tipo de gasto')return expenseType(row);if(col==='Monto original')return formatOriginal(row);if(col==='Modalidad de pago')return method(row);return row[col]??'';}
