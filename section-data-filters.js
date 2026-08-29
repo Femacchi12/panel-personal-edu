@@ -79,8 +79,9 @@
     ]},
     documentos: { global:[], local:[
       filter('documentArea','Área',[src('Documentos_Master!A:R',['Área'],DOCUMENTS_ID)]),
+      filter('documentCategory','Categoría',[src('Documentos_Master!A:R',['Categoría'],DOCUMENTS_ID)]),
+      filter('documentType','Tipo',[src('Documentos_Master!A:R',['Tipo'],DOCUMENTS_ID)]),
       filter('documentHolder','Titular',[src('Documentos_Master!A:R',['Titular'],DOCUMENTS_ID)]),
-      filter('documentCategory','Categoría / tipo',[src('Documentos_Master!A:R',['Categoría','Tipo'],DOCUMENTS_ID)]),
       filter('documentStatus','Estado',[src('Documentos_Master!A:R',['Estado'],DOCUMENTS_ID)]),
       filter('documentEntity','País / Entidad',[src('Documentos_Master!A:R',['País / Entidad'],DOCUMENTS_ID)])
     ]},
