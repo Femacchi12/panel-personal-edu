@@ -110,24 +110,29 @@ async function loadDashboard() {
     if (BACKEND_MODE) await loadScript("data-backend-adapter.js");
     await loadScript("regular-income-core.js");
     await loadScript("app.js");
-    if (BACKEND_MODE) await loadScript("expense-reconciliation-guard.js");
-    await loadScript("income-doc-enhancements.js");
-    await loadScript("card-specific-filter.js");
-    await loadScript("card-payment-control.js");
-    await loadScript("card-chart-personal-limit.js");
-    await loadScript("card-payments-installments.js");
-    await loadScript("income-regular-controller.js");
-    await loadScript("income-type-filter.js");
-    await loadScript("table-date-behavior.js");
-    await loadScript("expense-table-advanced.js");
-    await loadScript("flow-matrix-v3.js");
-    await loadScript("monthly-projection-control.js");
-    await loadScript("exchange-simulator.js");
-    await loadScript("movement-type-columns.js");
-    await loadScript("payment-method-filters.js");
-    await loadScript("spend-chart-controller.js");
-    await loadScript("services-table-enhancement.js");
-    await loadScript("flow-income-controller.js");
+
+    const modules = [
+      ...(BACKEND_MODE ? ["expense-reconciliation-guard.js"] : []),
+      "income-doc-enhancements.js",
+      "card-specific-filter.js",
+      "card-payment-control.js",
+      "card-chart-personal-limit.js",
+      "card-payments-installments.js",
+      "income-regular-controller.js",
+      "income-type-filter.js",
+      "table-date-behavior.js",
+      "expense-table-advanced.js",
+      "flow-matrix-v3.js",
+      "monthly-projection-control.js",
+      "exchange-simulator.js",
+      "movement-type-columns.js",
+      "payment-method-filters.js",
+      "spend-chart-controller.js",
+      "services-table-enhancement.js",
+      "flow-income-controller.js"
+    ];
+    await Promise.all(modules.map(loadScript));
+    document.dispatchEvent(new CustomEvent('panel:modules-ready'));
   } catch (error) {
     console.error("Error cargando dashboard:", error);
     dashboardLoaded = false;
