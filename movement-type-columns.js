@@ -7,6 +7,7 @@
 
   const lookupCache=new WeakMap();
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
   function num(v){let s=String(v??'').trim().replace(/[^\d,.\-]/g,'');if(!s)return 0;const c=s.lastIndexOf(','),d=s.lastIndexOf('.');if(c>=0&&d>=0){if(c>d)s=s.replace(/\./g,'').replace(',','.');else s=s.replace(/,/g,'');}else if(c>=0){const p=s.split(',');s=p.length===2&&p[1].length<=2?p[0].replace(/\./g,'')+'.'+p[1]:s.replace(/,/g,'');}else if(d>=0){const p=s.split('.');if(p.length>2||(p.length===2&&p[1].length===3))s=s.replace(/\./g,'');}return Number(s)||0;}
   function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const h=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(r=>r?.some(v=>String(v??'').trim()!=='')).map(r=>Object.fromEntries(h.map((x,i)=>[x||`Col ${i+1}`,r?.[i]??''])));}
   function key(desc,account,holder,amount){return`${norm(desc)}|${norm(account)}|${norm(holder)}|${Math.round(num(amount))}`;}
@@ -38,28 +39,27 @@
     const holderIndex=headers.findIndex(h=>h==='titular');
     const typeIndex=Math.min(descIndex+1,headers.length);
     const map=await lookup();
-    if(!table.isConnected||table.dataset.movementTypeDone==='1')return;
+    if(activeView()!=='general'||!table.isConnected||table.dataset.movementTypeDone==='1')return;
     const header=table.querySelector('thead tr');if(!header)return;
     const th=document.createElement('th');th.textContent='Tipo de gasto';
     header.insertBefore(th,header.children[typeIndex]||null);
     table.querySelectorAll('tbody tr').forEach(tr=>{
       const cells=[...tr.cells];
-      const value=map.get(key(
-        cells[descIndex]?.textContent||'',
-        accountIndex>=0?cells[accountIndex]?.textContent||'':'',
-        holderIndex>=0?cells[holderIndex]?.textContent||'':'',
-        cells[amountIndex]?.textContent||''
-      ))||'Variable';
+      const value=map.get(key(cells[descIndex]?.textContent||'',accountIndex>=0?cells[accountIndex]?.textContent||'':'',holderIndex>=0?cells[holderIndex]?.textContent||'':'',cells[amountIndex]?.textContent||''))||'Variable';
       const td=document.createElement('td');td.textContent=value;td.className=value==='Fijo'?'movement-fixed':'movement-variable';
       tr.insertBefore(td,tr.children[typeIndex]||null);
     });
     table.dataset.movementTypeDone='1';
   }
 
-  function scan(root=document.getElementById('viewRoot')){root?.querySelectorAll('table').forEach(table=>{enhance(table).catch(()=>{});});}
-  if(!document.getElementById('movementTypeColumnStyles')){const style=document.createElement('style');style.id='movementTypeColumnStyles';style.textContent='.movement-fixed{color:#26d07c;font-weight:700}.movement-variable{color:#a8b5c7}';document.head.appendChild(style);}
+  function enhanceGeneral(root=document.getElementById('viewRoot')){
+    if(activeView()!=='general'||!root)return;
+    const panel=[...root.querySelectorAll(':scope > .panel')].find(item=>norm(item.querySelector('.panel-title strong')?.textContent)==='movimientos recientes');
+    const table=panel?.querySelector('table');
+    if(table)enhance(table).catch(()=>{});
+  }
 
-  document.addEventListener('panel:view-root-changed',event=>scan(event.detail?.root));
-  document.addEventListener('panel:payment-filters-changed',()=>scan());
-  queueMicrotask(()=>scan());
+  if(!document.getElementById('movementTypeColumnStyles')){const style=document.createElement('style');style.id='movementTypeColumnStyles';style.textContent='.movement-fixed{color:#26d07c;font-weight:700}.movement-variable{color:#a8b5c7}';document.head.appendChild(style);}
+  document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='general')enhanceGeneral(event.detail?.root);});
+  queueMicrotask(()=>enhanceGeneral());
 })();
