@@ -7,7 +7,7 @@
   if (!DOCUMENTS_ID) return;
 
   let query = '';
-  let showExpiringOnly = false;
+  let expiryMode = 'all';
   let expanded = false;
   let frame = 0;
   let renderVersion = 0;
@@ -50,6 +50,10 @@
     if (days <= 90) return {kind:'soon', days};
     if (days <= 180) return {kind:'watch', days};
     return {kind:'ok', days};
+  }
+
+  function isAttention(row) {
+    return ['expired','soon','watch'].includes(expiryState(row).kind);
   }
 
   function areaRank(value) {
@@ -104,19 +108,20 @@
     const value = String(row['Fecha vencimiento'] || '').trim();
     if (!value) return '<span class="doc-empty">—</span>';
     const state = expiryState(row);
-    const detail = state.kind === 'expired' ? 'Vencido' : state.kind === 'soon' ? `${state.days} días` : state.kind === 'watch' ? `${state.days} días` : '';
+    const detail = state.kind === 'expired' ? 'Vencido' : state.kind === 'soon' || state.kind === 'watch' ? `${state.days} días` : '';
     return `<div class="doc-expiry ${state.kind}"><span>${esc(dateLabel(value))}</span>${detail ? `<small>${esc(detail)}</small>` : ''}</div>`;
   }
 
   function rowMarkup(row) {
     const url = String(row['URL directa'] || '').trim();
+    const meta = [row['Categoría'], row['Tipo']].filter(Boolean).join(' · ');
     return `<tr>
-      <td><span class="doc-area">${esc(row['Área'] || '—')}</span></td>
-      <td><div class="doc-name"><strong>${esc(row['Documento'] || row['Tipo'] || 'Documento')}</strong><span>${esc([row['Categoría'], row['Tipo']].filter(Boolean).join(' · '))}</span></div></td>
+      <td><div class="doc-name"><div><span class="doc-area">${esc(row['Área'] || '—')}</span></div><strong>${esc(row['Documento'] || row['Tipo'] || 'Documento')}</strong><span>${esc(meta)}</span></div></td>
       <td>${esc(row['Titular'] || '—')}</td>
       <td>${esc(row['País / Entidad'] || '—')}</td>
       <td>${copyMarkup(row['N.º / Identificación'], 'identificación')}</td>
       <td>${copyMarkup(row['Dato copiable 2'], 'dato')}</td>
+      <td>${esc(dateLabel(row['Fecha documento']))}</td>
       <td>${esc(dateLabel(row['Fecha expedición']))}</td>
       <td>${expirationMarkup(row)}</td>
       <td>${esc(row['Período'] || '—')}</td>
@@ -125,48 +130,46 @@
     </tr>`;
   }
 
-  function kpi(label, value, note, tone='') {
-    return `<div class="kpi-card ${tone}"><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(note)}</small></div>`;
-  }
-
-  function renderHost(host, sourceRows) {
+  function applyLocalFilters(sourceRows) {
     let rows = sortRows(sourceRows);
     if (query) {
       const q = norm(query);
       rows = rows.filter(row => norm(searchable(row)).includes(q));
     }
-    if (showExpiringOnly) rows = rows.filter(row => String(row['Fecha vencimiento'] || '').trim());
+    if (expiryMode === 'dated') rows = rows.filter(row => String(row['Fecha vencimiento'] || '').trim());
+    if (expiryMode === 'attention') rows = rows.filter(isAttention);
+    return rows;
+  }
 
+  function summaryMarkup(sourceRows) {
     const withId = sourceRows.filter(row => String(row['N.º / Identificación'] || '').trim()).length;
     const withExpiry = sourceRows.filter(row => String(row['Fecha vencimiento'] || '').trim()).length;
-    const alertCount = sourceRows.filter(row => ['expired','soon','watch'].includes(expiryState(row).kind)).length;
+    const alertCount = sourceRows.filter(isAttention).length;
+    return `<div class="documents-summary" aria-label="Resumen documental">
+      <span><strong>${sourceRows.length}</strong> documentos</span>
+      <span><strong>${withId}</strong> con ID</span>
+      <span><strong>${withExpiry}</strong> con vencimiento</span>
+      <span class="${alertCount ? 'attention' : ''}"><strong>${alertCount}</strong> por revisar</span>
+    </div>`;
+  }
+
+  function renderHost(host, sourceRows) {
+    const rows = applyLocalFilters(sourceRows);
     const visible = expanded ? rows : rows.slice(0, 30);
 
     host.innerHTML = `
-      <div class="documents-master-intro">
-        <div>
-          <span class="eyebrow">BASE DOCUMENTAL</span>
-          <strong>Todos los documentos en una sola tabla</strong>
-          <p>Documentos_Master es la fuente canónica. Los datos de identificación pueden copiarse directamente y las fechas se muestran cuando el documento las contiene.</p>
-        </div>
-      </div>
-      <div class="kpi-grid documents-kpis">
-        ${kpi('Documentos', String(sourceRows.length), 'Registros canónicos')}
-        ${kpi('Con identificación', String(withId), 'Número o dato principal', 'blue')}
-        ${kpi('Con vencimiento', String(withExpiry), 'Fecha controlada', 'green')}
-        ${kpi('A revisar', String(alertCount), 'Vencidos o dentro de 180 días', alertCount ? 'gold' : 'green')}
-      </div>
+      ${summaryMarkup(sourceRows)}
       <div class="panel table-panel documents-master-panel">
         <div class="panel-header documents-toolbar">
           <div class="panel-title"><strong>Índice de documentos</strong><span id="documentsMasterCount">${rows.length} visibles de ${sourceRows.length}</span></div>
           <div class="documents-actions">
             <label class="documents-search"><span>Buscar</span><input id="documentsMasterSearch" class="search-input" type="search" placeholder="Documento, número, titular, entidad…" value="${esc(query)}"></label>
-            <label class="documents-check"><input id="documentsExpiryOnly" type="checkbox" ${showExpiringOnly ? 'checked' : ''}><span>Solo con vencimiento</span></label>
+            <label class="documents-scope"><span>Vigencia</span><select id="documentsExpiryMode"><option value="all" ${expiryMode === 'all' ? 'selected' : ''}>Todos</option><option value="dated" ${expiryMode === 'dated' ? 'selected' : ''}>Con vencimiento</option><option value="attention" ${expiryMode === 'attention' ? 'selected' : ''}>Por revisar</option></select></label>
           </div>
         </div>
         <div class="table-scroll expanded documents-table-scroll">
           <table class="documents-master-table">
-            <thead><tr><th>Área</th><th>Documento</th><th>Titular</th><th>País / Entidad</th><th>N.º / ID</th><th>Dato 2</th><th>Expedición</th><th>Vencimiento</th><th>Período</th><th>Estado</th><th>Archivo</th></tr></thead>
+            <thead><tr><th>Documento</th><th>Titular</th><th>País / Entidad</th><th>N.º / ID</th><th>Dato 2</th><th>Fecha doc.</th><th>Expedición</th><th>Vencimiento</th><th>Período</th><th>Estado</th><th>Archivo</th></tr></thead>
             <tbody>${visible.length ? visible.map(rowMarkup).join('') : '<tr><td colspan="11"><div class="empty-state"><strong>Sin documentos para mostrar</strong><span>Ajusta la búsqueda o los filtros de la sección.</span></div></td></tr>'}</tbody>
           </table>
         </div>
@@ -185,8 +188,8 @@
         }
       });
     });
-    host.querySelector('#documentsExpiryOnly')?.addEventListener('change', event => {
-      showExpiringOnly = Boolean(event.target.checked);
+    host.querySelector('#documentsExpiryMode')?.addEventListener('change', event => {
+      expiryMode = String(event.target.value || 'all');
       expanded = false;
       renderHost(host, sourceRows);
     });
@@ -202,7 +205,11 @@
         const previous = button.textContent;
         button.textContent = 'Copiado';
         button.classList.add('copied');
-        setTimeout(() => { if (button.isConnected) { button.textContent = previous; button.classList.remove('copied'); } }, 1100);
+        setTimeout(() => {
+          if (!button.isConnected) return;
+          button.textContent = previous;
+          button.classList.remove('copied');
+        }, 1100);
       } catch (error) {
         console.error('No se pudo copiar el dato documental:', error);
       }
