@@ -40,12 +40,7 @@ const SOURCES = [
   { book: 'finance', range: 'Cuentas!A:T' },
   { book: 'finance', range: 'Plan_Mensual!A:O' },
   { book: 'finance', range: 'Patrimonio_Mensual!A:X' },
-  { book: 'documents', range: 'Documentos_Financieros!A:L' },
-  { book: 'documents', range: 'Documentos_Identidad!A:N' },
-  { book: 'documents', range: 'Documentos_Laborales!A:L' },
-  { book: 'documents', range: 'Documentos_Tributarios!A:L' },
-  { book: 'documents', range: 'Documentos_Pension_Cesantias!A:L' },
-  { book: 'documents', range: 'Documentos_Personales!A:L' },
+  { book: 'documents', range: 'Documentos_Master!A:R' },
   { book: 'finance', range: 'Vacaciones_Viajes!A:T' },
   { book: 'health', range: 'Pacientes!A:X' },
   { book: 'health', range: 'Citas_Medicas!A:N' },
@@ -180,7 +175,7 @@ app.get('/health', (req, res) => {
     ok: true,
     service: 'panel-personal-edu-backend',
     sourceCount: SOURCES.length,
-    revision: 'single-nu-installment-master-2026-08-28'
+    revision: 'documents-master-2026-08-29'
   });
 });
 

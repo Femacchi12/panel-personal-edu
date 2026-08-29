@@ -77,16 +77,12 @@
       filter('treatmentArea','Área',[src('Tratamientos!A:X',['Área'],HEALTH_ID)]),
       filter('treatmentStatus','Estado',[src('Tratamientos!A:X',['Estado'],HEALTH_ID)])
     ]},
-    documentos: { global:['year','month'], local:[
-      filter('documentArea','Área / Tipo',[
-        src('Documentos_Financieros!A:L',['Área','Tipo','Categoría','Producto'],DOCUMENTS_ID),
-        src('Documentos_Identidad!A:N',['Área','Tipo','Categoría'],DOCUMENTS_ID),
-        src('Documentos_Laborales!A:L',['Área','Tipo','Categoría'],DOCUMENTS_ID),
-        src('Documentos_Tributarios!A:L',['Área','Tipo','Categoría'],DOCUMENTS_ID),
-        src('Documentos_Pension_Cesantias!A:L',['Área','Tipo','Categoría','Producto'],DOCUMENTS_ID),
-        src('Documentos_Personales!A:L',['Área','Tipo','Categoría'],DOCUMENTS_ID),
-        src('Documentos!A:X',['Área','Tipo','Categoría'],HEALTH_ID)
-      ])
+    documentos: { global:[], local:[
+      filter('documentArea','Área',[src('Documentos_Master!A:R',['Área'],DOCUMENTS_ID)]),
+      filter('documentHolder','Titular',[src('Documentos_Master!A:R',['Titular'],DOCUMENTS_ID)]),
+      filter('documentCategory','Categoría / tipo',[src('Documentos_Master!A:R',['Categoría','Tipo'],DOCUMENTS_ID)]),
+      filter('documentStatus','Estado',[src('Documentos_Master!A:R',['Estado'],DOCUMENTS_ID)]),
+      filter('documentEntity','País / Entidad',[src('Documentos_Master!A:R',['País / Entidad'],DOCUMENTS_ID)])
     ]},
     viajes: { global:['year','month'], local:[
       filter('travelHolder','Titular / Pasajero',[src('Vacaciones_Viajes!A:T',['Titular/Pasajero'])]),
@@ -263,8 +259,8 @@
       root.classList.remove('open');
       root.querySelector('.local-trigger')?.setAttribute('aria-expanded','false');
     });
-    if(view==='inversiones'){
-      document.getElementById('investmentV2ModeFilter')?.remove();
+    if(view==='inversiones'||view==='documentos'){
+      if(view==='inversiones')document.getElementById('investmentV2ModeFilter')?.remove();
       document.dispatchEvent(new CustomEvent('panel:section-filters-changed',{detail:{view}}));
       return;
     }

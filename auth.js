@@ -114,6 +114,7 @@ async function loadDashboard() {
     const modules = [
       ...(BACKEND_MODE ? ["expense-reconciliation-guard.js"] : []),
       "income-doc-enhancements.js",
+      "documents-master-controller.js",
       "card-specific-filter.js",
       "card-payment-control.js",
       "card-chart-personal-limit.js",
