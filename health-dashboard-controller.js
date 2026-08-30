@@ -13,6 +13,12 @@
     studies: 'Estudios_Resultados!A:M'
   };
 
+  const FILTER_KEYS = {
+    salud: { patient: 'healthPatient', area: 'healthArea' },
+    citas: { patient: 'appointmentPatient', area: 'appointmentSpecialty' },
+    tratamientos: { patient: 'treatmentPatient', area: 'treatmentArea' }
+  };
+
   let frame = 0;
   let version = 0;
 
@@ -51,28 +57,37 @@
     return (state?.rules||[]).find(r=>r.key===key)?.values||[];
   }
 
-  function matchesHealthFilters(row){
-    const patients=selected('healthPatient');
-    const areas=selected('healthArea');
+  function rowArea(row){
+    return row['Área']||row['Especialidad / Área']||row['Especialidad/Servicio']||row['Especialidad']||'';
+  }
+
+  function matchesViewFilters(row,view='salud'){
+    const keys=FILTER_KEYS[view]||FILTER_KEYS.salud;
+    const patients=selected(keys.patient);
+    const areas=selected(keys.area);
     if(patients.length&&!patients.includes(String(row.Paciente||'')))return false;
     if(areas.length){
-      const area=norm(row['Área']||row['Especialidad / Área']||row['Especialidad']||'');
-      if(!areas.some(a=>area.includes(norm(a))))return false;
+      const area=norm(rowArea(row));
+      if(!areas.some(a=>area.includes(norm(a))||norm(a).includes(area)))return false;
     }
     return true;
   }
 
-  function staleAppointments(rows){
+  function filtered(rows,view='salud'){
+    return rows.filter(r=>matchesViewFilters(r,view));
+  }
+
+  function staleAppointments(rows,view='salud'){
     const t=today();
-    return rows.filter(r=>{
+    return filtered(rows,view).filter(r=>{
       const d=parseDate(r.Fecha); const s=norm(r.Estado);
       return d&&d<t&&s.includes('programad');
     });
   }
 
-  function overdueTreatments(rows){
+  function overdueTreatments(rows,view='salud'){
     const t=today();
-    return rows.filter(r=>{
+    return filtered(rows,view).filter(r=>{
       const planned=parseDate(r['Fecha fin prevista']);
       const real=String(r['Fecha fin real']||'').trim();
       const status=norm(r.Estado);
@@ -81,11 +96,11 @@
     });
   }
 
-  function pendingStudies(rows){return rows.filter(r=>norm(r.Estado).includes('pend'));}
-  function pendingDocs(rows){return rows.filter(r=>{const s=norm(r.Estado);return s&&s!=='vinculado';});}
+  function pendingStudies(rows){return filtered(rows,'salud').filter(r=>norm(r.Estado).includes('pend'));}
+  function pendingDocs(rows){return filtered(rows,'salud').filter(r=>{const s=norm(r.Estado);return s&&s!=='vinculado';});}
 
   function latestDocs(rows){
-    return rows.filter(matchesHealthFilters).slice().sort((a,b)=>(parseDate(b['Fecha documento'])?.getTime()||0)-(parseDate(a['Fecha documento'])?.getTime()||0));
+    return filtered(rows,'salud').slice().sort((a,b)=>(parseDate(b['Fecha documento'])?.getTime()||0)-(parseDate(a['Fecha documento'])?.getTime()||0));
   }
 
   function docRows(rows,map){
@@ -98,16 +113,18 @@
 
   function attentionItems(data,map){
     const items=[];
-    staleAppointments(data.appointments).forEach(r=>items.push({type:'Cita por confirmar',patient:patientLabel(r.Paciente,map),title:`${r['Especialidad/Servicio']||'Cita'} · ${dateLabel(r.Fecha)}`,detail:'La fecha ya pasó y el registro continúa como Programada.'}));
-    overdueTreatments(data.treatments).forEach(r=>items.push({type:'Tratamiento por revisar',patient:patientLabel(r.Paciente,map),title:r['Medicamento / Intervención']||'Tratamiento',detail:`Fin previsto ${dateLabel(r['Fecha fin prevista'])}; continúa abierto en la fuente.`}));
+    staleAppointments(data.appointments,'salud').forEach(r=>items.push({type:'Cita por confirmar',patient:patientLabel(r.Paciente,map),title:`${r['Especialidad/Servicio']||'Cita'} · ${dateLabel(r.Fecha)}`,detail:'La fecha ya pasó y el registro continúa como Programada.'}));
+    overdueTreatments(data.treatments,'salud').forEach(r=>items.push({type:'Tratamiento por revisar',patient:patientLabel(r.Paciente,map),title:r['Medicamento / Intervención']||'Tratamiento',detail:`Fin previsto ${dateLabel(r['Fecha fin prevista'])}; continúa abierto en la fuente.`}));
     pendingStudies(data.studies).forEach(r=>items.push({type:'Estudio pendiente',patient:patientLabel(r.Paciente,map),title:r['Tipo de estudio']||'Estudio',detail:r.Observaciones||r['Resultado / Conclusión']||'Requiere validación.'}));
     pendingDocs(data.docs).forEach(r=>items.push({type:'Documento por revisar',patient:patientLabel(r.Paciente,map),title:r['Nombre archivo']||'Documento',detail:r['Control auditoría']||r.Estado}));
     return items;
   }
 
   function healthSummaryMarkup(data,map){
-    const docs=latestDocs(data.docs); const pending=pendingDocs(data.docs);
-    const stale=staleAppointments(data.appointments); const overdue=overdueTreatments(data.treatments);
+    const docs=latestDocs(data.docs);
+    const pending=pendingDocs(data.docs);
+    const stale=staleAppointments(data.appointments,'salud');
+    const overdue=overdueTreatments(data.treatments,'salud');
     const attention=attentionItems(data,map);
     return `<section class="health-enhancement" aria-label="Control documental de salud">
       <div class="health-ops-strip">
@@ -155,7 +172,7 @@
         const wrap=document.createElement('div'); wrap.innerHTML=healthSummaryMarkup(data,map);
         const node=wrap.firstElementChild; if(anchor)anchor.insertAdjacentElement('afterend',node); else root.appendChild(node);
       }else{
-        const rows=view==='citas'?staleAppointments(data.appointments):overdueTreatments(data.treatments);
+        const rows=view==='citas'?staleAppointments(data.appointments,'citas'):overdueTreatments(data.treatments,'tratamientos');
         if(rows.length){const wrap=document.createElement('div');wrap.innerHTML=viewNoticeMarkup(view,rows,map);const node=wrap.firstElementChild;const head=root.querySelector('.section-head');if(head)head.insertAdjacentElement('afterend',node);else root.prepend(node);}
       }
     }catch(error){console.error('Health dashboard enhancement:',error);}
