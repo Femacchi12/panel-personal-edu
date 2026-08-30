@@ -8,6 +8,7 @@
 
   let query = '';
   let expiryMode = 'all';
+  let periodFilter = 'all';
   let expanded = false;
   let frame = 0;
   let renderVersion = 0;
@@ -96,6 +97,11 @@
     });
   }
 
+  function periodOptions(rows) {
+    return [...new Set(rows.map(row => String(row['Período'] || '').trim()).filter(Boolean))]
+      .sort((a, b) => b.localeCompare(a, 'es', {numeric:true, sensitivity:'base'}));
+  }
+
   function searchable(row) {
     return [
       row['Área'], row['Categoría'], row['Tipo'], row['Documento'], row['Titular'], row['País / Entidad'],
@@ -145,6 +151,7 @@
       const q = norm(query);
       rows = rows.filter(row => norm(searchable(row)).includes(q));
     }
+    if (periodFilter !== 'all') rows = rows.filter(row => String(row['Período'] || '').trim() === periodFilter);
     if (expiryMode === 'dated') rows = rows.filter(row => String(row['Fecha vencimiento'] || '').trim());
     if (expiryMode === 'attention') rows = rows.filter(isAttention);
     return rows;
@@ -163,6 +170,8 @@
   }
 
   function renderHost(host, sourceRows) {
+    const periods = periodOptions(sourceRows);
+    if (periodFilter !== 'all' && !periods.includes(periodFilter)) periodFilter = 'all';
     const rows = applyLocalFilters(sourceRows);
     const visible = expanded ? rows : rows.slice(0, 30);
 
@@ -173,6 +182,7 @@
           <div class="panel-title"><strong>Índice de documentos</strong><span id="documentsMasterCount">${rows.length} visibles de ${sourceRows.length}</span></div>
           <div class="documents-actions">
             <label class="documents-search"><span>Buscar</span><input id="documentsMasterSearch" class="search-input" type="search" placeholder="Documento, número, titular, entidad…" value="${esc(query)}"></label>
+            <label class="documents-scope"><span>Período</span><select id="documentsPeriodFilter"><option value="all" ${periodFilter === 'all' ? 'selected' : ''}>Todos</option>${periods.map(period => `<option value="${esc(period)}" ${periodFilter === period ? 'selected' : ''}>${esc(period)}</option>`).join('')}</select></label>
             <label class="documents-scope"><span>Vigencia</span><select id="documentsExpiryMode"><option value="all" ${expiryMode === 'all' ? 'selected' : ''}>Todos</option><option value="dated" ${expiryMode === 'dated' ? 'selected' : ''}>Con vencimiento</option><option value="attention" ${expiryMode === 'attention' ? 'selected' : ''}>Por revisar</option></select></label>
           </div>
         </div>
@@ -196,6 +206,11 @@
           input.setSelectionRange(query.length, query.length);
         }
       });
+    });
+    host.querySelector('#documentsPeriodFilter')?.addEventListener('change', event => {
+      periodFilter = String(event.target.value || 'all');
+      expanded = false;
+      renderHost(host, sourceRows);
     });
     host.querySelector('#documentsExpiryMode')?.addEventListener('change', event => {
       expiryMode = String(event.target.value || 'all');
