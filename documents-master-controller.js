@@ -42,7 +42,7 @@
 
   function isHistorical(row) {
     const status = norm(row?.Estado);
-    return status.includes('histor') || status.includes('archivo histórico') || status.includes('archivo historico');
+    return status.includes('histor') || status.includes('archivo historico');
   }
 
   function expiryState(row) {
@@ -59,8 +59,34 @@
     return {kind:'ok', days};
   }
 
+  function statusNeedsAttention(row) {
+    const status = norm(row?.Estado);
+    return status === 'por revisar' || status === 'pendiente' || status.includes('pendiente') || status.includes('revisar');
+  }
+
   function isAttention(row) {
-    return ['expired','soon','watch'].includes(expiryState(row).kind);
+    return statusNeedsAttention(row) || ['expired','soon','watch'].includes(expiryState(row).kind);
+  }
+
+  function sectionValues(key) {
+    const state = window.__PANEL_SECTION_FILTERS__;
+    if (!state || state.view !== 'documentos') return [];
+    return (state.rules || []).find(rule => rule.key === key)?.values || [];
+  }
+
+  function fieldMatches(value, selected) {
+    if (!selected.length) return true;
+    const current = norm(value);
+    return selected.some(item => current === norm(item));
+  }
+
+  function matchesSectionFilters(row) {
+    return fieldMatches(row['Área'], sectionValues('documentArea'))
+      && fieldMatches(row['Categoría'], sectionValues('documentCategory'))
+      && fieldMatches(row['Tipo'], sectionValues('documentType'))
+      && fieldMatches(row['Titular'], sectionValues('documentHolder'))
+      && fieldMatches(row['Estado'], sectionValues('documentStatus'))
+      && fieldMatches(row['País / Entidad'], sectionValues('documentEntity'));
   }
 
   function areaRank(value) {
@@ -89,6 +115,9 @@
       const priorityA = norm(a.Prioridad) === 'alta' ? 0 : 1;
       const priorityB = norm(b.Prioridad) === 'alta' ? 0 : 1;
       if (priorityA !== priorityB) return priorityA - priorityB;
+      const attentionA = isAttention(a) ? 0 : 1;
+      const attentionB = isAttention(b) ? 0 : 1;
+      if (attentionA !== attentionB) return attentionA - attentionB;
       const area = areaRank(a['Área']) - areaRank(b['Área']);
       if (area) return area;
       const date = dateRank(b) - dateRank(a);
@@ -106,7 +135,7 @@
     return [
       row['Área'], row['Categoría'], row['Tipo'], row['Documento'], row['Titular'], row['País / Entidad'],
       row['N.º / Identificación'], row['Dato copiable 2'], row['Fecha documento'], row['Fecha expedición'],
-      row['Fecha vencimiento'], row['Período'], row['Estado'], row['Observaciones']
+      row['Fecha vencimiento'], row['Período'], row['Estado'], row['Prioridad'], row['Observaciones']
     ].join(' ');
   }
 
@@ -130,8 +159,10 @@
   function rowMarkup(row) {
     const url = String(row['URL directa'] || '').trim();
     const meta = [row['Categoría'], row['Tipo']].filter(Boolean).join(' · ');
+    const priority = String(row['Prioridad'] || '').trim();
+    const statusClass = statusNeedsAttention(row) ? ' attention' : '';
     return `<tr>
-      <td><div class="doc-name"><div><span class="doc-area">${esc(row['Área'] || '—')}</span></div><strong>${esc(row['Documento'] || row['Tipo'] || 'Documento')}</strong><span>${esc(meta)}</span></div></td>
+      <td><div class="doc-name"><div><span class="doc-area">${esc(row['Área'] || '—')}</span>${priority ? `<span class="doc-area">${esc(priority)}</span>` : ''}</div><strong>${esc(row['Documento'] || row['Tipo'] || 'Documento')}</strong><span>${esc(meta)}</span></div></td>
       <td>${esc(row['Titular'] || '—')}</td>
       <td>${esc(row['País / Entidad'] || '—')}</td>
       <td>${copyMarkup(row['N.º / Identificación'], 'identificación')}</td>
@@ -140,7 +171,7 @@
       <td>${esc(dateLabel(row['Fecha expedición']))}</td>
       <td>${expirationMarkup(row)}</td>
       <td>${esc(row['Período'] || '—')}</td>
-      <td><span class="doc-status">${esc(row['Estado'] || '—')}</span></td>
+      <td><span class="doc-status${statusClass}">${esc(row['Estado'] || '—')}</span></td>
       <td>${url ? `<a class="doc-open-btn" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Abrir</a>` : '<span class="doc-empty">—</span>'}</td>
     </tr>`;
   }
@@ -157,12 +188,13 @@
     return rows;
   }
 
-  function summaryMarkup(sourceRows) {
-    const withId = sourceRows.filter(row => String(row['N.º / Identificación'] || '').trim()).length;
-    const withExpiry = sourceRows.filter(row => String(row['Fecha vencimiento'] || '').trim()).length;
-    const alertCount = sourceRows.filter(isAttention).length;
+  function summaryMarkup(sectionRows, totalRows) {
+    const withId = sectionRows.filter(row => String(row['N.º / Identificación'] || '').trim()).length;
+    const withExpiry = sectionRows.filter(row => String(row['Fecha vencimiento'] || '').trim()).length;
+    const alertCount = sectionRows.filter(isAttention).length;
+    const scope = sectionRows.length === totalRows ? 'documentos' : `filtrados de ${totalRows}`;
     return `<div class="documents-summary" aria-label="Resumen documental">
-      <span><strong>${sourceRows.length}</strong> documentos</span>
+      <span><strong>${sectionRows.length}</strong> ${scope}</span>
       <span><strong>${withId}</strong> con ID</span>
       <span><strong>${withExpiry}</strong> con vencimiento</span>
       <span class="${alertCount ? 'attention' : ''}"><strong>${alertCount}</strong> por revisar</span>
@@ -170,20 +202,22 @@
   }
 
   function renderHost(host, sourceRows) {
-    const periods = periodOptions(sourceRows);
+    const sectionRows = sourceRows.filter(matchesSectionFilters);
+    const periods = periodOptions(sectionRows);
     if (periodFilter !== 'all' && !periods.includes(periodFilter)) periodFilter = 'all';
-    const rows = applyLocalFilters(sourceRows);
+    const rows = applyLocalFilters(sectionRows);
     const visible = expanded ? rows : rows.slice(0, 30);
+    const totalSuffix = sectionRows.length === sourceRows.length ? '' : ` · ${sourceRows.length} total`;
 
     host.innerHTML = `
-      ${summaryMarkup(sourceRows)}
+      ${summaryMarkup(sectionRows, sourceRows.length)}
       <div class="panel table-panel documents-master-panel">
         <div class="panel-header documents-toolbar">
-          <div class="panel-title"><strong>Índice de documentos</strong><span id="documentsMasterCount">${rows.length} visibles de ${sourceRows.length}</span></div>
+          <div class="panel-title"><strong>Índice de documentos</strong><span id="documentsMasterCount">${rows.length} visibles de ${sectionRows.length}${totalSuffix}</span></div>
           <div class="documents-actions">
             <label class="documents-search"><span>Buscar</span><input id="documentsMasterSearch" class="search-input" type="search" placeholder="Documento, número, titular, entidad…" value="${esc(query)}"></label>
             <label class="documents-scope"><span>Período</span><select id="documentsPeriodFilter"><option value="all" ${periodFilter === 'all' ? 'selected' : ''}>Todos</option>${periods.map(period => `<option value="${esc(period)}" ${periodFilter === period ? 'selected' : ''}>${esc(period)}</option>`).join('')}</select></label>
-            <label class="documents-scope"><span>Vigencia</span><select id="documentsExpiryMode"><option value="all" ${expiryMode === 'all' ? 'selected' : ''}>Todos</option><option value="dated" ${expiryMode === 'dated' ? 'selected' : ''}>Con vencimiento</option><option value="attention" ${expiryMode === 'attention' ? 'selected' : ''}>Por revisar</option></select></label>
+            <label class="documents-scope"><span>Vigencia / atención</span><select id="documentsExpiryMode"><option value="all" ${expiryMode === 'all' ? 'selected' : ''}>Todos</option><option value="dated" ${expiryMode === 'dated' ? 'selected' : ''}>Con vencimiento</option><option value="attention" ${expiryMode === 'attention' ? 'selected' : ''}>Por revisar</option></select></label>
           </div>
         </div>
         <div class="table-scroll expanded documents-table-scroll">
