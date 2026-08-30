@@ -39,9 +39,15 @@
     return new Intl.DateTimeFormat('es-CO', {day:'2-digit', month:'2-digit', year:'numeric'}).format(date);
   }
 
+  function isHistorical(row) {
+    const status = norm(row?.Estado);
+    return status.includes('histor') || status.includes('archivo histórico') || status.includes('archivo historico');
+  }
+
   function expiryState(row) {
     const date = parseDate(row['Fecha vencimiento']);
     if (!date) return {kind:'none', days:null};
+    if (isHistorical(row)) return {kind:'historical', days:null};
     const today = new Date();
     today.setHours(0,0,0,0);
     date.setHours(0,0,0,0);
@@ -108,7 +114,10 @@
     const value = String(row['Fecha vencimiento'] || '').trim();
     if (!value) return '<span class="doc-empty">—</span>';
     const state = expiryState(row);
-    const detail = state.kind === 'expired' ? 'Vencido' : state.kind === 'soon' || state.kind === 'watch' ? `${state.days} días` : '';
+    let detail = '';
+    if (state.kind === 'historical') detail = 'Histórico';
+    else if (state.kind === 'expired') detail = 'Vencido';
+    else if (state.kind === 'soon' || state.kind === 'watch') detail = `${state.days} días`;
     return `<div class="doc-expiry ${state.kind}"><span>${esc(dateLabel(value))}</span>${detail ? `<small>${esc(detail)}</small>` : ''}</div>`;
   }
 
