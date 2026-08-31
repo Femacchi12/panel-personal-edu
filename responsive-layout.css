@@ -65,6 +65,29 @@ canvas,svg,img{max-width:100%}
   overflow-wrap:anywhere;
 }
 
+/* General is an executive summary. Reconciliation keeps full detail in
+   Gastos/Flujo, but stays compact if it ever reappears on the home screen. */
+body:has(.nav-item[data-view="general"].active) .expense-reconciliation-alert{
+  padding:8px 10px!important;
+  margin-bottom:10px!important;
+}
+body:has(.nav-item[data-view="general"].active) .expense-reconciliation-head{
+  align-items:center!important;
+}
+body:has(.nav-item[data-view="general"].active) .expense-reconciliation-head>div>span{
+  display:none!important;
+}
+body:has(.nav-item[data-view="general"].active) .expense-reconciliation-head strong{
+  margin:0!important;
+  font-size:10px!important;
+}
+body:has(.nav-item[data-view="general"].active) .expense-reconciliation-toggle{
+  padding:5px 7px!important;
+}
+body:has(.nav-item[data-view="general"].active) .expense-reconciliation-detail:not([hidden]){
+  display:grid!important;
+}
+
 /* Sidebar controller feedback. */
 #sidebarToggle{transition:transform .18s ease,background .18s ease,color .18s ease}
 .sidebar.collapsed #sidebarToggle{transform:rotate(180deg)}
