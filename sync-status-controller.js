@@ -13,6 +13,11 @@
     }).format(date);
   }
 
+  function sourceLabel(key) {
+    const range = String(key || '').split('|').pop() || '';
+    return range.split('!')[0] || range;
+  }
+
   async function paint() {
     const text = document.getElementById('syncText');
     const dot = document.getElementById('syncDot');
@@ -21,12 +26,24 @@
 
     try {
       const payload = await getData(false);
-      const count = Object.keys(payload?.sources || {}).length;
+      const total = Object.keys(payload?.sources || {}).length;
+      const sourceErrors = payload?.sourceErrors || {};
+      const failedKeys = Object.keys(sourceErrors);
+      const failed = failedKeys.length;
+      const ok = Math.max(0, total - failed);
       const at = timeLabel(payload?.generatedAt);
-      text.textContent = `Sincronizado · ${count} fuentes${at ? ` · ${at}` : ''}`;
-      dot?.classList.add('ok');
-      dot?.classList.remove('error');
-      text.title = 'Última lectura del backend central. La actualización manual fuerza una lectura nueva de Google Sheets.';
+
+      if (failed) {
+        text.textContent = `Sincronizado parcial · ${ok}/${total}${at ? ` · ${at}` : ''}`;
+        dot?.classList.remove('ok');
+        dot?.classList.add('error');
+        text.title = `Fuentes pendientes: ${failedKeys.map(sourceLabel).join(', ')}. El resto del payload está disponible.`;
+      } else {
+        text.textContent = `Sincronizado · ${total} fuentes${at ? ` · ${at}` : ''}`;
+        dot?.classList.add('ok');
+        dot?.classList.remove('error');
+        text.title = 'Última lectura del backend central. La actualización manual fuerza una lectura nueva de Google Sheets.';
+      }
     } catch (error) {
       text.textContent = 'Sincronización pendiente';
       dot?.classList.remove('ok');
