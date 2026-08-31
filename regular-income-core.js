@@ -37,24 +37,41 @@
     const details = rowsFor(payload,financeId,'Detalle_Ingresos!A:L');
     const conceptByMonth = new Map();
     const salaryByYear = new Map();
+    const salaryHistory = [];
     const usdActualByMonth = new Map();
     const keys = new Set();
 
     concepts.forEach(row=>{
       const key=monthKey(row.Mes); if(!key)return; keys.add(key); conceptByMonth.set(key,row);
-      const salary=num(row['Sueldo COP']); if(salary>0){const y=key.slice(0,4); if(!salaryByYear.has(y))salaryByYear.set(y,[]); salaryByYear.get(y).push(salary);}
+      const salary=num(row['Sueldo COP']);
+      if(salary>0){
+        const y=key.slice(0,4);
+        if(!salaryByYear.has(y))salaryByYear.set(y,[]);
+        salaryByYear.get(y).push(salary);
+        salaryHistory.push({key,salary});
+      }
     });
+    salaryHistory.sort((a,b)=>a.key.localeCompare(b.key));
+
     details.forEach(row=>{
       const key=monthKey(row.Mes); if(!key)return; keys.add(key);
       if(norm(row.Tipo)==='ingreso laboral' && norm(row['Moneda original'])==='usd') usdActualByMonth.set(key,(usdActualByMonth.get(key)||0)+num(row['Valor original']));
     });
 
-    const allSalary=[...salaryByYear.values()].flat();
+    const allSalary=salaryHistory.map(item=>item.salary);
+    const salaryReferenceFor=key=>{
+      let latest=0;
+      salaryHistory.forEach(item=>{if(item.key<=key)latest=item.salary;});
+      if(latest>0)return latest;
+      const year=String(key).slice(0,4);
+      return median(salaryByYear.get(year)||[])||median(allSalary);
+    };
+
     const months = new Map();
     [...keys].sort().forEach(key=>{
       const year=key.slice(0,4), row=conceptByMonth.get(key)||{};
       const copActual=num(row['Sueldo COP']);
-      const copReference=median(salaryByYear.get(year)||[])||median(allSalary);
+      const copReference=salaryReferenceFor(key);
       const copRegular=copActual>0?copActual:copReference;
 
       const usdActual=usdActualByMonth.get(key)||0;
@@ -80,7 +97,7 @@
     const current=new Date();
     const currentKey=`${current.getFullYear()}-${String(current.getMonth()+1).padStart(2,'0')}`;
     if(!months.has(currentKey)){
-      const year=String(current.getFullYear()),copReference=median(salaryByYear.get(year)||[])||median(allSalary);
+      const year=String(current.getFullYear()),copReference=salaryReferenceFor(currentKey);
       if(copReference>0) months.set(currentKey,{key:currentKey,year,copRegular:copReference,usdRegular:DEFAULT_USD_BASE,usdEquivCop:DEFAULT_USD_BASE*DEFAULT_USD_COP,totalCop:copReference+DEFAULT_USD_BASE*DEFAULT_USD_COP,usdExtra:0,usdExtraCop:0,copConfirmed:false,usdConfirmed:false,complete:false,missingSupport:['Nómina COP','Fibrazo LLC'],usable:true});
     }
 
