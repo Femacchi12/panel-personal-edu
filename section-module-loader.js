@@ -119,9 +119,23 @@
     loadView(view).catch(() => {});
   }
 
+  function navView(event) {
+    return event.target.closest?.('.nav-item[data-view]')?.dataset.view || '';
+  }
+
+  document.addEventListener('pointerover', event => {
+    const view = navView(event);
+    if (view) schedule(view);
+  }, { passive: true });
+
+  document.addEventListener('focusin', event => {
+    const view = navView(event);
+    if (view) schedule(view);
+  });
+
   document.addEventListener('click', event => {
-    const nav = event.target.closest?.('.nav-item[data-view]');
-    if (nav) schedule(nav.dataset.view || '');
+    const view = navView(event);
+    if (view) schedule(view);
   }, true);
 
   document.addEventListener('panel:view-root-changed', event => schedule(event.detail?.view || activeView()));
