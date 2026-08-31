@@ -3,7 +3,6 @@
 
   const cfg = window.PANEL_CONFIG || {};
   const financeId = String(cfg.financeSpreadsheetId || '');
-  const documentsId = String(cfg.documentsSpreadsheetId || '');
   if (!financeId) return;
 
   const MONTHS = {
@@ -18,7 +17,7 @@
   let renderVersion = 0;
 
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'
   }[c]));
   const norm = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const activeView = () => document.querySelector('.nav-item.active')?.dataset.view || '';
@@ -144,13 +143,7 @@
     if (document.getElementById('incomeDocEnhancementStyles')) return;
     const style = document.createElement('style');
     style.id = 'incomeDocEnhancementStyles';
-    style.textContent = `
-      .doc-priority-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
-      .doc-priority-card{border:1px solid var(--line,#1b2738);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:8px;background:var(--panel,#0c1420)}
-      .doc-priority-card small{color:var(--muted,#8190a5);line-height:1.45}
-      .doc-priority-card .btn{align-self:flex-start;text-decoration:none}
-      .income-source-note{font-size:11px;color:var(--muted,#8190a5);margin-top:8px}
-    `;
+    style.textContent = `.income-source-note{font-size:11px;color:var(--muted,#8190a5);margin-top:8px}`;
     document.head.appendChild(style);
   }
 
@@ -236,35 +229,10 @@
     }
   }
 
-  async function enhanceDocuments(root, version) {
-    if (!documentsId || !root || root.querySelector('[data-doc-priority]') || root.dataset.docLoading === '1') return;
-    root.dataset.docLoading = '1';
-    try {
-      const docs = (await getRows('Documentos_Personales!A:L',documentsId))
-        .sort((a,b)=>String(a['Prioridad']||'').localeCompare(String(b['Prioridad']||'')) || String(a['Documento']||'').localeCompare(String(b['Documento']||'')));
-      if (version !== renderVersion || activeView() !== 'documentos' || !root.isConnected || !docs.length) return;
-      const html = `<div class="panel" data-doc-priority>
-        <div class="panel-header"><div class="panel-title"><strong>Documentos personales prioritarios</strong><span>Acceso directo a soportes clave</span></div></div>
-        <div class="doc-priority-list">${docs.map(r=>{
-          const url = r['URL directa'] || r['Carpeta / ubicación'] || '';
-          return `<div class="doc-priority-card"><span class="eyebrow">${esc(r['Prioridad']||'DOCUMENTO')}</span><strong>${esc(r['Documento']||'Documento')}</strong><small>${esc([r['Categoría'],r['Titular'],r['Estado']].filter(Boolean).join(' · '))}</small>${url?`<a class="btn btn-secondary" href="${esc(url)}" target="_blank" rel="noopener">Abrir documento</a>`:''}</div>`;
-        }).join('')}</div>
-      </div>`;
-      const head = root.querySelector('.section-head');
-      if (head) head.insertAdjacentHTML('afterend',html); else root.insertAdjacentHTML('afterbegin',html);
-    } catch (error) {
-      console.error('No se pudieron cargar documentos prioritarios:', error);
-    } finally {
-      delete root.dataset.docLoading;
-    }
-  }
-
   function run(version) {
     const root = document.getElementById('viewRoot');
-    const view = activeView();
-    if (!root || version !== renderVersion) return;
-    if (view === 'ingresos') enhanceIncome(root, version);
-    else if (view === 'documentos') enhanceDocuments(root, version);
+    if (!root || version !== renderVersion || activeView() !== 'ingresos') return;
+    enhanceIncome(root, version);
   }
 
   function schedule() {
@@ -278,12 +246,8 @@
 
   injectStyles();
   document.addEventListener('panel:view-root-changed',event=>{
-    const view=event.detail?.view;
-    if(view==='ingresos'||view==='documentos')schedule();
+    if(event.detail?.view==='ingresos')schedule();
     else renderVersion++;
-  });
-  document.addEventListener('panel:section-filters-changed',event=>{
-    if(event.detail?.view==='documentos')schedule();
   });
   queueMicrotask(schedule);
 })();
