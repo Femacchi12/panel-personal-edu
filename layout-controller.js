@@ -6,7 +6,12 @@
   const button=()=>document.getElementById('sidebarToggle');
 
   function storedState(){
-    try{return localStorage.getItem(STORAGE_KEY)==='1';}catch(_){return false;}
+    try{
+      const raw=localStorage.getItem(STORAGE_KEY);
+      if(raw==='1')return true;
+      if(raw==='0')return false;
+    }catch(_){}
+    return window.matchMedia?.('(max-width: 820px)').matches||false;
   }
 
   function persist(collapsed){
