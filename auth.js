@@ -111,35 +111,14 @@ async function loadDashboard() {
     await loadScript("regular-income-core.js");
     await loadScript("finance-purchase-policy.js");
     await loadScript("app.js");
+    await loadScript("section-module-loader.js");
 
-    const modules = [
+    const globalModules = [
       ...(BACKEND_MODE ? ["expense-reconciliation-guard.js"] : []),
       "sync-status-controller.js",
-      "income-doc-enhancements.js",
-      "documents-master-controller.js",
-      "card-specific-filter.js",
-      "card-payment-control.js",
-      "card-chart-personal-limit.js",
-      "card-payments-installments.js",
-      "income-regular-controller.js",
-      "income-type-filter.js",
-      "income-savings-context-controller.js",
-      "table-date-behavior.js",
-      "expense-table-advanced.js",
-      "flow-matrix-v3.js",
-      "monthly-projection-control.js",
-      "exchange-simulator.js",
-      "fx-sensitivity-controller.js",
-      "movement-type-columns.js",
-      "payment-method-filters.js",
-      "spend-chart-controller.js",
-      "services-table-enhancement.js",
-      "flow-income-controller.js",
-      "finance-context-controller.js",
-      "investment-freshness-controller.js",
-      "finance-secondary-context-controller.js"
+      "table-date-behavior.js"
     ];
-    await Promise.all(modules.map(loadScript));
+    await Promise.all(globalModules.map(loadScript));
     document.dispatchEvent(new CustomEvent('panel:modules-ready'));
   } catch (error) {
     console.error("Error cargando dashboard:", error);
