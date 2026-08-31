@@ -16,8 +16,10 @@
 
     refreshing = true;
     const previousDisabled = Boolean(button.disabled);
+    const previousText = button.textContent;
     button.disabled = true;
     button.classList.add('is-refreshing');
+    button.textContent = '↻ Actualizando…';
 
     try {
       window.__PANEL_RESET_BACKEND_DATA__?.();
@@ -49,6 +51,7 @@
     } finally {
       refreshing = false;
       button.classList.remove('is-refreshing');
+      button.textContent = previousText;
       button.disabled = previousDisabled;
     }
   }
