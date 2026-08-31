@@ -8,11 +8,15 @@
   let frame = 0;
   function emit() {
     frame = 0;
+    const view = document.querySelector('.nav-item.active')?.dataset.view || '';
+
+    // Los módulos especializados de Viajes reemplazan el contenido de viewRoot.
+    // Ignorar esas mutaciones internas evita que el propio módulo se dispare
+    // nuevamente y genere lecturas repetidas de Sheets.
+    if (view === 'viajes' && (root.querySelector('.travel-dashboard') || root.querySelector('.travel-loading'))) return;
+
     document.dispatchEvent(new CustomEvent('panel:view-root-changed', {
-      detail: {
-        view: document.querySelector('.nav-item.active')?.dataset.view || '',
-        root
-      }
+      detail: { view, root }
     }));
   }
 
