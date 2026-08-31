@@ -130,7 +130,8 @@ async function loadDashboard() {
       "payment-method-filters.js",
       "spend-chart-controller.js",
       "services-table-enhancement.js",
-      "flow-income-controller.js"
+      "flow-income-controller.js",
+      "finance-context-controller.js"
     ];
     await Promise.all(modules.map(loadScript));
     document.dispatchEvent(new CustomEvent('panel:modules-ready'));
