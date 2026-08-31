@@ -52,18 +52,25 @@
 
     const promise = new Promise((resolve, reject) => {
       const script = existing || document.createElement('script');
+      const done = () => {
+        script.dataset.loaded = '1';
+        resolve();
+      };
+      const fail = () => reject(new Error(`No se pudo cargar ${src}`));
+
+      if (script.dataset.loaded === '1') {
+        done();
+        return;
+      }
+
+      script.addEventListener('load', done, { once: true });
+      script.addEventListener('error', fail, { once: true });
+
       if (!existing) {
         script.src = `${src}?v=${encodeURIComponent(ASSET_VERSION)}`;
         script.async = false;
         script.dataset.panelSectionModule = src;
         document.body.appendChild(script);
-      }
-      const done = () => { script.dataset.loaded = '1'; resolve(); };
-      const fail = () => reject(new Error(`No se pudo cargar ${src}`));
-      if (script.dataset.loaded === '1') done();
-      else {
-        script.addEventListener('load', done, { once: true });
-        script.addEventListener('error', fail, { once: true });
       }
     }).catch(error => {
       scripts.delete(src);
