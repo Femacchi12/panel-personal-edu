@@ -17,7 +17,11 @@
     const regularUsd=1300,primeUsd=650;
     const low=rate*.95,high=rate*1.05;
     let host=root.querySelector('#fxSensitivityPanel');
-    if(!host){host=document.createElement('div');host.id='fxSensitivityPanel';host.className='panel fx-sensitivity';const converter=root.querySelector('.fx-panel:nth-of-type(2)');if(converter)converter.insertAdjacentElement('afterend',host);else root.appendChild(host);}
+    if(!host){
+      host=document.createElement('div');host.id='fxSensitivityPanel';host.className='panel fx-sensitivity';
+      const panels=[...root.querySelectorAll('.fx-panel')],converter=panels[1]||panels[0];
+      if(converter)converter.insertAdjacentElement('afterend',host);else root.appendChild(host);
+    }
     host.innerHTML=`<div class="fx-sensitivity-head"><div><strong>Sensibilidad USD → COP</strong><span>Cómo cambia el valor en pesos si la tasa sube o baja 5 %.</span></div><span>Tasa base ${number(rate,0)}</span></div><div class="fx-sensitivity-grid"><div class="fx-sensitivity-card down"><span>Tasa -5 %</span><strong>${number(low,0)} COP/USD</strong><small>Ingreso USD 1.300 → ${money(regularUsd*low)}</small></div><div class="fx-sensitivity-card"><span>Tasa actual simulada</span><strong>${number(rate,0)} COP/USD</strong><small>Ingreso USD 1.300 → ${money(regularUsd*rate)}</small></div><div class="fx-sensitivity-card up"><span>Tasa +5 %</span><strong>${number(high,0)} COP/USD</strong><small>Ingreso USD 1.300 → ${money(regularUsd*high)}</small></div></div><div class="fx-impact-grid"><div class="fx-impact-box"><span>Impacto mensual · USD 1.300</span><strong>± ${money(regularUsd*rate*.05)}</strong></div><div class="fx-impact-box"><span>Impacto prima · USD 650</span><strong>± ${money(primeUsd*rate*.05)}</strong></div></div><div class="fx-sensitivity-note">Es una simulación de sensibilidad: no representa una tasa de mercado en tiempo real y no modifica movimientos, ingresos ni tipos de cambio históricos.</div>`;
     if(rateInput.dataset.fxSensitivityWired!=='1'){rateInput.dataset.fxSensitivityWired='1';rateInput.addEventListener('input',()=>schedule());}
   }
