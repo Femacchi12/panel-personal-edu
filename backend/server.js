@@ -25,7 +25,6 @@ const SOURCES = [
   { book: 'finance', range: 'Resumen_Inversiones!A:N' },
   { book: 'finance', range: 'Posiciones!A:X' },
   { book: 'finance', range: 'Pensiones_Cesantias!A:T' },
-  { book: 'finance', range: 'Cortes_Pension_Cesantias!A:R' },
   { book: 'finance', range: 'Resumen_Ingresos!A:H' },
   { book: 'finance', range: 'Ingresos!A:T' },
   { book: 'finance', range: 'Detalle_Ingresos!A:L' },
@@ -180,7 +179,7 @@ async function buildPayload(force = false) {
 }
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'panel-personal-edu-backend', sourceCount: SOURCES.length, revision: 'source-error-tracing-2026-08-31' });
+  res.json({ ok: true, service: 'panel-personal-edu-backend', sourceCount: SOURCES.length, revision: 'lean-sources-2026-08-31' });
 });
 
 app.get('/api/data', requireAuthorizedUser, async (req, res) => {
