@@ -207,13 +207,20 @@
         labels.some(x => x === 'Ingresos' || x === 'Ingresos promedio' || x === 'Ingresos regulares');
     });
     if (!primary) return;
-    let one = 0, multi = 0;
+    const policy = window.FinancePurchasePolicy;
+    let one = 0, multi = 0, count = 0;
     rows.forEach(row => {
-      if (norm(method(row)) !== 'credito') return;
-      const installments = Math.max(1, Math.round(parseNumber(row.Cuotas) || 1));
+      const financed = policy?.isFinancedPurchase
+        ? policy.isFinancedPurchase(row)
+        : norm(method(row)) === 'credito';
+      if (!financed) return;
+      const installments = policy?.installmentCount
+        ? policy.installmentCount(row)
+        : Math.max(1, Math.round(parseNumber(row.Cuotas) || 1));
       const value = movementAmount(row, currency);
       if (installments > 1) multi += value;
       else one += value;
+      count += 1;
     });
     let host = root.querySelector('#flowFinancingKpis');
     if (!host) {
@@ -224,8 +231,9 @@
       primary.insertAdjacentElement('afterend', host);
     }
     const total = one + multi;
-    const html = `<div class="kpi-card"><span class="kpi-label">Financiado · 1 cuota</span><strong class="kpi-value">${formatMoney(one, currency)}</strong><div class="kpi-meta"><span>Compras a crédito en una sola cuota</span></div></div><div class="kpi-card"><span class="kpi-label">Financiado · más de 1 cuota</span><strong class="kpi-value gold">${formatMoney(multi, currency)}</strong><div class="kpi-meta"><span>Compras a crédito en 2 o más cuotas</span></div></div><div class="kpi-card"><span class="kpi-label">Financiado total</span><strong class="kpi-value gold">${formatMoney(total, currency)}</strong><div class="kpi-meta"><span>Total comprado a crédito</span></div></div>`;
+    const html = `<div class="kpi-card"><span class="kpi-label">Financiado · 1 cuota</span><strong class="kpi-value">${formatMoney(one, currency)}</strong><div class="kpi-meta"><span>Compras financiadas válidas en una sola cuota</span></div></div><div class="kpi-card"><span class="kpi-label">Financiado · más de 1 cuota</span><strong class="kpi-value gold">${formatMoney(multi, currency)}</strong><div class="kpi-meta"><span>Compras financiadas válidas en 2 o más cuotas</span></div></div><div class="kpi-card"><span class="kpi-label">Financiado total</span><strong class="kpi-value gold">${formatMoney(total, currency)}</strong><div class="kpi-meta"><span>${count} compra${count === 1 ? '' : 's'} · excluye pago de tarjeta, manejo e intereses</span></div></div>`;
     if (host.innerHTML !== html) host.innerHTML = html;
+    host.dataset.financingPolicy = policy?.isFinancedPurchase ? 'canonical' : 'fallback';
   }
 
   function updatePrimaryKpis(model, movements) {
