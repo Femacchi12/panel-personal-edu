@@ -2,6 +2,7 @@
   'use strict';
 
   let frame = 0;
+  let observer = null;
 
   function timeLabel(value) {
     const date = value ? new Date(value) : new Date();
@@ -16,6 +17,10 @@
   function sourceLabel(key) {
     const range = String(key || '').split('|').pop() || '';
     return range.split('!')[0] || range;
+  }
+
+  function writeText(node, value) {
+    if (node && node.textContent !== value) node.textContent = value;
   }
 
   async function paint() {
@@ -34,18 +39,18 @@
       const at = timeLabel(payload?.generatedAt);
 
       if (failed) {
-        text.textContent = `Sincronizado parcial · ${ok}/${total}${at ? ` · ${at}` : ''}`;
+        writeText(text, `Sincronizado parcial · ${ok}/${total}${at ? ` · ${at}` : ''}`);
         dot?.classList.remove('ok');
         dot?.classList.add('error');
         text.title = `Fuentes pendientes: ${failedKeys.map(sourceLabel).join(', ')}. El resto del payload está disponible.`;
       } else {
-        text.textContent = `Sincronizado · ${total} fuentes${at ? ` · ${at}` : ''}`;
+        writeText(text, `Sincronizado · ${total} fuentes${at ? ` · ${at}` : ''}`);
         dot?.classList.add('ok');
         dot?.classList.remove('error');
         text.title = 'Última lectura del backend central. La actualización manual fuerza una lectura nueva de Google Sheets.';
       }
     } catch (error) {
-      text.textContent = 'Sincronización pendiente';
+      writeText(text, 'Sincronización pendiente');
       dot?.classList.remove('ok');
       dot?.classList.add('error');
       text.title = String(error?.message || error);
@@ -60,8 +65,16 @@
     });
   }
 
+  function watchLegacyWrites() {
+    const text = document.getElementById('syncText');
+    if (!text || observer) return;
+    observer = new MutationObserver(() => schedule());
+    observer.observe(text, { childList: true, characterData: true, subtree: true });
+  }
+
   document.addEventListener('panel:backend-data-loaded', schedule);
   document.addEventListener('panel:manual-refresh-complete', schedule);
-  document.addEventListener('panel:modules-ready', schedule);
-  queueMicrotask(schedule);
+  document.addEventListener('panel:modules-ready', () => { watchLegacyWrites(); schedule(); });
+  document.addEventListener('panel:view-root-changed', schedule);
+  queueMicrotask(() => { watchLegacyWrites(); schedule(); });
 })();
