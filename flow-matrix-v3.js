@@ -15,7 +15,7 @@
   let sortState = { type: 'id', dir: 'asc', month: null };
 
   const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-  const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
+  const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const activeView = () => document.querySelector('.nav-item.active')?.dataset.view || '';
   const money = v => new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(Number(v)||0);
   const pct = v => `${new Intl.NumberFormat('es-CO',{minimumFractionDigits:1,maximumFractionDigits:1}).format((Number(v)||0)*100)}%`;
@@ -59,6 +59,7 @@
     return raw||'Sin especificar';
   }
   function method(row){
+    if(typeof window.FinancePurchasePolicy?.method==='function')return window.FinancePurchasePolicy.method(row);
     const explicit=String(row['Modalidad de pago']||'').trim(); if(explicit)return explicit;
     const raw=norm(row['Cuenta / Tarjeta']);
     if(raw.includes('credito'))return'Crédito';
@@ -84,6 +85,7 @@
     return parts.length?` · ${parts.join(' · ')}`:'';
   }
   function isCreditPurchase(row){
+    if(typeof window.FinancePurchasePolicy?.isFinancedPurchase==='function')return window.FinancePurchasePolicy.isFinancedPurchase(row);
     if(norm(method(row))!=='credito')return false;
     if(norm(row['Categoría'])==='tarjeta col')return false;
     const desc=norm(`${row['Descripción / Comercio']||''} ${row['Descripción original']||''}`);
@@ -107,7 +109,16 @@
     return [...known,...extra];
   }
 
-  function salaryMap(concepts){
+  function salaryMap(concepts,regularIncome){
+    if(regularIncome?.months instanceof Map){
+      const map=new Map(),source=new Map();
+      regularIncome.months.forEach((base,key)=>{
+        if(!base?.usable||!(base.totalCop>0))return;
+        map.set(key,base.totalCop);
+        source.set(key,base.complete?'Base regular confirmada':'Base regular estimada · soporte pendiente');
+      });
+      return {map,source};
+    }
     const map=new Map(),source=new Map(),byYear=new Map(),rowsByMonth=new Map();
     concepts.forEach(r=>{
       const k=monthKey(r.Mes); if(!k)return;
@@ -167,7 +178,7 @@
   function sortedCategories(categories,values){const rows=categories.map((cat,index)=>({cat,id:index+1}));const dir=sortState.dir==='desc'?-1:1;if(sortState.type==='category')rows.sort((a,b)=>a.cat.localeCompare(b.cat,'es',{numeric:true,sensitivity:'base'})*dir);else if(sortState.type==='month'&&sortState.month)rows.sort((a,b)=>((values.get(`${sortState.month}|${norm(a.cat)}`)||0)-(values.get(`${sortState.month}|${norm(b.cat)}`)||0))*dir||a.id-b.id);else rows.sort((a,b)=>(a.id-b.id)*dir);return rows;}
 
   function render(host,detail,data){
-    const year=selectedYear(),months=monthList(year),current=currentMonthKey(),historical=historicalMap(data.flowRows),salary=salaryMap(data.concepts),categories=categoryList(data.flowRows,data.movements,year);
+    const year=selectedYear(),months=monthList(year),current=currentMonthKey(),historical=historicalMap(data.flowRows),salary=salaryMap(data.concepts,data.regularIncome),categories=categoryList(data.flowRows,data.movements,year);
     const movementCache=new Map();
     const mdata=m=>{if(!movementCache.has(m))movementCache.set(m,movementMonthValues(data.movements,m));return movementCache.get(m);};
     const values=new Map(historical);
@@ -206,7 +217,8 @@
       const root=document.getElementById('viewRoot'); if(!root)return;
       const {host,detail}=ensureHosts(root);
       const movements=rowsFor(p,'Movimientos!A:Z');
-      const data={flowRows:rowsFor(p,'Flujo_Mensual!A:J'),movements,concepts:rowsFor(p,'Resumen_Conceptos_Ingresos!A:L')};
+      const regularIncome=typeof window.RegularIncomeCore?.build==='function'?window.RegularIncomeCore.build(p,financeId):null;
+      const data={flowRows:rowsFor(p,'Flujo_Mensual!A:J'),movements,concepts:rowsFor(p,'Resumen_Conceptos_Ingresos!A:L'),regularIncome};
       render(host,detail,data);
       document.dispatchEvent(new CustomEvent('panel:flow-matrix-v3-rendered'));
     }catch(e){console.error('Matriz Flujo v3:',e);}finally{
