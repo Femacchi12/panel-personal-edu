@@ -23,6 +23,7 @@
       ['finance-secondary-context-controller.js']
     ],
     inversiones: [
+      ['investment-period-enhancement.js'],
       ['investment-freshness-controller.js']
     ],
     pension: [
@@ -38,8 +39,14 @@
       ['exchange-simulator.js'],
       ['fx-sensitivity-controller.js']
     ],
+    salud: [
+      ['health-dashboard-controller.js']
+    ],
     documentos: [
       ['documents-master-controller.js']
+    ],
+    viajes: [
+      ['travel-expense-controller.js']
     ]
   });
 
