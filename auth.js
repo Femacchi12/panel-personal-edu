@@ -136,7 +136,6 @@ async function loadDashboard() {
       "spend-chart-controller.js",
       "services-table-enhancement.js",
       "flow-income-controller.js",
-      "flow-financing-consistency.js",
       "finance-context-controller.js",
       "investment-freshness-controller.js",
       "finance-secondary-context-controller.js"
