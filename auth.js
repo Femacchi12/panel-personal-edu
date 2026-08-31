@@ -114,7 +114,6 @@ async function loadDashboard() {
 
     const modules = [
       ...(BACKEND_MODE ? ["expense-reconciliation-guard.js"] : []),
-      "manual-refresh-controller.js",
       "sync-status-controller.js",
       "income-doc-enhancements.js",
       "documents-master-controller.js",
