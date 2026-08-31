@@ -33,7 +33,7 @@
       const response=await originalFetch(`${apiBaseUrl}/api/data`,{method:'GET',headers:{Authorization:`Bearer ${idToken}`},cache:'no-store'});
       if(!response.ok){const body=await response.text();throw new Error(`${response.status} ${response.statusText}: ${body}`);}
       const payload=await response.json();
-      document.dispatchEvent(new CustomEvent('panel:backend-data-loaded',{detail:{generatedAt:payload?.generatedAt||''}}));
+      document.dispatchEvent(new CustomEvent('panel:backend-data-loaded',{detail:{generatedAt:payload?.generatedAt||'',sourceErrors:payload?.sourceErrors||{}}}));
       return payload;
     })();
     cacheUntil=now+55_000;
@@ -186,7 +186,10 @@
   }
 
   function sourceValuesFromPayload(payload,spreadsheetId,range){
-    const sourceValues=payload?.sources?.[`${spreadsheetId}|${range}`];
+    const key=`${spreadsheetId}|${range}`;
+    const sourceError=payload?.sourceErrors?.[key];
+    if(sourceError)throw new Error(`Fuente no disponible: ${range} · ${sourceError}`);
+    const sourceValues=payload?.sources?.[key];
     if(!Array.isArray(sourceValues))throw new Error(`Fuente no permitida: ${range}`);
     const canonicalValues=spreadsheetId===financeId?canonicalizeExpenseSummary(sourceValues,range,payload):sourceValues;
     const actualValues=applyMovementStateFilter(canonicalValues,range),sectionValues=applySectionFilters(actualValues,range);
