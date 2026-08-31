@@ -40,8 +40,9 @@ const SOURCES = [
   { book: 'finance', range: 'Cuentas!A:T' },
   { book: 'finance', range: 'Plan_Mensual!A:O' },
   { book: 'finance', range: 'Patrimonio_Mensual!A:X' },
-  { book: 'documents', range: 'Documentos_Master!A:R' },
   { book: 'finance', range: 'Vacaciones_Viajes!A:T' },
+  { book: 'finance', range: 'Beneficios_Laborales!A:O' },
+  { book: 'documents', range: 'Documentos_Master!A:R' },
   { book: 'health', range: 'Pacientes!A:X' },
   { book: 'health', range: 'Citas_Medicas!A:N' },
   { book: 'health', range: 'Tratamientos!A:X' },
@@ -175,7 +176,7 @@ app.get('/health', (req, res) => {
     ok: true,
     service: 'panel-personal-edu-backend',
     sourceCount: SOURCES.length,
-    revision: 'documents-master-2026-08-29'
+    revision: 'benefits-general-dashboard-2026-08-31'
   });
 });
 
