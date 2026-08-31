@@ -33,11 +33,9 @@ const SOURCES = [
   { book: 'finance', range: 'Nomina_Colombia!A:AI' },
   { book: 'finance', range: 'Facturas_USD!A:L' },
   { book: 'finance', range: 'Flujo_Ahorro!A:P' },
-  { book: 'finance', range: 'Escenarios_Ahorro!A:X' },
   { book: 'finance', range: 'Simulador_TC!A:J' },
   { book: 'finance', range: 'Servicios!A:O' },
   { book: 'finance', range: 'Cuentas!A:T' },
-  { book: 'finance', range: 'Plan_Mensual!A:O' },
   { book: 'finance', range: 'Patrimonio_Mensual!A:X' },
   { book: 'finance', range: 'Vacaciones_Viajes!A:T' },
   { book: 'finance', range: 'Beneficios_Laborales!A:O' },
@@ -175,7 +173,7 @@ app.get('/health', (req, res) => {
     ok: true,
     service: 'panel-personal-edu-backend',
     sourceCount: SOURCES.length,
-    revision: 'finance-flow-cleanup-2026-08-31'
+    revision: 'finance-payload-cleanup-2026-08-31'
   });
 });
 
