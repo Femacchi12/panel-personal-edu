@@ -94,23 +94,57 @@ async function requireAuthorizedUser(req, res, next) {
 
 async function readWorkbook(spreadsheetId, sourceList) {
   if (!sourceList.length) return [];
-  const response = await sheets.spreadsheets.values.batchGet({
-    spreadsheetId,
-    ranges: sourceList.map(item => item.range),
-    majorDimension: 'ROWS',
-    valueRenderOption: 'FORMATTED_VALUE'
-  });
-  return response.data.valueRanges || [];
+  try {
+    const response = await sheets.spreadsheets.values.batchGet({
+      spreadsheetId,
+      ranges: sourceList.map(item => item.range),
+      majorDimension: 'ROWS',
+      valueRenderOption: 'FORMATTED_VALUE'
+    });
+    return response.data.valueRanges || [];
+  } catch (batchError) {
+    console.warn(`Batch read failed for ${spreadsheetId}; retrying ranges individually:`, batchError?.message || batchError);
+    const settled = await Promise.allSettled(sourceList.map(item => sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: item.range,
+      majorDimension: 'ROWS',
+      valueRenderOption: 'FORMATTED_VALUE'
+    })));
+    let failures = 0;
+    const valueRanges = settled.map((result, index) => {
+      if (result.status === 'fulfilled') {
+        return {
+          range: sourceList[index].range,
+          majorDimension: 'ROWS',
+          values: result.value.data.values || []
+        };
+      }
+      failures += 1;
+      console.warn(`Source unavailable ${spreadsheetId} · ${sourceList[index].range}:`, result.reason?.message || result.reason);
+      return {
+        range: sourceList[index].range,
+        majorDimension: 'ROWS',
+        values: []
+      };
+    });
+    if (failures === sourceList.length) throw batchError;
+    return valueRanges;
+  }
 }
 
 async function readRangeUnformatted(spreadsheetId, range) {
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range,
-    majorDimension: 'ROWS',
-    valueRenderOption: 'UNFORMATTED_VALUE'
-  });
-  return response.data.values || [];
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range,
+      majorDimension: 'ROWS',
+      valueRenderOption: 'UNFORMATTED_VALUE'
+    });
+    return response.data.values || [];
+  } catch (error) {
+    console.warn(`Optional unformatted range unavailable ${spreadsheetId} · ${range}:`, error?.message || error);
+    return [];
+  }
 }
 
 function patchPensionUsdColumns(financeSources, financeValues, rawUsdValues) {
@@ -173,7 +207,7 @@ app.get('/health', (req, res) => {
     ok: true,
     service: 'panel-personal-edu-backend',
     sourceCount: SOURCES.length,
-    revision: 'finance-payload-cleanup-2026-08-31'
+    revision: 'resilient-source-payload-2026-08-31'
   });
 });
 
