@@ -1,0 +1,92 @@
+/* Global responsive layout guard.
+   Keeps every dashboard view inside the viewport and delegates horizontal
+   overflow to the component that owns it (tables/charts), never to <body>. */
+
+html,body{max-width:100%;overflow-x:hidden}
+body{width:100%}
+
+.sidebar{max-width:var(--sidebar)}
+.sidebar.collapsed{max-width:var(--sidebar-collapsed)}
+
+.app-shell{
+  box-sizing:border-box!important;
+  min-width:0!important;
+  max-width:calc(100vw - var(--sidebar))!important;
+  overflow-x:clip!important;
+}
+.sidebar.collapsed~.app-shell{
+  max-width:calc(100vw - var(--sidebar-collapsed))!important;
+}
+
+.topbar,.main,.view-root,
+.view-root>* ,
+.filter-bar,.section-filter-bar,
+.panel,.panel-grid,.kpi-grid,.credit-grid,
+.finance-context,.finance-context-grid,
+.investment-consolidated-overview,
+.investment-summary-grid{
+  min-width:0!important;
+  max-width:100%!important;
+}
+
+.main{box-sizing:border-box!important;overflow-x:hidden!important}
+.view-root{width:100%!important;overflow:visible!important}
+
+/* Never allow a grid child's intrinsic text width to expand the grid. */
+.kpi-grid>*,.panel-grid>*,.credit-grid>*,
+.finance-context-grid>*,.section-filter-grid>*,#globalFilters>*{
+  min-width:0!important;
+}
+
+/* Wide content owns its own scrollbar. */
+.table-scroll,.flow-matrix-scroll,.chart-plot-scroll,
+.documents-master-table-wrap,.travel-table-scroll,
+.investment-table-scroll{
+  max-width:100%!important;
+  min-width:0!important;
+  overflow-x:auto!important;
+  overscroll-behavior-inline:contain;
+}
+
+/* Canvas and generic media must never impose a viewport-wide intrinsic size. */
+canvas,svg,img{max-width:100%}
+.chart-wrap,.evolution-shell,.chart-plot-inner{max-width:100%}
+
+/* Compact headings instead of forcing a single long row. */
+.section-head,.panel-header,.finance-context-head,.filter-head{
+  min-width:0;
+}
+.section-head>*,.panel-header>*,.finance-context-head>*,.filter-head>*{
+  min-width:0;
+}
+.section-head p,.panel-title span,.finance-context-head small{
+  overflow-wrap:anywhere;
+}
+
+/* Sidebar controller feedback. */
+#sidebarToggle{transition:transform .18s ease,background .18s ease,color .18s ease}
+.sidebar.collapsed #sidebarToggle{transform:rotate(180deg)}
+
+@media(max-width:1200px){
+  .topbar{gap:12px}
+  .topbar-actions{min-width:0;flex-wrap:wrap;justify-content:flex-end}
+  .account-chip{max-width:160px}
+}
+
+@media(max-width:900px){
+  .main{padding-left:16px!important;padding-right:16px!important}
+  .section-head{align-items:flex-start;gap:8px;flex-direction:column}
+  .section-head p{max-width:100%}
+}
+
+@media(max-width:720px){
+  .app-shell{max-width:calc(100vw - var(--sidebar))!important}
+  .sidebar.collapsed~.app-shell{max-width:calc(100vw - var(--sidebar-collapsed))!important}
+  .topbar{height:auto!important;min-height:var(--topbar);padding-top:10px!important;padding-bottom:10px!important}
+  .topbar-actions{gap:6px}
+}
+
+@media(max-width:520px){
+  .panel-header,.finance-context-head{flex-direction:column;align-items:flex-start}
+  .table-toolbar,.search-input{width:100%;min-width:0!important}
+}
