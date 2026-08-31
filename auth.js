@@ -132,7 +132,8 @@ async function loadDashboard() {
       "services-table-enhancement.js",
       "flow-income-controller.js",
       "finance-context-controller.js",
-      "investment-freshness-controller.js"
+      "investment-freshness-controller.js",
+      "finance-secondary-context-controller.js"
     ];
     await Promise.all(modules.map(loadScript));
     document.dispatchEvent(new CustomEvent('panel:modules-ready'));
