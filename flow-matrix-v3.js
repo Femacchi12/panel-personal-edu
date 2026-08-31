@@ -15,7 +15,7 @@
   let sortState = { type: 'id', dir: 'asc', month: null };
 
   const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-  const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
   const activeView = () => document.querySelector('.nav-item.active')?.dataset.view || '';
   const money = v => new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(Number(v)||0);
   const pct = v => `${new Intl.NumberFormat('es-CO',{minimumFractionDigits:1,maximumFractionDigits:1}).format((Number(v)||0)*100)}%`;
@@ -108,11 +108,27 @@
   }
 
   function salaryMap(concepts){
-    const map=new Map(),source=new Map(),byYear=new Map();
-    concepts.forEach(r=>{const k=monthKey(r.Mes); if(!k)return; const cop=num(r['Sueldo COP']),usd=num(r['Sueldo USD (equiv. COP)']); if(cop>0){const y=k.slice(0,4);if(!byYear.has(y))byYear.set(y,[]);byYear.get(y).push(cop);} if(cop+usd>0){map.set(k,cop+usd);source.set(k,'Nómina COP + Fibrazo LLC USD');}});
-    const med=arr=>{const a=(arr||[]).filter(v=>v>0).sort((a,b)=>a-b);if(!a.length)return 0;const i=Math.floor(a.length/2);return a.length%2?a[i]:(a[i-1]+a[i])/2;};
-    const year=selectedYear(),regularCop=med(byYear.get(year));
-    monthList(year).forEach(k=>{if(!map.has(k)&&regularCop>0){const row=concepts.find(r=>monthKey(r.Mes)===k)||{};const usd=num(row['Sueldo USD (equiv. COP)']);if(usd>0){map.set(k,regularCop+usd);source.set(k,'Nómina COP estimada + Fibrazo LLC USD');}}});
+    const map=new Map(),source=new Map(),byYear=new Map(),rowsByMonth=new Map();
+    concepts.forEach(r=>{
+      const k=monthKey(r.Mes); if(!k)return;
+      const cop=num(r['Sueldo COP']),usd=num(r['Sueldo USD (equiv. COP)']),year=k.slice(0,4);
+      rowsByMonth.set(k,{cop,usd});
+      if(cop>0){if(!byYear.has(year))byYear.set(year,[]);byYear.get(year).push({month:k,cop});}
+      if(cop>0){map.set(k,cop+usd);source.set(k,'Nómina COP + Fibrazo LLC USD');}
+      else if(usd>0){map.set(k,usd);source.set(k,'Fibrazo LLC USD · nómina COP pendiente');}
+    });
+    const fallbackCop=month=>{
+      const history=(byYear.get(month.slice(0,4))||[]).slice().sort((a,b)=>a.month.localeCompare(b.month));
+      let value=0;
+      history.forEach(item=>{if(item.month<=month)value=item.cop;});
+      return value||history[0]?.cop||0;
+    };
+    monthList(selectedYear()).forEach(k=>{
+      const row=rowsByMonth.get(k)||{cop:0,usd:0};
+      if(row.cop>0)return;
+      const regularCop=fallbackCop(k);
+      if(row.usd>0&&regularCop>0){map.set(k,regularCop+row.usd);source.set(k,'Nómina COP de referencia + Fibrazo LLC USD');}
+    });
     return {map,source};
   }
   function pctClass(v){const p=(Number(v)||0)*100;return p>15?'pct-red':p>10?'pct-yellow':p>5?'pct-green':'pct-white';}
