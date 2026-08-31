@@ -81,15 +81,20 @@ canvas,svg,img{max-width:100%}
   .section-head p{max-width:100%}
 }
 
-@media(max-width:720px){
-  .app-shell{
-    width:calc(100% - var(--sidebar))!important;
-    max-width:calc(100% - var(--sidebar))!important;
-  }
-  .sidebar.collapsed~.app-shell{
-    width:calc(100% - var(--sidebar-collapsed))!important;
-    max-width:calc(100% - var(--sidebar-collapsed))!important;
-  }
+/* Replace the legacy forced-mobile sidebar with the same expandable behavior
+   used on desktop. The JS controller chooses collapsed by default on <=820px. */
+@media(max-width:820px){
+  .sidebar{width:var(--sidebar)!important;max-width:var(--sidebar)!important}
+  .sidebar.collapsed{width:var(--sidebar-collapsed)!important;max-width:var(--sidebar-collapsed)!important}
+  .sidebar:not(.collapsed) .brand-copy{display:flex!important}
+  .sidebar:not(.collapsed) .nav-label{display:inline!important}
+  .sidebar:not(.collapsed) .nav-group-label{display:block!important}
+  .sidebar:not(.collapsed) .nav-item{justify-content:flex-start!important;padding:10px 11px!important}
+  .sidebar:not(.collapsed) .sidebar-top{justify-content:space-between!important;padding:0 12px!important}
+  .sidebar:not(.collapsed) #sidebarToggle{position:static!important;right:auto!important}
+  #sidebarToggle{display:grid!important}
+  .app-shell{margin-left:var(--sidebar)!important;width:calc(100% - var(--sidebar))!important;max-width:calc(100% - var(--sidebar))!important}
+  .sidebar.collapsed~.app-shell{margin-left:var(--sidebar-collapsed)!important;width:calc(100% - var(--sidebar-collapsed))!important;max-width:calc(100% - var(--sidebar-collapsed))!important}
   .topbar{height:auto!important;min-height:var(--topbar);padding-top:10px!important;padding-bottom:10px!important}
   .topbar-actions{gap:6px}
 }
