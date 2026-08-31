@@ -19,7 +19,6 @@ const ALLOWED_EMAILS = new Set([
 const SOURCES = [
   { book: 'finance', range: 'Movimientos!A:Z' },
   { book: 'finance', range: 'Flujo_Mensual!A:J' },
-  { book: 'finance', range: 'Tablas_Flujo!A:T' },
   { book: 'finance', range: 'Tarjetas!A:T' },
   { book: 'finance', range: 'Cuotas!A:T' },
   { book: 'finance', range: 'Pagos_Tarjetas!A:T' },
@@ -176,7 +175,7 @@ app.get('/health', (req, res) => {
     ok: true,
     service: 'panel-personal-edu-backend',
     sourceCount: SOURCES.length,
-    revision: 'benefits-general-dashboard-2026-08-31'
+    revision: 'finance-flow-cleanup-2026-08-31'
   });
 });
 
