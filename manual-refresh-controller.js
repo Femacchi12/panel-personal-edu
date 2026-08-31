@@ -6,12 +6,13 @@
   if (!apiBaseUrl) return;
 
   let refreshing = false;
-  let boundButton = null;
 
   async function refreshFromSource(event) {
-    const button = event.currentTarget;
+    const button = event.target?.closest?.('#refreshBtn');
+    if (!button) return;
     event.preventDefault();
-    event.stopImmediatePropagation();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
     if (refreshing) return;
 
     refreshing = true;
@@ -56,15 +57,5 @@
     }
   }
 
-  function bind() {
-    const button = document.getElementById('refreshBtn');
-    if (!button || button === boundButton) return;
-    if (boundButton) boundButton.removeEventListener('click', refreshFromSource, true);
-    boundButton = button;
-    button.addEventListener('click', refreshFromSource, true);
-  }
-
-  bind();
-  document.addEventListener('panel:modules-ready', bind);
-  document.addEventListener('panel:view-root-changed', bind);
+  document.addEventListener('click', refreshFromSource, true);
 })();
