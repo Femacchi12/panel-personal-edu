@@ -10,12 +10,14 @@ body{width:100%}
 
 .app-shell{
   box-sizing:border-box!important;
+  width:calc(100% - var(--sidebar))!important;
   min-width:0!important;
-  max-width:calc(100vw - var(--sidebar))!important;
+  max-width:calc(100% - var(--sidebar))!important;
   overflow-x:clip!important;
 }
 .sidebar.collapsed~.app-shell{
-  max-width:calc(100vw - var(--sidebar-collapsed))!important;
+  width:calc(100% - var(--sidebar-collapsed))!important;
+  max-width:calc(100% - var(--sidebar-collapsed))!important;
 }
 
 .topbar,.main,.view-root,
@@ -80,8 +82,14 @@ canvas,svg,img{max-width:100%}
 }
 
 @media(max-width:720px){
-  .app-shell{max-width:calc(100vw - var(--sidebar))!important}
-  .sidebar.collapsed~.app-shell{max-width:calc(100vw - var(--sidebar-collapsed))!important}
+  .app-shell{
+    width:calc(100% - var(--sidebar))!important;
+    max-width:calc(100% - var(--sidebar))!important;
+  }
+  .sidebar.collapsed~.app-shell{
+    width:calc(100% - var(--sidebar-collapsed))!important;
+    max-width:calc(100% - var(--sidebar-collapsed))!important;
+  }
   .topbar{height:auto!important;min-height:var(--topbar);padding-top:10px!important;padding-bottom:10px!important}
   .topbar-actions{gap:6px}
 }
