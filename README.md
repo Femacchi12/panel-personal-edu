@@ -14,7 +14,7 @@ Cloud Run · backend privado/autenticado
           ↓ payload central + caché corta
 GitHub Pages · frontend
           ↓
-Controladores especializados por sección
+Controladores globales + carga diferida por sección
 ```
 
 El frontend usa **Firebase Authentication con Google**. El backend valida el ID token y solo responde a las cuentas autorizadas.
@@ -66,7 +66,19 @@ Componentes principales:
 - `data-backend-adapter.js`: adaptador único hacia el payload central;
 - `regular-income-core.js`: definición central del ingreso regular;
 - `finance-purchase-policy.js`: definición central de compra financiada;
+- `section-module-loader.js`: carga los controladores especializados solo la primera vez que se visita cada sección;
 - controladores especializados para General, Gastos, Flujo, Tarjetas, Inversiones, Salud, Documentos y Viajes.
+
+### Carga de módulos
+
+La primera carga mantiene solo los componentes globales necesarios. Los módulos de Gastos, Flujo, Tarjetas, Deudas, Inversiones, Pensión, Ingresos, Servicios, Tipo de cambio y Documentos se descargan bajo demanda al entrar por primera vez a la sección correspondiente.
+
+El cargador:
+
+- evita descargar el mismo script dos veces aunque sea compartido por varias secciones;
+- respeta dependencias por etapas cuando un módulo necesita que otro exista primero;
+- vuelve a emitir el evento de vista después de cargar una sección para que los controladores recién incorporados se inicialicen correctamente;
+- conserva los módulos en memoria para las siguientes visitas durante la misma sesión.
 
 ### Sincronización
 
@@ -83,10 +95,12 @@ Componentes principales:
 
 ## Mantenimiento
 
-Al agregar una nueva fuente al dashboard:
+Al agregar una nueva fuente o sección al dashboard:
 
-1. agregar el rango al backend si realmente será consumido;
+1. agregar el rango al backend solo si realmente será consumido;
 2. consumirlo desde el adaptador central, evitando una conexión paralela a Sheets;
 3. manejar el caso de fuente vacía o temporalmente no disponible;
 4. evitar duplicar reglas financieras o de negocio en varios controladores;
-5. actualizar esta documentación si cambia la arquitectura.
+5. asignar los controladores especializados a `section-module-loader.js` cuando no necesiten estar activos desde el inicio;
+6. mantener explícito el orden de dependencias si una sección requiere más de una etapa de carga;
+7. actualizar esta documentación si cambia la arquitectura.
