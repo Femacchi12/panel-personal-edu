@@ -55,6 +55,7 @@ const sheets = google.sheets({ version: 'v4', auth: googleAuth });
 let cache = { expiresAt: 0, payload: null };
 
 function normalizeEmail(value) { return String(value || '').trim().toLowerCase(); }
+function errorMessage(error) { return String(error?.message || error || 'Error de lectura'); }
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -84,7 +85,7 @@ async function requireAuthorizedUser(req, res, next) {
 }
 
 async function readWorkbook(spreadsheetId, sourceList) {
-  if (!sourceList.length) return [];
+  if (!sourceList.length) return { valueRanges: [], errors: [] };
   try {
     const response = await sheets.spreadsheets.values.batchGet({
       spreadsheetId,
@@ -92,9 +93,9 @@ async function readWorkbook(spreadsheetId, sourceList) {
       majorDimension: 'ROWS',
       valueRenderOption: 'FORMATTED_VALUE'
     });
-    return response.data.valueRanges || [];
+    return { valueRanges: response.data.valueRanges || [], errors: [] };
   } catch (batchError) {
-    console.warn(`Batch read failed for ${spreadsheetId}; retrying ranges individually:`, batchError?.message || batchError);
+    console.warn(`Batch read failed for ${spreadsheetId}; retrying ranges individually:`, errorMessage(batchError));
     const settled = await Promise.allSettled(sourceList.map(item => sheets.spreadsheets.values.get({
       spreadsheetId,
       range: item.range,
@@ -102,14 +103,18 @@ async function readWorkbook(spreadsheetId, sourceList) {
       valueRenderOption: 'FORMATTED_VALUE'
     })));
     let failures = 0;
+    const errors = [];
     const valueRanges = settled.map((result, index) => {
-      if (result.status === 'fulfilled') return { range: sourceList[index].range, majorDimension: 'ROWS', values: result.value.data.values || [] };
+      const range = sourceList[index].range;
+      if (result.status === 'fulfilled') return { range, majorDimension: 'ROWS', values: result.value.data.values || [] };
       failures += 1;
-      console.warn(`Source unavailable ${spreadsheetId} · ${sourceList[index].range}:`, result.reason?.message || result.reason);
-      return { range: sourceList[index].range, majorDimension: 'ROWS', values: [] };
+      const message = errorMessage(result.reason);
+      errors.push({ range, message });
+      console.warn(`Source unavailable ${spreadsheetId} · ${range}:`, message);
+      return { range, majorDimension: 'ROWS', values: [] };
     });
     if (failures === sourceList.length) throw batchError;
-    return valueRanges;
+    return { valueRanges, errors };
   }
 }
 
@@ -118,7 +123,7 @@ async function readRangeUnformatted(spreadsheetId, range) {
     const response = await sheets.spreadsheets.values.get({ spreadsheetId, range, majorDimension: 'ROWS', valueRenderOption: 'UNFORMATTED_VALUE' });
     return response.data.values || [];
   } catch (error) {
-    console.warn(`Optional unformatted range unavailable ${spreadsheetId} · ${range}:`, error?.message || error);
+    console.warn(`Optional unformatted range unavailable ${spreadsheetId} · ${range}:`, errorMessage(error));
     return [];
   }
 }
@@ -136,30 +141,46 @@ function patchPensionUsdColumns(financeSources, financeValues, rawUsdValues) {
   }
 }
 
+function attachSourceErrors(target, spreadsheetId, result) {
+  (result?.errors || []).forEach(item => {
+    target[`${spreadsheetId}|${item.range}`] = item.message;
+  });
+}
+
 async function buildPayload(force = false) {
   const now = Date.now();
   if (!force && cache.payload && now < cache.expiresAt) return cache.payload;
   const financeSources = SOURCES.filter(s => s.book === 'finance');
   const documentSources = SOURCES.filter(s => s.book === 'documents');
   const healthSources = SOURCES.filter(s => s.book === 'health');
-  const [financeValues, documentValues, healthValues, pensionUsdValues] = await Promise.all([
+  const [financeResult, documentResult, healthResult, pensionUsdValues] = await Promise.all([
     readWorkbook(FINANCE_SPREADSHEET_ID, financeSources),
     readWorkbook(DOCUMENTS_SPREADSHEET_ID, documentSources),
     readWorkbook(HEALTH_SPREADSHEET_ID, healthSources),
     readRangeUnformatted(FINANCE_SPREADSHEET_ID, 'Pensiones_Cesantias!R:S')
   ]);
+  const financeValues = financeResult.valueRanges;
+  const documentValues = documentResult.valueRanges;
+  const healthValues = healthResult.valueRanges;
   patchPensionUsdColumns(financeSources, financeValues, pensionUsdValues);
+
   const sources = {};
   financeSources.forEach((src, index) => { sources[`${FINANCE_SPREADSHEET_ID}|${src.range}`] = financeValues[index]?.values || []; });
   documentSources.forEach((src, index) => { sources[`${DOCUMENTS_SPREADSHEET_ID}|${src.range}`] = documentValues[index]?.values || []; });
   healthSources.forEach((src, index) => { sources[`${HEALTH_SPREADSHEET_ID}|${src.range}`] = healthValues[index]?.values || []; });
-  const payload = { ok: true, generatedAt: new Date().toISOString(), sources };
+
+  const sourceErrors = {};
+  attachSourceErrors(sourceErrors, FINANCE_SPREADSHEET_ID, financeResult);
+  attachSourceErrors(sourceErrors, DOCUMENTS_SPREADSHEET_ID, documentResult);
+  attachSourceErrors(sourceErrors, HEALTH_SPREADSHEET_ID, healthResult);
+
+  const payload = { ok: true, generatedAt: new Date().toISOString(), sources, sourceErrors };
   cache = { expiresAt: now + 60_000, payload };
   return payload;
 }
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'panel-personal-edu-backend', sourceCount: SOURCES.length, revision: 'forced-manual-refresh-2026-08-31' });
+  res.json({ ok: true, service: 'panel-personal-edu-backend', sourceCount: SOURCES.length, revision: 'source-error-tracing-2026-08-31' });
 });
 
 app.get('/api/data', requireAuthorizedUser, async (req, res) => {
@@ -170,7 +191,7 @@ app.get('/api/data', requireAuthorizedUser, async (req, res) => {
   } catch (error) {
     console.error('Sheets error:', error);
     const status = error?.code === 403 ? 403 : 500;
-    res.status(status).json({ error: 'sheets_read_failed', message: String(error?.message || error) });
+    res.status(status).json({ error: 'sheets_read_failed', message: errorMessage(error) });
   }
 });
 
