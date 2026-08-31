@@ -391,5 +391,6 @@
   document.addEventListener('panel:view-root-changed', event => { if (event.detail?.view === 'flujo') schedule(false); });
   document.addEventListener('panel:payment-filters-changed', event => { if (event.detail?.view === 'flujo') schedule(false); });
   document.addEventListener('panel:filters-updated', () => { if (activeView() === 'flujo') schedule(false); });
+  document.addEventListener('click', event => { if (event.target.closest('.currency-btn') && activeView() === 'flujo') setTimeout(() => schedule(false), 0); });
   queueMicrotask(() => { if (activeView() === 'flujo') schedule(false); });
 })();
