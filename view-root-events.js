@@ -10,10 +10,11 @@
     frame = 0;
     const view = document.querySelector('.nav-item.active')?.dataset.view || '';
 
-    // Los módulos especializados de Viajes reemplazan el contenido de viewRoot.
-    // Ignorar esas mutaciones internas evita que el propio módulo se dispare
-    // nuevamente y genere lecturas repetidas de Sheets.
+    // General y Viajes reemplazan el contenido de viewRoot con módulos propios.
+    // Ignorar sus mutaciones internas evita recargas recursivas y lecturas
+    // innecesarias de Sheets mientras esos módulos están cargando/renderizando.
     if (view === 'viajes' && (root.querySelector('.travel-dashboard') || root.querySelector('.travel-loading'))) return;
+    if (view === 'general' && (root.querySelector('[data-general-dashboard]') || root.querySelector('.general-loading'))) return;
 
     document.dispatchEvent(new CustomEvent('panel:view-root-changed', {
       detail: { view, root }
