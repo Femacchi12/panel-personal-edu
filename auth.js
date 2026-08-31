@@ -109,6 +109,7 @@ async function loadDashboard() {
   try {
     if (BACKEND_MODE) await loadScript("data-backend-adapter.js");
     await loadScript("regular-income-core.js");
+    await loadScript("finance-purchase-policy.js");
     await loadScript("app.js");
 
     const modules = [
@@ -133,6 +134,7 @@ async function loadDashboard() {
       "spend-chart-controller.js",
       "services-table-enhancement.js",
       "flow-income-controller.js",
+      "flow-financing-consistency.js",
       "finance-context-controller.js",
       "investment-freshness-controller.js",
       "finance-secondary-context-controller.js"
