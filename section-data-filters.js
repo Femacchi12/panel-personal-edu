@@ -84,12 +84,7 @@
       filter('documentStatus','Estado',[src('Documentos_Master!A:R',['Estado'],DOCUMENTS_ID)]),
       filter('documentEntity','País / Entidad',[src('Documentos_Master!A:R',['País / Entidad'],DOCUMENTS_ID)])
     ]},
-    viajes: { global:['year','month'], local:[
-      filter('travelHolder','Titular / Pasajero',[src('Vacaciones_Viajes!A:T',['Titular/Pasajero'])]),
-      filter('travelType','Tipo de registro',[src('Vacaciones_Viajes!A:T',['Tipo de registro'])]),
-      filter('travelDestination','Destino',[src('Vacaciones_Viajes!A:T',['Destino'])]),
-      filter('travelStatus','Estado',[src('Vacaciones_Viajes!A:T',['Estado'])])
-    ]}
+    viajes: { global:[], local:[] }
   };
 
   function activeView(){ return document.querySelector('.nav-item.active')?.dataset.view || 'general'; }
