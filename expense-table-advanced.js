@@ -12,6 +12,7 @@
   let sort={col:'Fecha real',dir:'desc'};
   let query='';
   let expanded=false;
+  const rowMeta=new WeakMap();
 
   const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const norm=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
@@ -23,8 +24,14 @@
   function parseDate(value){const s=String(value??'').trim();if(!s)return null;let m=s.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?/);if(m)return new Date(+m[1],+m[2]-1,+(m[3]||1));m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);const d=new Date(s);return Number.isNaN(d.getTime())?null:d;}
 
   function effectiveDate(row){
-    const desc=[row['Descripción original'],row['Descripción / Comercio']].filter(Boolean).join(' ');let m=desc.match(/\((\d{1,2})[\/\-](\d{1,2})[\/\-](20\d{2})\)/i);if(m)return new Date(+m[3],+m[2]-1,+m[1]);
-    const baseMonth=String(row['Mes pago']||row['Mes consumo']||'').match(/^(20\d{2})-(\d{1,2})/);const fallback=parseDate(row['Fecha real']||row['Fecha registrada']);m=desc.match(/\(\s*d[ií]a\s*(\d{1,2})\s*\)/i);if(m){const day=+m[1];if(baseMonth)return new Date(+baseMonth[1],+baseMonth[2]-1,day);if(fallback)return new Date(fallback.getFullYear(),fallback.getMonth(),day);}return fallback;
+    const cached=rowMeta.get(row);if(cached&&Object.prototype.hasOwnProperty.call(cached,'date'))return cached.date;
+    const desc=[row['Descripción original'],row['Descripción / Comercio']].filter(Boolean).join(' ');let m=desc.match(/\((\d{1,2})[\/\-](\d{1,2})[\/\-](20\d{2})\)/i),result=null;
+    if(m)result=new Date(+m[3],+m[2]-1,+m[1]);
+    else{
+      const baseMonth=String(row['Mes pago']||row['Mes consumo']||'').match(/^(20\d{2})-(\d{1,2})/),fallback=parseDate(row['Fecha real']||row['Fecha registrada']);m=desc.match(/\(\s*d[ií]a\s*(\d{1,2})\s*\)/i);
+      if(m){const day=+m[1];if(baseMonth)result=new Date(+baseMonth[1],+baseMonth[2]-1,day);else if(fallback)result=new Date(fallback.getFullYear(),fallback.getMonth(),day);}else result=fallback;
+    }
+    const meta=cached||{};meta.date=result;rowMeta.set(row,meta);return result;
   }
   const dateKey=row=>effectiveDate(row)?.getTime()||0;
   const dateLabel=row=>{const d=effectiveDate(row);return d?`${d.getFullYear()} ${MONTHS[d.getMonth()]} ${String(d.getDate()).padStart(2,'0')}`:'—';};
@@ -33,7 +40,7 @@
   const selectedGlobal=key=>[...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)].map(el=>String(el.dataset.value||'').trim()).filter(Boolean);
 
   function account(row){const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);if(n.includes('efectivo'))return'Efectivo';if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';if(n.includes('arq'))return'ARQ Edu';if(n.includes('nu'))return(n.includes(' ro')||n.endsWith('ro')||holder.includes('rocio')||holder==='ro')?'Nu Ro':'Nu Edu';if(n.includes('transferencia'))return'Transferencia sin cuenta';if(n.includes('debito'))return'Débito sin cuenta';return raw||'Sin especificar';}
-  function method(row){const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;const raw=norm(row['Cuenta / Tarjeta']);if(raw.includes('credito'))return'Crédito';if(raw.includes('transferencia'))return'Transferencia';if(raw.includes('debito'))return'Débito';if(raw.includes('efectivo'))return'Efectivo';const q=parseNumber(row.Cuotas);if(q>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';return'Sin especificar';}
+  function method(row){const policy=window.FinancePurchasePolicy;if(typeof policy?.method==='function')return policy.method(row);const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;const raw=norm(row['Cuenta / Tarjeta']);if(raw.includes('credito'))return'Crédito';if(raw.includes('transferencia'))return'Transferencia';if(raw.includes('debito'))return'Débito';if(raw.includes('efectivo'))return'Efectivo';const q=parseNumber(row.Cuotas);if(q>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';return'Sin especificar';}
 
   function filteredRows(rows){
     const years=selectedGlobal('year'),months=selectedGlobal('month').map(Number),cats=selectedGlobal('category'),subs=selectedGlobal('subcategory');
@@ -55,16 +62,18 @@
     const payload=await getData(force);
     if(payload===lastPayload)return lastRows;
     lastPayload=payload;
-    lastRows=parseRows(payload?.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
+    const cached=window.__PANEL_GET_CACHED_ROWS__;
+    lastRows=typeof cached==='function'?cached(payload,financeId,'Movimientos!A:Z'):parseRows(payload?.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
     return lastRows;
   }
 
   function valueFor(row,col){if(col==='Fecha real')return dateLabel(row);if(col==='Tipo de gasto')return expenseType(row);if(col==='Monto original')return formatOriginal(row);if(col==='Modalidad de pago')return method(row);return row[col]??'';}
   function compare(a,b,col){if(col==='Fecha real')return dateKey(a)-dateKey(b);if(['Monto original','Monto COP','Monto ARS','Monto USD','Cuotas','N° cuota'].includes(col))return parseNumber(a[col])-parseNumber(b[col]);return String(valueFor(a,col)).localeCompare(String(valueFor(b,col)),'es',{numeric:true,sensitivity:'base'});}
   const columns=['Fecha real','Tipo de gasto','Tipo','Categoría','Subcategoría','Descripción / Comercio','Monto original','Moneda original','Cuenta / Tarjeta','Modalidad de pago','Titular','Cuotas','N° cuota','Estado','Monto COP','Monto ARS','Monto USD'];
+  function searchable(row){const cached=rowMeta.get(row)||{};if(cached.search)return cached.search;cached.search=norm(columns.map(c=>valueFor(row,c)).join(' '));rowMeta.set(row,cached);return cached.search;}
 
   function renderTable(host,rows){
-    let data=rows.slice();if(query){const q=norm(query);data=data.filter(r=>norm(columns.map(c=>valueFor(r,c)).join(' ')).includes(q));}data.sort((a,b)=>compare(a,b,sort.col)*(sort.dir==='desc'?-1:1));const visible=expanded?data:data.slice(0,15);
+    let data=rows.slice();if(query){const q=norm(query);data=data.filter(r=>searchable(r).includes(q));}data.sort((a,b)=>compare(a,b,sort.col)*(sort.dir==='desc'?-1:1));const visible=expanded?data:data.slice(0,15);
     host.innerHTML=`<div class="panel-header"><div class="panel-title"><strong>Movimientos</strong><span>${data.length} de ${rows.length} gastos realizados · filtros consolidados</span></div><div class="table-toolbar"><input id="expenseAdvancedSearch" class="search-input" placeholder="Buscar en la tabla…" value="${esc(query)}"></div></div><div class="table-scroll${expanded?' expanded':''}"><table class="date-first-table expense-advanced-table"><thead><tr>${columns.map(c=>`<th data-expense-sort="${esc(c)}">${esc(c)}${sort.col===c?(sort.dir==='asc'?' ↑':' ↓'):''}</th>`).join('')}</tr></thead><tbody>${visible.map(r=>`<tr>${columns.map(c=>`<td data-date-sort="${c==='Fecha real'?dateKey(r):''}">${esc(valueFor(r,c))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${data.length>15?`<button type="button" class="show-more" id="expenseAdvancedMore">${expanded?'Ver menos':`Ver más (${data.length-15})`}</button>`:''}`;
     host.querySelectorAll('[data-expense-sort]').forEach(th=>th.addEventListener('click',()=>{const col=th.dataset.expenseSort;if(sort.col===col)sort.dir=sort.dir==='asc'?'desc':'asc';else sort={col,dir:'asc'};renderTable(host,rows);}));
     host.querySelector('#expenseAdvancedSearch')?.addEventListener('input',event=>{query=event.target.value;expanded=false;renderTable(host,rows);requestAnimationFrame(()=>{const input=host.querySelector('#expenseAdvancedSearch');if(input){input.focus();input.setSelectionRange(query.length,query.length);}});});
