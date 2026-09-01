@@ -101,51 +101,97 @@
     return 'Sin especificar';
   }
 
-  function movementMatches(row) {
-    if (!isActual(row)) return false;
-    const years = selectedGlobal('year');
-    const months = selectedGlobal('month');
-    const categories = selectedGlobal('category');
-    const mk = rowMonth(row);
-    const ym = mk.match(/^(20\d{2})-(\d{2})$/);
-    if (years.length && (!ym || !years.includes(ym[1]))) return false;
-    if (months.length && (!ym || !months.includes(String(+ym[2])))) return false;
-    if (categories.length && !categories.includes(String(row['Categoría'] || ''))) return false;
+  function currentFilterState() {
     const payment = window.__PAYMENT_FILTER_STATE__?.view === 'flujo'
       ? window.__PAYMENT_FILTER_STATE__
       : { account: [], method: [] };
-    if (payment.account?.length && !payment.account.includes(account(row))) return false;
-    if (payment.method?.length && !payment.method.includes(method(row))) return false;
+    return {
+      years: new Set(selectedGlobal('year')),
+      months: new Set(selectedGlobal('month')),
+      categories: new Set(selectedGlobal('category')),
+      accounts: new Set(payment.account || []),
+      methods: new Set(payment.method || [])
+    };
+  }
+
+  function matchesFilters(row, state) {
+    const mk = rowMonth(row);
+    const ym = mk.match(/^(20\d{2})-(\d{2})$/);
+    if (state.years.size && (!ym || !state.years.has(ym[1]))) return false;
+    if (state.months.size && (!ym || !state.months.has(String(+ym[2])))) return false;
+    if (state.categories.size && !state.categories.has(String(row['Categoría'] || ''))) return false;
+    if (state.accounts.size && !state.accounts.has(account(row))) return false;
+    if (state.methods.size && !state.methods.has(method(row))) return false;
     return true;
   }
 
-  function selectedPeriodKeys(model, movements) {
-    const years = selectedGlobal('year');
-    const months = selectedGlobal('month');
+  function selectedPeriodKeys(model, actualMonthKeys, state) {
     const now = new Date();
     const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const keys = new Set([...model.months.keys()].filter(key => key <= current));
-    movements.filter(isActual).forEach(row => {
-      const key = rowMonth(row);
-      if (key && key <= current) keys.add(key);
-    });
+    actualMonthKeys.forEach(key => { if (key && key <= current) keys.add(key); });
     return [...keys].filter(key => {
       const [year, month] = key.split('-');
-      if (years.length && !years.includes(year)) return false;
-      if (months.length && !months.includes(String(+month))) return false;
+      if (state.years.size && !state.years.has(year)) return false;
+      if (state.months.size && !state.months.has(String(+month))) return false;
       return true;
     }).sort();
   }
 
-  function currencyFactor(rows, currency) {
-    if (currency === 'COP') return 1;
-    const ratios = rows.map(row => {
-      const cop = parseNumber(row['Monto COP']);
-      const other = parseNumber(row[currency === 'USD' ? 'Monto USD' : 'Monto ARS']);
-      return cop > 0 && other > 0 ? other / cop : 0;
-    }).filter(v => v > 0).sort((a, b) => a - b);
-    if (ratios.length) return ratios[Math.floor(ratios.length / 2)];
-    return currency === 'USD' ? 1 / (cfg.regularIncome?.usdCopReference || 3150) : 1 / 2.1;
+  function movementAmount(row, currency) {
+    if (currency === 'USD') return parseNumber(row['Monto USD']);
+    if (currency === 'ARS') return parseNumber(row['Monto ARS']);
+    return parseNumber(row['Monto COP']);
+  }
+
+  function movementSummary(rows, currency) {
+    const state = currentFilterState();
+    const ratios = [];
+    const actualMonthKeys = new Set();
+    const financing = { one: 0, multi: 0, count: 0 };
+    let expenses = 0;
+    let count = 0;
+    const policy = window.FinancePurchasePolicy;
+
+    rows.forEach(row => {
+      if (currency !== 'COP') {
+        const cop = parseNumber(row['Monto COP']);
+        const other = parseNumber(row[currency === 'USD' ? 'Monto USD' : 'Monto ARS']);
+        if (cop > 0 && other > 0) ratios.push(other / cop);
+      }
+
+      if (!isActual(row)) return;
+      const mk = rowMonth(row);
+      if (mk) actualMonthKeys.add(mk);
+      if (!matchesFilters(row, state)) return;
+
+      const value = movementAmount(row, currency);
+      expenses += value;
+      count += 1;
+
+      const financed = policy?.isFinancedPurchase
+        ? policy.isFinancedPurchase(row)
+        : norm(method(row)) === 'credito';
+      if (!financed) return;
+      const installments = policy?.installmentCount
+        ? policy.installmentCount(row)
+        : Math.max(1, Math.round(parseNumber(row.Cuotas) || 1));
+      if (installments > 1) financing.multi += value;
+      else financing.one += value;
+      financing.count += 1;
+    });
+
+    let factor = 1;
+    if (currency !== 'COP') {
+      ratios.sort((a, b) => a - b);
+      factor = ratios.length
+        ? ratios[Math.floor(ratios.length / 2)]
+        : currency === 'USD'
+          ? 1 / (cfg.regularIncome?.usdCopReference || 3150)
+          : 1 / 2.1;
+    }
+
+    return { state, actualMonthKeys, expenses, count, financing, factor, policyCanonical: Boolean(policy?.isFinancedPurchase) };
   }
 
   function formatMoney(value, currency = 'COP') {
@@ -192,13 +238,7 @@
     };
   }
 
-  function movementAmount(row, currency) {
-    if (currency === 'USD') return parseNumber(row['Monto USD']);
-    if (currency === 'ARS') return parseNumber(row['Monto ARS']);
-    return parseNumber(row['Monto COP']);
-  }
-
-  function renderFinancing(rows, currency) {
+  function renderFinancing(financing, currency, canonical) {
     const root = document.getElementById('viewRoot');
     if (!root || activeView() !== 'flujo') return;
     const primary = [...root.querySelectorAll('.kpi-grid')].find(grid => {
@@ -207,21 +247,6 @@
         labels.some(x => x === 'Ingresos' || x === 'Ingresos promedio' || x === 'Ingresos regulares');
     });
     if (!primary) return;
-    const policy = window.FinancePurchasePolicy;
-    let one = 0, multi = 0, count = 0;
-    rows.forEach(row => {
-      const financed = policy?.isFinancedPurchase
-        ? policy.isFinancedPurchase(row)
-        : norm(method(row)) === 'credito';
-      if (!financed) return;
-      const installments = policy?.installmentCount
-        ? policy.installmentCount(row)
-        : Math.max(1, Math.round(parseNumber(row.Cuotas) || 1));
-      const value = movementAmount(row, currency);
-      if (installments > 1) multi += value;
-      else one += value;
-      count += 1;
-    });
     let host = root.querySelector('#flowFinancingKpis');
     if (!host) {
       host = document.createElement('div');
@@ -230,22 +255,19 @@
       host.style.gridTemplateColumns = 'repeat(3,minmax(0,1fr))';
       primary.insertAdjacentElement('afterend', host);
     }
-    const total = one + multi;
-    const html = `<div class="kpi-card"><span class="kpi-label">Financiado · 1 cuota</span><strong class="kpi-value">${formatMoney(one, currency)}</strong><div class="kpi-meta"><span>Compras financiadas válidas en una sola cuota</span></div></div><div class="kpi-card"><span class="kpi-label">Financiado · más de 1 cuota</span><strong class="kpi-value gold">${formatMoney(multi, currency)}</strong><div class="kpi-meta"><span>Compras financiadas válidas en 2 o más cuotas</span></div></div><div class="kpi-card"><span class="kpi-label">Financiado total</span><strong class="kpi-value gold">${formatMoney(total, currency)}</strong><div class="kpi-meta"><span>${count} compra${count === 1 ? '' : 's'} · excluye pago de tarjeta, manejo e intereses</span></div></div>`;
+    const total = financing.one + financing.multi;
+    const html = `<div class="kpi-card"><span class="kpi-label">Financiado · 1 cuota</span><strong class="kpi-value">${formatMoney(financing.one, currency)}</strong><div class="kpi-meta"><span>Compras financiadas válidas en una sola cuota</span></div></div><div class="kpi-card"><span class="kpi-label">Financiado · más de 1 cuota</span><strong class="kpi-value gold">${formatMoney(financing.multi, currency)}</strong><div class="kpi-meta"><span>Compras financiadas válidas en 2 o más cuotas</span></div></div><div class="kpi-card"><span class="kpi-label">Financiado total</span><strong class="kpi-value gold">${formatMoney(total, currency)}</strong><div class="kpi-meta"><span>${financing.count} compra${financing.count === 1 ? '' : 's'} · excluye pago de tarjeta, manejo e intereses</span></div></div>`;
     if (host.innerHTML !== html) host.innerHTML = html;
-    host.dataset.financingPolicy = policy?.isFinancedPurchase ? 'canonical' : 'fallback';
+    host.dataset.financingPolicy = canonical ? 'canonical' : 'fallback';
   }
 
   function updatePrimaryKpis(model, movements) {
-    const keys = selectedPeriodKeys(model, movements);
-    const period = model.period(keys);
-    const filtered = movements.filter(movementMatches);
     const currency = activeCurrency();
-    const factor = currencyFactor(movements, currency);
-    const amountField = currency === 'COP' ? 'Monto COP' : currency === 'USD' ? 'Monto USD' : 'Monto ARS';
-    const income = period.totalCop * factor;
-    const expenses = filtered.reduce((sum, row) => sum + parseNumber(row[amountField]), 0);
-    const savings = income - expenses;
+    const summary = movementSummary(movements, currency);
+    const keys = selectedPeriodKeys(model, summary.actualMonthKeys, summary.state);
+    const period = model.period(keys);
+    const income = period.totalCop * summary.factor;
+    const savings = income - summary.expenses;
     const rate = income ? savings / income : 0;
     const missing = period.missing.length;
     const meta = keys.length === 1
@@ -254,10 +276,10 @@
     const cards = primaryCards();
     if (!cards) return;
     setCard(cards.income, keys.length > 1 ? 'Ingresos regulares' : 'Ingresos promedio', formatMoney(income, currency), meta);
-    setCard(cards.expense, 'Egresos', formatMoney(expenses, currency), `${filtered.length} movimientos realizados según filtros`);
+    setCard(cards.expense, 'Egresos', formatMoney(summary.expenses, currency), `${summary.count} movimientos realizados según filtros`);
     setCard(cards.savings, 'Ahorro', formatMoney(savings, currency), 'Ingreso regular - egresos');
     setCard(cards.rate, 'Tasa de ahorro', formatPct(rate), 'Ahorro / ingreso regular');
-    renderFinancing(filtered, currency);
+    renderFinancing(summary.financing, currency, summary.policyCanonical);
   }
 
   function updateReferenceCards(model) {
