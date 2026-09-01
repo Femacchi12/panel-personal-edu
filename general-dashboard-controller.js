@@ -33,6 +33,11 @@
     return values.slice(1).filter(r=>r?.some(v=>String(v??'').trim()!==''))
       .map(r=>Object.fromEntries(headers.map((h,i)=>[h||`Col ${i+1}`,r?.[i]??''])));
   }
+  function rowsFromPayload(payload,id,range){
+    const cached=window.__PANEL_GET_CACHED_ROWS__;
+    if(typeof cached==='function')return cached(payload,id,range);
+    return parseRows(payload?.sources?.[`${id}|${range}`]||[]);
+  }
 
   function num(value){
     if(typeof value==='number'&&Number.isFinite(value))return value;
@@ -95,7 +100,7 @@
     const state=norm(r.Estado); if(state==='pendiente'||state==='por revisar')return true;
     if(state.includes('histor')||state.includes('archiv'))return false;
     const exp=date(r['Fecha vencimiento']); if(!exp)return false;
-    const diff=daysUntil(exp); return diff<=180;
+    return daysUntil(exp)<=180;
   }
 
   function activeTreatment(r){
@@ -104,38 +109,58 @@
 
   function summarize(data){
     const now=startToday(), currentMonth=monthKey(now), prevMonth=previousMonthKey(now);
-    const expenses=(data.movimientos||[]).filter(r=>isExpense(r)&&isActual(r));
-    const current=expenses.filter(r=>String(r['Mes consumo']||'')===currentMonth||monthKey(date(r['Fecha real']))===currentMonth);
-    const previous=expenses.filter(r=>String(r['Mes consumo']||'')===prevMonth||monthKey(date(r['Fecha real']))===prevMonth);
-    const spend=current.reduce((s,r)=>s+amountCOP(r),0), prevSpend=previous.reduce((s,r)=>s+amountCOP(r),0);
+    let spend=0,prevSpend=0;
+    const current=[],categories=new Map();
+    (data.movimientos||[]).forEach(r=>{
+      if(!isExpense(r)||!isActual(r))return;
+      const mk=String(r['Mes consumo']||'')||monthKey(date(r['Fecha real']));
+      const amount=amountCOP(r);
+      if(mk===currentMonth){
+        spend+=amount;current.push(r);
+        const k=String(r['Categoría']||'Sin categoría');categories.set(k,(categories.get(k)||0)+amount);
+      }else if(mk===prevMonth)prevSpend+=amount;
+    });
     const spendDelta=prevSpend?((spend-prevSpend)/prevSpend)*100:null;
-
-    const categories=new Map();
-    current.forEach(r=>{const k=String(r['Categoría']||'Sin categoría');categories.set(k,(categories.get(k)||0)+amountCOP(r));});
     const topCats=[...categories.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5);
     const topExpenses=current.slice().sort((a,b)=>amountCOP(b)-amountCOP(a)).slice(0,5);
 
-    const patrimonio=(data.patrimonio||[]).slice().sort((a,b)=>(date(a.Fecha)?.getTime()||0)-(date(b.Fecha)?.getTime()||0));
-    const latestPat=patrimonio[patrimonio.length-1]||{};
+    let latestPat={};
+    (data.patrimonio||[]).forEach(r=>{const d=date(r.Fecha),currentDate=date(latestPat.Fecha);if(d&&(!currentDate||d>currentDate))latestPat=r;});
     const patrimonioCOP=num(latestPat['Patrimonio base COP']);
     const patrimonioVar=num(latestPat['Var. patrimonio COP']);
 
-    const cards=(data.tarjetas||[]).filter(r=>!norm(r.Activa).includes('no'));
-    const cardUsed=cards.reduce((s,r)=>s+num(r['Cupo usado']),0), cardLimit=cards.reduce((s,r)=>s+num(r['Cupo total actual']),0);
-    const critical=cards.slice().sort((a,b)=>pct(b['% utilización'])-pct(a['% utilización']))[0]||{};
+    const cards=[];let cardUsed=0,cardLimit=0,critical={};
+    (data.tarjetas||[]).forEach(r=>{
+      if(norm(r.Activa).includes('no'))return;
+      cards.push(r);cardUsed+=num(r['Cupo usado']);cardLimit+=num(r['Cupo total actual']);
+      if(!critical.Emisor||pct(r['% utilización'])>pct(critical['% utilización']))critical=r;
+    });
 
     const airfareTotal=totalBenefit(data.beneficios||[],'Pasajes Argentina');
     const airfareCurrent=currentBenefit(data.beneficios||[],'Pasajes Argentina');
     const vacationTotal=totalBenefit(data.beneficios||[],'Vacaciones');
 
-    const docs=(data.documentos||[]), docsReview=docs.filter(documentNeedsReview);
-    const nextExpiry=docs.filter(r=>{const e=date(r['Fecha vencimiento']);return e&&e>=now&&!norm(r.Estado).includes('histor')&&!norm(r.Estado).includes('archiv');})
-      .sort((a,b)=>date(a['Fecha vencimiento'])-date(b['Fecha vencimiento']))[0]||{};
+    const docs=data.documentos||[],docsReview=[];let nextExpiry={};
+    docs.forEach(r=>{
+      if(documentNeedsReview(r))docsReview.push(r);
+      const e=date(r['Fecha vencimiento']),state=norm(r.Estado);
+      if(!e||e<now||state.includes('histor')||state.includes('archiv'))return;
+      const currentNext=date(nextExpiry['Fecha vencimiento']);if(!currentNext||e<currentNext)nextExpiry=r;
+    });
 
-    const staleAppointments=(data.citas||[]).filter(r=>norm(r.Estado).includes('program')&&date(r.Fecha)&&date(r.Fecha)<now);
-    const upcomingAppointments=(data.citas||[]).filter(r=>norm(r.Estado).includes('program')&&date(r.Fecha)&&date(r.Fecha)>=now).sort((a,b)=>date(a.Fecha)-date(b.Fecha));
-    const activeTreatments=(data.tratamientos||[]).filter(activeTreatment);
-    const endingTreatments=activeTreatments.filter(r=>{const d=date(r['Fecha fin prevista']);if(!d)return false;const x=daysUntil(d);return x>=0&&x<=45;}).sort((a,b)=>date(a['Fecha fin prevista'])-date(b['Fecha fin prevista']));
+    const staleAppointments=[],upcomingAppointments=[];
+    (data.citas||[]).forEach(r=>{
+      if(!norm(r.Estado).includes('program'))return;const d=date(r.Fecha);if(!d)return;
+      if(d<now)staleAppointments.push(r);else upcomingAppointments.push(r);
+    });
+    upcomingAppointments.sort((a,b)=>date(a.Fecha)-date(b.Fecha));
+
+    const activeTreatments=[],endingTreatments=[];
+    (data.tratamientos||[]).forEach(r=>{
+      if(!activeTreatment(r))return;activeTreatments.push(r);
+      const d=date(r['Fecha fin prevista']);if(!d)return;const x=daysUntil(d);if(x>=0&&x<=45)endingTreatments.push(r);
+    });
+    endingTreatments.sort((a,b)=>date(a['Fecha fin prevista'])-date(b['Fecha fin prevista']));
 
     const currentTrip=(data.viajes||[]).find(r=>norm(r.Estado).includes('curso'))||{};
 
@@ -240,11 +265,10 @@
     const v=activeView(); bar.hidden=(v==='general'||v==='viajes');
   }
 
-  async function load(){
-    const get=window.__PANEL_GET_SOURCE_VALUES__; if(typeof get!=='function')throw new Error('Adaptador central no disponible');
-    const entries=Object.entries(RANGES);
-    const values=await Promise.all(entries.map(([, [id,range]])=>get(id,range,false)));
-    return Object.fromEntries(entries.map(([key],i)=>[key,parseRows(values[i])]));
+  async function load(force=false){
+    const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')throw new Error('Backend central no disponible');
+    const payload=await getData(force);
+    return Object.fromEntries(Object.entries(RANGES).map(([key,[id,range]])=>[key,rowsFromPayload(payload,id,range)]));
   }
 
   async function run(force=false){
@@ -256,14 +280,14 @@
     if(cache&&!force){root.innerHTML=render(cache);bind(root);return;}
     root.innerHTML='<div class="general-loading">Actualizando resumen personal…</div>';
     try{
-      const data=await load(); if(v!==version||activeView()!=='general'||!root.isConnected)return;
+      const data=await load(force); if(v!==version||activeView()!=='general'||!root.isConnected)return;
       cache=data; root.innerHTML=render(data); bind(root);
     }catch(error){console.error('General dashboard:',error);root.innerHTML='<div class="general-loading error">No se pudo cargar el resumen. Pulsa Actualizar para reintentar.</div>';}
   }
 
   function schedule(force=false){if(frame&&!force)return; if(frame)cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{frame=0;run(force);});}
   document.addEventListener('panel:view-root-changed',()=>{if(activeView()==='general'&&!document.querySelector('#viewRoot [data-general-dashboard]'))schedule(false);else manageFilterBar();});
-  document.addEventListener('panel:backend-data-loaded',()=>{cache=null;schedule(true);});
+  document.addEventListener('panel:backend-data-loaded',()=>{cache=null;schedule(false);});
   document.addEventListener('panel:modules-ready',()=>schedule(false));
   document.addEventListener('click',e=>{if(e.target.closest('.nav-item'))setTimeout(()=>schedule(false),0);});
   queueMicrotask(()=>schedule(false));
