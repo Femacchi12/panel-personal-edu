@@ -97,7 +97,11 @@
     const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return null;
     return getData(force);
   }
-  const rowsFor=(data,range)=>parseRows(data?.sources?.[`${financeId}|${range}`]||[]);
+  const rowsFor=(data,range)=>{
+    const cached=window.__PANEL_GET_CACHED_ROWS__;
+    if(typeof cached==='function')return cached(data,financeId,range);
+    return parseRows(data?.sources?.[`${financeId}|${range}`]||[]);
+  };
 
   function historicalMap(flowRows){ const map=new Map(); flowRows.forEach(r=>{const k=monthKey(r.Mes); if(k)map.set(`${k}|${norm(r.Concepto)}`,num(r['Total COP']));}); return map; }
   function categoryList(flowRows,movements,year){
