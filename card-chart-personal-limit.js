@@ -51,13 +51,20 @@
       .map(row=>Object.fromEntries(headers.map((header,index)=>[header||`Col ${index+1}`,row?.[index]??''])));
   }
 
-  async function sourceRows(range,force=false){
-    const direct=window.__PANEL_GET_SOURCE_VALUES__;
-    if(typeof direct==='function') return parseRows(await direct(financeId,range,force));
-    const getData=window.__PANEL_GET_BACKEND_DATA__;
-    if(typeof getData!=='function') return [];
-    const payload=await getData(force);
+  function rowsFromPayload(payload,range){
+    const cached=window.__PANEL_GET_CACHED_ROWS__;
+    if(typeof cached==='function') return cached(payload,financeId,range);
     return parseRows(payload?.sources?.[`${financeId}|${range}`]||[]);
+  }
+
+  async function loadData(force=false){
+    const getData=window.__PANEL_GET_BACKEND_DATA__;
+    if(typeof getData!=='function') return {cardRows:[],movements:[]};
+    const payload=await getData(force);
+    return {
+      cardRows:rowsFromPayload(payload,'Tarjetas!A:T'),
+      movements:rowsFromPayload(payload,'Movimientos!A:Z')
+    };
   }
 
   function parseDate(value){
@@ -124,20 +131,19 @@
       || null;
   }
 
-  async function loadArqDebt(force=false){
-    const rows=await sourceRows('Movimientos!A:Z',force);
+  function buildArqDebt(rows){
     const {start,end}=currentCycle(6);
     const sums={COP:0,USD:0};
 
-    rows.forEach(row=>{
+    (rows||[]).forEach(row=>{
       if(norm(row.Tipo)!=='gasto') return;
       if(!norm(row['Cuenta / Tarjeta']).includes('arq')) return;
       const isActual=window.MovementStatusCore?.isActual
         ? window.MovementStatusCore.isActual(row.Estado)
         : !/proyecc|proyect|programad/.test(norm(row.Estado));
       if(!isActual) return;
-      const date=parseDate(row['Fecha real']||row['Fecha registrada']);
-      if(!date||date<start||date>end) return;
+      const movementDate=parseDate(row['Fecha real']||row['Fecha registrada']);
+      if(!movementDate||movementDate<start||movementDate>end) return;
       const currency=String(row['Moneda original']||'').trim().toUpperCase();
       if(currency!=='COP'&&currency!=='USD') return;
       sums[currency]+=parseNumber(row['Monto original']);
@@ -299,10 +305,11 @@
   async function applyAll(force=false){
     if(activeView()!=='tarjetas'||!window.Chart) return;
     const version=++requestVersion;
-    const [cardRows,debt]=await Promise.all([sourceRows('Tarjetas!A:T',force),loadArqDebt(force)]);
+    const {cardRows,movements}=await loadData(force);
     if(version!==requestVersion||activeView()!=='tarjetas') return;
     const cards=cardsFromRows(cardRows);
     if(!cards.length) return;
+    const debt=buildArqDebt(movements);
     const arq=cards.find(card=>norm(card.issuer).includes('arq'));
     if(arq&&debt) arq.used=debt.equivalent;
     normalizeCardTableHeaders();
