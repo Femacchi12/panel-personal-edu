@@ -1,0 +1,69 @@
+/*
+  Estándar visual transversal del Panel Personal Edu.
+  Esta capa se carga al final y normaliza geometría, jerarquía y densidad
+  sin cambiar colores semánticos ni lógica de datos.
+*/
+
+:root{
+  --ui-gap:12px;
+  --ui-gap-sm:9px;
+  --ui-panel-radius:13px;
+  --ui-card-radius:12px;
+  --ui-panel-pad:14px;
+  --ui-kpi-min:88px;
+  --ui-chart-height:280px;
+}
+
+.main{max-width:1800px!important;padding:18px 22px 34px!important}
+.view-root{gap:var(--ui-gap)!important}
+.general-dashboard,.travel-dashboard,.health-enhancement{gap:var(--ui-gap)!important;margin-bottom:18px!important}
+
+.section-head{margin:2px 0 0!important;gap:18px!important;align-items:flex-end!important}
+.section-head .eyebrow{font-size:9px!important;letter-spacing:.11em!important}
+.section-head h2{font-size:18px!important;line-height:1.15!important;margin:4px 0 0!important}
+.section-head p{max-width:720px!important;font-size:11px!important;line-height:1.4!important;text-align:right!important;color:#7f8da1!important}
+
+.panel,.general-card,.travel-card,.health-derived-notice,.investment-consolidated-overview{border-radius:var(--ui-panel-radius)!important}
+.panel{padding:var(--ui-panel-pad)!important}
+.panel-grid,.panel-grid.equal,.panel-grid.three,.general-main-grid,.travel-main-grid,.health-enhance-grid,.health-brief-grid{gap:var(--ui-gap)!important}
+.panel-header{margin-bottom:12px!important;gap:12px!important}
+.panel-title strong{font-size:13px!important;line-height:1.25!important}
+.panel-title span{font-size:10px!important;line-height:1.35!important;margin-top:3px!important}
+
+.kpi-grid,.v2-kpis,.card-debt-kpis,.travel-kpi-grid,.health-ops-strip,.monthly-kpis,.investment-summary-grid{gap:var(--ui-gap-sm)!important;align-items:stretch!important}
+.kpi-grid,.v2-kpis,.card-debt-kpis,.travel-kpi-grid,.monthly-kpis{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+.kpi-card,.v2-kpi,.card-debt-kpi,.travel-kpi,.health-ops-strip>div,.monthly-kpis>div,.investment-summary-card{min-width:0!important;min-height:var(--ui-kpi-min)!important;height:100%!important;padding:11px 12px!important;border-radius:var(--ui-card-radius)!important;font-variant-numeric:tabular-nums!important}
+.kpi-label,.v2-kpi>span:first-child,.card-debt-kpi>span:first-child,.travel-kpi>span:first-child,.health-ops-strip>div>span,.monthly-kpis>div>span,.investment-summary-card>span{font-size:8.5px!important;line-height:1.25!important;letter-spacing:.05em!important}
+.kpi-value,.v2-kpi>strong,.card-debt-kpi>strong,.travel-kpi>strong,.health-ops-strip>div>strong,.monthly-kpis>div>strong,.investment-summary-card>strong{font-size:20px!important;line-height:1.08!important;margin-top:7px!important;letter-spacing:-.025em!important;white-space:nowrap!important}
+.kpi-meta,.kpi-meta>span,.v2-kpi>small,.card-debt-kpi>small,.travel-kpi>small,.monthly-kpis>div>small,.investment-summary-card>small{font-size:9px!important;line-height:1.3!important;margin-top:5px!important}
+
+.general-kpi-grid{gap:var(--ui-gap-sm)!important}
+.general-kpi{min-height:var(--ui-kpi-min)!important;padding:11px 12px!important;border-radius:var(--ui-card-radius)!important;font-variant-numeric:tabular-nums!important}
+.general-kpi>span{font-size:8.5px!important}.general-kpi strong{font-size:20px!important;line-height:1.08!important;margin:6px 0 4px!important}.general-kpi small{font-size:9px!important;line-height:1.3!important}
+.general-hero,.travel-hero{padding-top:2px!important}.general-hero h2,.travel-hero h2{font-size:18px!important;margin:4px 0 3px!important}.general-hero p,.travel-hero p{font-size:10px!important;line-height:1.4!important}
+.general-card-head,.travel-card-head{padding:11px 13px!important}.general-card-head strong,.travel-card-head strong{font-size:13px!important}.general-card-head>div>span,.travel-card-head span{font-size:8.5px!important}
+.general-quick-grid{gap:var(--ui-gap-sm)!important;padding:11px 13px!important}.general-quick{padding:9px 10px!important}
+
+.finance-context{padding:11px!important;gap:9px!important;border-radius:var(--ui-panel-radius)!important}.finance-context-grid{gap:var(--ui-gap-sm)!important}.finance-context-item{min-height:72px!important;padding:9px 10px!important}.finance-context-item span{font-size:8px!important}.finance-context-item strong{font-size:16px!important;margin-top:4px!important}.finance-context-item small{font-size:9px!important}
+
+.credit-card{padding:15px!important;border-radius:15px!important}.credit-brand{font-size:10px!important;letter-spacing:.02em!important}.credit-amount{font-size:24px!important;margin:15px 0 4px!important}.credit-sub{font-size:9.5px!important}.usage-track{margin:12px 0 9px!important}.credit-bottom{margin-top:11px!important}.credit-stat span{font-size:8px!important}.credit-stat strong{font-size:10px!important}
+
+.chart-wrap{height:var(--ui-chart-height)!important}.chart-wrap.tall{height:310px!important}.chart-scroll .chart-inner{height:var(--ui-chart-height)!important}.fx-sensitivity-grid,.fx-impact-grid{gap:var(--ui-gap-sm)!important}
+
+.table-panel{padding-bottom:11px!important}.table-scroll{border-radius:10px!important;max-height:520px!important}.table-scroll.expanded{max-height:min(680px,66vh)!important}
+th{padding:9px 10px!important;font-size:9px!important;line-height:1.2!important;letter-spacing:.055em!important}td{padding:9px 10px!important;font-size:11px!important;line-height:1.3!important}.search-input{height:34px!important;font-size:11px!important}.table-footer{padding-top:9px!important}
+
+.documents-summary{margin-bottom:10px!important;padding:8px 10px!important;font-size:9px!important}.documents-summary strong{font-size:11px!important}.documents-master-table th,.documents-master-table td{padding:8px 9px!important}.documents-toolbar{gap:12px!important}.doc-name strong{font-size:11px!important}.doc-name span:last-child{font-size:9px!important}
+
+.health-enhancement{margin-top:10px!important}.health-ops-strip>div{background:rgba(255,255,255,.022)!important}.health-attention-list,.health-brief-list{gap:7px!important;padding:0 12px 12px!important}.health-attention-item,.health-brief-item{padding:9px 10px!important}.health-derived-notice{padding:10px 12px!important;margin-bottom:11px!important}
+
+.travel-kpi-grid{gap:var(--ui-gap-sm)!important}.travel-main-grid{grid-template-columns:minmax(0,1.35fr) minmax(300px,.85fr)!important}.travel-card-head{gap:12px!important}.current-expenses .travel-card-head strong{font-size:18px!important}.trip-grid{gap:10px!important;padding:11px 13px!important}.travel-filters{gap:7px!important;padding:10px 13px!important}.travel-table th,.travel-table td{padding:8px 9px!important}
+
+.investment-consolidated-overview{padding:12px!important}.investment-summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}.investment-summary-title strong{font-size:13px!important}.investment-summary-title span{font-size:9px!important}
+
+.filter-bar{padding:12px 13px!important;margin-bottom:12px!important;border-radius:13px!important}.filter-head{margin-bottom:10px!important}.filter-head strong{font-size:12px!important}.filter-grid,.section-filter-grid{gap:8px!important}.multi-filter-trigger{min-height:34px!important}
+
+@media(max-width:1250px){.general-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}.health-ops-strip{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
+@media(max-width:980px){.kpi-grid,.v2-kpis,.card-debt-kpis,.travel-kpi-grid,.monthly-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}.investment-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.travel-main-grid{grid-template-columns:1fr!important}.section-head{align-items:flex-start!important;flex-direction:column!important;gap:5px!important}.section-head p{text-align:left!important}}
+@media(max-width:640px){.main{padding:14px 12px 28px!important}.general-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.health-ops-strip{grid-template-columns:repeat(2,minmax(0,1fr))!important}.panel{padding:12px!important}}
+@media(max-width:440px){.general-kpi-grid,.investment-summary-grid{grid-template-columns:1fr!important}.kpi-value,.v2-kpi>strong,.card-debt-kpi>strong,.travel-kpi>strong,.health-ops-strip>div>strong,.monthly-kpis>div>strong,.investment-summary-card>strong{font-size:18px!important}}
