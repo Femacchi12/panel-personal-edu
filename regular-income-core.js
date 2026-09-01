@@ -30,6 +30,8 @@
   const median = arr => { const a=(arr||[]).map(Number).filter(v=>Number.isFinite(v)&&v>0).sort((a,b)=>a-b); if(!a.length)return 0; const i=Math.floor(a.length/2); return a.length%2?a[i]:(a[i-1]+a[i])/2; };
 
   function rowsFor(payload, financeId, range){
+    const cached=window.__PANEL_GET_CACHED_ROWS__;
+    if(typeof cached==='function')return cached(payload,financeId,range);
     return parseRows(payload?.sources?.[`${financeId}|${range}`] || []);
   }
 
