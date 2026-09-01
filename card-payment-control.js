@@ -20,13 +20,20 @@
       .map(row => Object.fromEntries(headers.map((h,i) => [h || `Col ${i+1}`, row?.[i] ?? ''])));
   }
 
-  async function sourceRows(range,force=false) {
-    const direct=window.__PANEL_GET_SOURCE_VALUES__;
-    if(typeof direct==='function') return parseRows(await direct(financeId,range,force));
-    const getData=window.__PANEL_GET_BACKEND_DATA__;
-    if(typeof getData!=='function') return [];
-    const payload=await getData(force);
+  function rowsFromPayload(payload,range) {
+    const cached=window.__PANEL_GET_CACHED_ROWS__;
+    if(typeof cached==='function') return cached(payload,financeId,range);
     return parseRows(payload?.sources?.[`${financeId}|${range}`]||[]);
+  }
+
+  async function loadSources(force=false) {
+    const getData=window.__PANEL_GET_BACKEND_DATA__;
+    if(typeof getData!=='function') return {cardRows:[],cycles:[]};
+    const payload=await getData(force);
+    return {
+      cardRows:rowsFromPayload(payload,'Tarjetas!A:T'),
+      cycles:rowsFromPayload(payload,'Pagos_Tarjetas!A:T')
+    };
   }
 
   function parseNumber(value) {
@@ -75,19 +82,18 @@
     return '';
   }
 
-  function cycleCutDate(row) { return parseDate(row?.['Fecha corte']); }
-  function cardCycles(cycles,id) { return cycles.filter(r => String(r.Tarjeta || '').trim() === id); }
-
-  function latestClosedCycle(cycles,id,now) {
-    return cardCycles(cycles,id)
-      .filter(r => cycleCutDate(r) && cycleCutDate(r) <= now)
-      .sort((a,b)=>cycleCutDate(b)-cycleCutDate(a))[0] || null;
-  }
-
-  function openCycle(cycles,id,now) {
-    return cardCycles(cycles,id)
-      .filter(r => cycleCutDate(r) && cycleCutDate(r) > now)
-      .sort((a,b)=>cycleCutDate(a)-cycleCutDate(b))[0] || null;
+  function cycleIndex(cycles,now) {
+    const index=new Map();
+    (cycles||[]).forEach(row=>{
+      const id=String(row.Tarjeta||'').trim(),cut=parseDate(row['Fecha corte']);
+      if(!id||!cut)return;
+      let item=index.get(id);
+      if(!item){item={closed:null,closedCut:null,open:null,openCut:null};index.set(id,item);}
+      if(cut<=now){
+        if(!item.closedCut||cut>item.closedCut){item.closed=row;item.closedCut=cut;}
+      }else if(!item.openCut||cut<item.openCut){item.open=row;item.openCut=cut;}
+    });
+    return index;
   }
 
   function deriveCurrentPeriod(cardRow,lastClosed,nextOpen,now) {
@@ -166,10 +172,11 @@
     document.head.appendChild(style);
   }
 
-  function enhanceCard(card,cardRow,cycles,now) {
+  function enhanceCard(card,cardRow,index,now) {
     const id = String(cardRow['ID tarjeta'] || '');
-    const closed = latestClosedCycle(cycles,id,now);
-    const open = openCycle(cycles,id,now);
+    const indexed=index.get(id)||{};
+    const closed = indexed.closed||null;
+    const open = indexed.open||null;
     const current = deriveCurrentPeriod(cardRow,closed,open,now);
     const state = paymentState(closed);
     const stats = [...card.querySelectorAll('.credit-stat')];
@@ -212,17 +219,14 @@
     const cards = [...document.querySelectorAll('#viewRoot .credit-card')];
     if (!cards.length) return;
     try {
-      const [cardRows,cycles] = await Promise.all([
-        sourceRows('Tarjetas!A:T',force),
-        sourceRows('Pagos_Tarjetas!A:T',force)
-      ]);
+      const {cardRows,cycles}=await loadSources(force);
       if(version!==renderVersion||document.querySelector('.nav-item.active')?.dataset.view !== 'tarjetas') return;
-      const now = new Date();
+      const now = new Date(),index=cycleIndex(cycles,now),rowById=new Map(cardRows.map(row=>[String(row['ID tarjeta']||'').trim(),row]));
       cards.forEach(card=>{
         if(!card.isConnected)return;
         const id = cardIdFromDom(card);
-        const row = cardRows.find(r=>String(r['ID tarjeta']||'').trim()===id);
-        if (row) enhanceCard(card,row,cycles,now);
+        const row = rowById.get(id);
+        if (row) enhanceCard(card,row,index,now);
       });
     } catch (error) {
       if(version===renderVersion)console.error('No se pudo cargar el control de pagos de tarjetas:',error);
