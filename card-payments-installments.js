@@ -25,13 +25,20 @@
       .map(r=>Object.fromEntries(headers.map((h,i)=>[h||`Col ${i+1}`,r?.[i]??''])));
   }
 
-  async function sourceRows(range,force=false){
-    const direct=window.__PANEL_GET_SOURCE_VALUES__;
-    if(typeof direct==='function')return parseRows(await direct(financeId,range,force));
-    const getData=window.__PANEL_GET_BACKEND_DATA__;
-    if(typeof getData!=='function')return[];
-    const payload=await getData(force);
+  function rowsFromPayload(payload,range){
+    const cached=window.__PANEL_GET_CACHED_ROWS__;
+    if(typeof cached==='function')return cached(payload,financeId,range);
     return parseRows(payload?.sources?.[`${financeId}|${range}`]||[]);
+  }
+
+  async function loadSources(force=false){
+    const getData=window.__PANEL_GET_BACKEND_DATA__;
+    if(typeof getData!=='function')return {cycles:[],installments:[]};
+    const payload=await getData(force);
+    return {
+      cycles:rowsFromPayload(payload,'Pagos_Tarjetas!A:T'),
+      installments:rowsFromPayload(payload,'Cuotas!A:T')
+    };
   }
 
   function parseNumber(value){
@@ -95,14 +102,18 @@
     return ['si','sí','pagado','pago','yes','true'].includes(p)||!!parseDate(row?.['Fecha pago'])||parseNumber(row?.['Monto pagado real'])>0;
   }
 
-  function latestClosedCycle(cycles,id,now){
-    return cycles.filter(r=>cardId(r.Tarjeta,r.Titular)===id)
-      .map(r=>({row:r,date:parseDate(r['Fecha corte'])}))
-      .filter(x=>x.date&&x.date<=now)
-      .sort((a,b)=>b.date-a.date)[0]?.row||null;
+  function latestClosedCycleMap(cycles,now){
+    const map=new Map();
+    (cycles||[]).forEach(row=>{
+      const id=cardId(row.Tarjeta,row.Titular),cut=parseDate(row['Fecha corte']);
+      if(!id||!cut||cut>now)return;
+      const previous=map.get(id);
+      if(!previous||cut>previous.cut)map.set(id,{row,cut});
+    });
+    return map;
   }
 
-  function pendingInstallment(row,cycles,now){
+  function pendingInstallment(row,cycleMap,now){
     const first=parseMonth(row['Fecha primera cuota']);
     const installment=Math.max(1,Math.round(parseNumber(row['Cuota actual']))||1);
     if(!first)return null;
@@ -112,7 +123,7 @@
     const status=norm(row.Estado);
     if(detail.includes('pagad')||status.includes('pagad'))return {pending:false,scheduled,id};
     if(detail==='por pagar'||detail.includes('programad')||detail.includes('pend'))return {pending:true,scheduled,id};
-    const cycle=latestClosedCycle(cycles,id,now);
+    const cycle=cycleMap.get(id)?.row||null;
     const currentMonth=new Date(now.getFullYear(),now.getMonth(),1);
     if(!cycle)return {pending:scheduled>=currentMonth,scheduled,id};
     const cut=parseDate(cycle['Fecha corte']);
@@ -123,13 +134,13 @@
   }
 
   function groupPurchases(rows,cycles,now){
-    const groups=new Map();
+    const groups=new Map(),cycleMap=latestClosedCycleMap(cycles,now);
     rows.forEach(row=>{
       const id=cardId(row.Tarjeta,row.Titular);
       const total=parseNumber(row['Total compra']);
       const key=String(row['ID compra']||'').trim()||[id,row['Fecha compra'],norm(row.Descripción||row.Comercio),total].join('|');
       if(!groups.has(key))groups.set(key,{id,fecha:row['Fecha compra'],comercio:row.Comercio||'',descripcion:row.Descripción||'',titular:row.Titular||'',total,moneda:row.Moneda||'COP',rows:[]});
-      const pendingInfo=pendingInstallment(row,cycles,now);
+      const pendingInfo=pendingInstallment(row,cycleMap,now);
       groups.get(key).rows.push({...row,__pendingInfo:pendingInfo,__n:Math.max(1,Math.round(parseNumber(row['N° cuotas']))||1),__cuota:Math.max(1,Math.round(parseNumber(row['Cuota actual']))||1),__valor:parseNumber(row['Valor cuota'])});
     });
     return [...groups.values()].map(g=>{
@@ -182,7 +193,7 @@
   function selectedCard(){return String(window.__PANEL_ACTIVE_CARD_ID__||'').trim();}
 
   function renderPayments(cycles,selected){
-    const rows=cycles.filter(isPaid).filter(r=>!selected||cardId(r.Tarjeta,r.Titular)===selected)
+    const rows=cycles.filter(r=>isPaid(r)&&(!selected||cardId(r.Tarjeta,r.Titular)===selected))
       .sort((a,b)=>(parseDate(b['Fecha pago'])||parseDate(b['Fecha corte'])||0)-(parseDate(a['Fecha pago'])||parseDate(a['Fecha corte'])||0));
     const body=rows.length?rows.map(r=>{
       const id=cardId(r.Tarjeta,r.Titular);
@@ -226,10 +237,7 @@
     if(activeView()!=='tarjetas')return;
     const version=++requestVersion;
     injectStyles();
-    const [cycles,installments]=await Promise.all([
-      sourceRows('Pagos_Tarjetas!A:T',force),
-      sourceRows('Cuotas!A:T',force)
-    ]).catch(()=>[null,null]);
+    const {cycles,installments}=await loadSources(force).catch(()=>({cycles:null,installments:null}));
     if(version!==requestVersion||!cycles||!installments||activeView()!=='tarjetas')return;
     const now=new Date();
     const purchases=groupPurchases(installments,cycles,now);
