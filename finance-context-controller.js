@@ -261,11 +261,12 @@
     movements.forEach(row=>{
       if(movementMatches(row,state)){
         const amount=num(row['Monto COP']||row['Monto original']);
+        const amountCop=num(row['Monto COP']);
         total+=amount;count+=1;
         const day=String(row['Fecha real']||'').trim();if(day)days.add(day);
-        if(amount>biggestAmount){biggestAmount=amount;biggest=row;}
-        if(/^(si|sí|true|1)$/i.test(String(row['Es fijo']||'')))fixed+=amount;
-        if(norm(method(row))==='credito')credit+=amount;
+        if(amountCop>biggestAmount){biggestAmount=amountCop;biggest=row;}
+        if(/^(si|sí|true|1)$/i.test(String(row['Es fijo']||'')))fixed+=amountCop;
+        if(norm(method(row))==='credito')credit+=amountCop;
       }
       if(compareKey&&movementMatches(row,state,compareKey)){
         const d=date(row['Fecha real']||row['Fecha registrada']);
