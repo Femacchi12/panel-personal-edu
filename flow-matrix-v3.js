@@ -45,6 +45,14 @@
   function selectedGlobal(key){ return [...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)].map(x=>String(x.dataset.value||'').trim()).filter(Boolean); }
   function selectedYear(){ const y=selectedGlobal('year'); return y.length===1?y[0]:String(new Date().getFullYear()); }
   function monthList(year){ return Array.from({length:12},(_,i)=>`${year}-${String(i+1).padStart(2,'0')}`); }
+  function currentFilterState(){
+    const payment=window.__PAYMENT_FILTER_STATE__?.view==='flujo'?window.__PAYMENT_FILTER_STATE__:{account:[],method:[]};
+    return {
+      categories:new Set(selectedGlobal('category')),
+      accounts:new Set(payment.account||[]),
+      methods:new Set(payment.method||[])
+    };
+  }
 
   function isReal(row){
     if(norm(row.Tipo)!=='gasto')return false;
@@ -69,19 +77,17 @@
     const q=num(row.Cuotas); if(q>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';
     return'Sin especificar';
   }
-  function matchesActiveFilters(row){
+  function matchesActiveFilters(row,state){
     if(!isReal(row))return false;
-    const cats=selectedGlobal('category'); if(cats.length&&!cats.includes(String(row['Categoría']||'')))return false;
-    const st=window.__PAYMENT_FILTER_STATE__?.view==='flujo'?window.__PAYMENT_FILTER_STATE__:{account:[],method:[]};
-    if(st.account?.length&&!st.account.includes(account(row)))return false;
-    if(st.method?.length&&!st.method.includes(method(row)))return false;
+    if(state.categories.size&&!state.categories.has(String(row['Categoría']||'')))return false;
+    if(state.accounts.size&&!state.accounts.has(account(row)))return false;
+    if(state.methods.size&&!state.methods.has(method(row)))return false;
     return true;
   }
-  function filterSummary(){
-    const st=window.__PAYMENT_FILTER_STATE__?.view==='flujo'?window.__PAYMENT_FILTER_STATE__:{account:[],method:[]};
+  function filterSummary(state){
     const parts=[];
-    if(st.account?.length)parts.push(`Cuenta: ${st.account.join(' / ')}`);
-    if(st.method?.length)parts.push(`Modalidad: ${st.method.join(' / ')}`);
+    if(state.accounts.size)parts.push(`Cuenta: ${[...state.accounts].join(' / ')}`);
+    if(state.methods.size)parts.push(`Modalidad: ${[...state.methods].join(' / ')}`);
     return parts.length?` · ${parts.join(' · ')}`:'';
   }
   function isCreditPurchase(row){
@@ -104,10 +110,10 @@
   };
 
   function historicalMap(flowRows){ const map=new Map(); flowRows.forEach(r=>{const k=monthKey(r.Mes); if(k)map.set(`${k}|${norm(r.Concepto)}`,num(r['Total COP']));}); return map; }
-  function categoryList(flowRows,movements,year){
+  function categoryList(flowRows,movements,year,state){
     const set=new Set(flowRows.filter(r=>norm(r.Tipo)==='categoria'&&monthKey(r.Mes).startsWith(year+'-')).map(r=>String(r.Concepto||'').trim()).filter(Boolean));
-    movements.filter(r=>isReal(r)&&monthKey(r['Mes consumo']).startsWith(year+'-')).forEach(r=>{if(r['Categoría'])set.add(String(r['Categoría']).trim());});
-    const selected=selectedGlobal('category'); if(selected.length)return [...set].filter(x=>selected.includes(x));
+    movements.forEach(r=>{if(isReal(r)&&monthKey(r['Mes consumo']).startsWith(year+'-')&&r['Categoría'])set.add(String(r['Categoría']).trim());});
+    if(state.categories.size)return [...set].filter(x=>state.categories.has(x));
     const known=ORIGINAL_ORDER.filter(x=>[...set].some(y=>norm(y)===norm(x)));
     const extra=[...set].filter(x=>!known.some(y=>norm(y)===norm(x))).sort((a,b)=>a.localeCompare(b,'es',{sensitivity:'base'}));
     return [...known,...extra];
@@ -148,10 +154,10 @@
   }
   function pctClass(v){const p=(Number(v)||0)*100;return p>15?'pct-red':p>10?'pct-yellow':p>5?'pct-green':'pct-white';}
 
-  function movementMonthMap(movements){
+  function movementMonthMap(movements,state){
     const map=new Map();
     movements.forEach(row=>{
-      if(!matchesActiveFilters(row))return;
+      if(!matchesActiveFilters(row,state))return;
       const month=monthKey(row['Mes consumo']||row['Fecha real']||row['Fecha registrada']);
       if(!month)return;
       let item=map.get(month);
@@ -176,12 +182,12 @@
   function shouldUseMovements(month,current){ return month>=MIGRATION_START && month<=current; }
 
   function effectiveDate(row){ const raw=String(row['Fecha real']||row['Fecha registrada']||''); const m=raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); return m?new Date(+m[1],+m[2]-1,+m[3]):null; }
-  function renderDetail(host,movements,cat,key){
-    const rows=movements.filter(r=>matchesActiveFilters(r)&&norm(r['Categoría'])===norm(cat)&&monthKey(r['Mes consumo'])===key).sort((a,b)=>(effectiveDate(a)?.getTime()||0)-(effectiveDate(b)?.getTime()||0));
+  function renderDetail(host,movements,cat,key,state){
+    const rows=movements.filter(r=>matchesActiveFilters(r,state)&&norm(r['Categoría'])===norm(cat)&&monthKey(r['Mes consumo'])===key).sort((a,b)=>(effectiveDate(a)?.getTime()||0)-(effectiveDate(b)?.getTime()||0));
     const cols=['Fecha real','Categoría','Subcategoría','Descripción / Comercio','Monto original','Moneda original','Cuenta / Tarjeta','Modalidad de pago','Titular','Cuotas','Estado','Monto COP'];
     const total=rows.reduce((s,r)=>s+num(r['Monto COP']),0);
     const footer=cols.map((col,index)=>`<td>${index===0?'TOTAL':col==='Monto COP'?esc(money(total)):''}</td>`).join('');
-    host.innerHTML=`<div class="panel-header"><div class="panel-title"><strong>Detalle · ${esc(cat)} · ${esc(monthLabel(key))}</strong><span>${rows.length} movimientos realizados según filtros · total ${esc(money(total))}${esc(filterSummary())}</span></div><button type="button" class="text-btn" id="closeFlowDetailV3">Cerrar</button></div>${rows.length?`<div class="table-scroll expanded"><table class="date-first-table"><thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${esc(r[c]??'')}</td>`).join('')}</tr>`).join('')}</tbody><tfoot data-auto-total><tr class="flow-detail-total-row">${footer}</tr></tfoot></table></div>`:'<div class="empty-state"><div><strong>Sin movimientos realizados</strong><span>No hay movimientos para esta categoría, mes y filtros.</span></div></div>'}`;
+    host.innerHTML=`<div class="panel-header"><div class="panel-title"><strong>Detalle · ${esc(cat)} · ${esc(monthLabel(key))}</strong><span>${rows.length} movimientos realizados según filtros · total ${esc(money(total))}${esc(filterSummary(state))}</span></div><button type="button" class="text-btn" id="closeFlowDetailV3">Cerrar</button></div>${rows.length?`<div class="table-scroll expanded"><table class="date-first-table"><thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${esc(r[c]??'')}</td>`).join('')}</tr>`).join('')}</tbody><tfoot data-auto-total><tr class="flow-detail-total-row">${footer}</tr></tfoot></table></div>`:'<div class="empty-state"><div><strong>Sin movimientos realizados</strong><span>No hay movimientos para esta categoría, mes y filtros.</span></div></div>'}`;
     host.hidden=false; host.querySelector('#closeFlowDetailV3')?.addEventListener('click',()=>{selectedDetail=null;host.hidden=true;host.innerHTML='';}); host.scrollIntoView({behavior:'smooth',block:'nearest'});
   }
 
@@ -193,8 +199,9 @@
   function sortedCategories(categories,values){const rows=categories.map((cat,index)=>({cat,id:index+1}));const dir=sortState.dir==='desc'?-1:1;if(sortState.type==='category')rows.sort((a,b)=>a.cat.localeCompare(b.cat,'es',{numeric:true,sensitivity:'base'})*dir);else if(sortState.type==='month'&&sortState.month)rows.sort((a,b)=>((values.get(`${sortState.month}|${norm(a.cat)}`)||0)-(values.get(`${sortState.month}|${norm(b.cat)}`)||0))*dir||a.id-b.id);else rows.sort((a,b)=>(a.id-b.id)*dir);return rows;}
 
   function render(host,detail,data){
-    const year=selectedYear(),months=monthList(year),current=currentMonthKey(),historical=historicalMap(data.flowRows),salary=salaryMap(data.concepts,data.regularIncome),categories=categoryList(data.flowRows,data.movements,year);
-    const movementCache=movementMonthMap(data.movements),emptyMovement={byCat:new Map(),summary:new Map(),total:0};
+    const state=currentFilterState();
+    const year=selectedYear(),months=monthList(year),current=currentMonthKey(),historical=historicalMap(data.flowRows),salary=salaryMap(data.concepts,data.regularIncome),categories=categoryList(data.flowRows,data.movements,year,state);
+    const movementCache=movementMonthMap(data.movements,state),emptyMovement={byCat:new Map(),summary:new Map(),total:0};
     const mdata=m=>movementCache.get(m)||emptyMovement;
     const values=new Map(historical);
     months.forEach(m=>{if(shouldUseMovements(m,current))categories.forEach(cat=>values.set(`${m}|${norm(cat)}`,mdata(m).byCat.get(norm(cat))||0));});
@@ -204,8 +211,8 @@
     host.querySelector('[data-sort="id"]')?.addEventListener('click',()=>{sortState={type:'id',dir:sortState.type==='id'&&sortState.dir==='asc'?'desc':'asc',month:null};render(host,detail,data);});
     host.querySelector('[data-sort="category"]')?.addEventListener('click',()=>{sortState={type:'category',dir:sortState.type==='category'&&sortState.dir==='asc'?'desc':'asc',month:null};render(host,detail,data);});
     host.querySelectorAll('[data-sort-month]').forEach(th=>th.addEventListener('click',()=>{const m=th.dataset.sortMonth;sortState={type:'month',month:m,dir:sortState.type==='month'&&sortState.month===m&&sortState.dir==='asc'?'desc':'asc'};render(host,detail,data);}));
-    host.querySelectorAll('[data-detail]').forEach(btn=>btn.addEventListener('click',()=>{selectedDetail={cat:btn.dataset.category,month:btn.dataset.month};renderDetail(detail,data.movements,selectedDetail.cat,selectedDetail.month);}));
-    if(selectedDetail)renderDetail(detail,data.movements,selectedDetail.cat,selectedDetail.month);
+    host.querySelectorAll('[data-detail]').forEach(btn=>btn.addEventListener('click',()=>{selectedDetail={cat:btn.dataset.category,month:btn.dataset.month};renderDetail(detail,data.movements,selectedDetail.cat,selectedDetail.month,state);}));
+    if(selectedDetail)renderDetail(detail,data.movements,selectedDetail.cat,selectedDetail.month,state);
   }
 
   function ensureHosts(root){
