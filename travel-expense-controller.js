@@ -15,6 +15,7 @@
   let frame = 0;
   let version = 0;
   let cache = null;
+  const searchCache = new WeakMap();
 
   const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -25,6 +26,12 @@
     const headers=(values[0]||[]).map(v=>String(v??'').trim());
     return values.slice(1).filter(r=>r?.some(v=>String(v??'').trim()!==''))
       .map(r=>Object.fromEntries(headers.map((h,i)=>[h||`Col ${i+1}`,r?.[i]??''])));
+  }
+
+  function rowsFromPayload(payload,range){
+    const cached=window.__PANEL_GET_CACHED_ROWS__;
+    if(typeof cached==='function')return cached(payload,FINANCE_ID,range);
+    return parseRows(payload?.sources?.[`${FINANCE_ID}|${range}`]||[]);
   }
 
   function num(value){
@@ -73,36 +80,93 @@
     return s.includes('registrad')||s.includes('realiz')||s.includes('conciliad');
   }
 
-  function currentBenefit(rows, benefit){
-    const candidates=rows.filter(r=>norm(r.Beneficio)===norm(benefit)&&!norm(r['Período']).includes('total'));
-    return candidates.find(r=>inRange(r)) || candidates[candidates.length-1] || {};
-  }
-
-  function totalBenefit(rows, benefit){
-    return rows.find(r=>norm(r.Beneficio)===norm(benefit)&&norm(r['Período']).includes('total')) || {};
-  }
-
-  function tripRowsOnly(rows){ return rows.filter(r=>norm(r['Tipo de registro']).includes('viaje')); }
-  function vacationRowsOnly(rows){ return rows.filter(r=>norm(r['Tipo de registro']).includes('vacacion')); }
-
-  function expenseSummary(trip, movements){
-    const key=marker(trip); if(!key)return null;
-    const rows=movements.filter(r=>marker(r)===key&&isActualMovement(r));
-    if(!rows.length)return null;
-    const categories=new Map(), payments=new Map();
-    let total=0;
-    rows.forEach(r=>{
-      const amount=num(r['Monto COP']||r['Monto original']); total+=amount;
-      const cat=String(r['Categoría']||'Sin categoría'); categories.set(cat,(categories.get(cat)||0)+amount);
-      const pay=String(r['Modalidad de pago']||r['Cuenta / Tarjeta']||'Sin medio'); payments.set(pay,(payments.get(pay)||0)+amount);
+  function indexBenefits(rows){
+    const map=new Map();
+    rows.forEach(row=>{
+      const key=norm(row.Beneficio);
+      if(!key)return;
+      let entry=map.get(key);
+      if(!entry){entry={periods:[],total:null};map.set(key,entry);}
+      if(norm(row['Período']).includes('total'))entry.total=row;
+      else entry.periods.push(row);
     });
-    const days=new Set(rows.map(r=>String(r['Fecha real']||'')).filter(Boolean)).size;
-    return {rows:rows.sort((a,b)=>String(b['Fecha real']||'').localeCompare(String(a['Fecha real']||''))),total,categories,payments,days};
+    return map;
+  }
+
+  function currentBenefit(index, benefit){
+    const periods=index.get(norm(benefit))?.periods||[];
+    return periods.find(r=>inRange(r)) || periods.at(-1) || {};
+  }
+
+  function totalBenefit(index, benefit){return index.get(norm(benefit))?.total||{};}
+
+  function buildExpenseIndex(movements){
+    const index=new Map();
+    movements.forEach(r=>{
+      const key=marker(r);
+      if(!key||!isActualMovement(r))return;
+      let item=index.get(key);
+      if(!item){item={rows:[],total:0,categories:new Map(),payments:new Map(),days:new Set()};index.set(key,item);}
+      const amount=num(r['Monto COP']||r['Monto original']);
+      item.total+=amount;
+      item.rows.push(r);
+      const cat=String(r['Categoría']||'Sin categoría');item.categories.set(cat,(item.categories.get(cat)||0)+amount);
+      const pay=String(r['Modalidad de pago']||r['Cuenta / Tarjeta']||'Sin medio');item.payments.set(pay,(item.payments.get(pay)||0)+amount);
+      const day=String(r['Fecha real']||'').trim();if(day)item.days.add(day);
+    });
+    index.forEach(item=>{
+      item.rows.sort((a,b)=>String(b['Fecha real']||'').localeCompare(String(a['Fecha real']||'')));
+      item.dayCount=item.days.size;
+      delete item.days;
+    });
+    return index;
+  }
+
+  function uniqueSorted(values){return [...new Set(values.filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'es'));}
+
+  function prepareData(trips,benefits,movements){
+    const tripRows=[],vacationRows=[];
+    trips.forEach(row=>{
+      const type=norm(row['Tipo de registro']);
+      if(type.includes('viaje'))tripRows.push(row);
+      if(type.includes('vacacion'))vacationRows.push(row);
+    });
+    const sortedTrips=trips.slice().sort((a,b)=>(date(b['Fecha salida'])?.getTime()||0)-(date(a['Fecha salida'])?.getTime()||0));
+    const sortedTripRows=tripRows.slice().sort((a,b)=>(date(b['Fecha salida'])?.getTime()||0)-(date(a['Fecha salida'])?.getTime()||0));
+    return {
+      trips,
+      benefits,
+      movements,
+      tripRows:sortedTripRows,
+      vacationRows,
+      sortedTrips,
+      benefitIndex:indexBenefits(benefits),
+      expenseIndex:buildExpenseIndex(movements),
+      filterOptions:{
+        period:uniqueSorted(trips.map(r=>r['Período laboral'])),
+        type:uniqueSorted(trips.map(r=>r['Tipo de registro'])),
+        funding:uniqueSorted(trips.map(r=>r['Financiación'])),
+        status:uniqueSorted(trips.map(r=>r.Estado))
+      }
+    };
+  }
+
+  function expenseSummary(trip,index){
+    const key=marker(trip);if(!key)return null;
+    const item=index.get(key);if(!item?.rows.length)return null;
+    return {rows:item.rows,total:item.total,categories:item.categories,payments:item.payments,days:item.dayCount};
   }
 
   function options(values, selected, allLabel){
-    const unique=[...new Set(values.filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'es'));
-    return `<option value="">${esc(allLabel)}</option>${unique.map(v=>`<option value="${esc(v)}"${String(v)===String(selected)?' selected':''}>${esc(v)}</option>`).join('')}`;
+    return `<option value="">${esc(allLabel)}</option>${values.map(v=>`<option value="${esc(v)}"${String(v)===String(selected)?' selected':''}>${esc(v)}</option>`).join('')}`;
+  }
+
+  function searchable(row){
+    let value=searchCache.get(row);
+    if(value!==undefined)return value;
+    value=norm(Object.values(row).join(' '));
+    searchCache.set(row,value);
+    return value;
   }
 
   function filterTrips(rows){
@@ -112,7 +176,7 @@
       if(local.type&&String(r['Tipo de registro'])!==local.type)return false;
       if(local.funding&&String(r['Financiación'])!==local.funding)return false;
       if(local.status&&String(r.Estado)!==local.status)return false;
-      if(q&&!norm(Object.values(r).join(' ')).includes(q))return false;
+      if(q&&!searchable(r).includes(q))return false;
       return true;
     });
   }
@@ -126,9 +190,9 @@
     return `<div class="travel-progress"><span style="width:${p.toFixed(1)}%"></span></div>`;
   }
 
-  function benefitTimeline(rows, benefit){
+  function benefitTimeline(index, benefit){
     const now=new Date();
-    return rows.filter(r=>norm(r.Beneficio)===norm(benefit)&&!norm(r['Período']).includes('total')).map(r=>{
+    return (index.get(norm(benefit))?.periods||[]).map(r=>{
       const assigned=num(r['Causado / asignado']), used=num(r.Usado), balance=num(r.Saldo), current=inRange(r,now);
       return `<div class="benefit-period${current?' current':''}">
         <div class="benefit-period-top"><div><strong>${esc(r['Período']||'—')}</strong><span>${esc(dateLabel(r.Inicio))} → ${esc(dateLabel(r.Fin))}</span></div><span class="travel-chip ${current?'active':''}">${current?'Actual':esc(r['Regla / estado']||'Histórico')}</span></div>
@@ -138,21 +202,21 @@
     }).join('');
   }
 
-  function travelFilters(rows){
+  function travelFilters(data){
+    const values=data.filterOptions;
     return `<div class="travel-filters">
-      <div><label>Período laboral</label><select data-travel-filter="period">${options(rows.map(r=>r['Período laboral']),local.period,'Todos')}</select></div>
-      <div><label>Tipo</label><select data-travel-filter="type">${options(rows.map(r=>r['Tipo de registro']),local.type,'Todos')}</select></div>
-      <div><label>Financiación</label><select data-travel-filter="funding">${options(rows.map(r=>r['Financiación']),local.funding,'Todas')}</select></div>
-      <div><label>Estado</label><select data-travel-filter="status">${options(rows.map(r=>r.Estado),local.status,'Todos')}</select></div>
+      <div><label>Período laboral</label><select data-travel-filter="period">${options(values.period,local.period,'Todos')}</select></div>
+      <div><label>Tipo</label><select data-travel-filter="type">${options(values.type,local.type,'Todos')}</select></div>
+      <div><label>Financiación</label><select data-travel-filter="funding">${options(values.funding,local.funding,'Todas')}</select></div>
+      <div><label>Estado</label><select data-travel-filter="status">${options(values.status,local.status,'Todos')}</select></div>
       <div class="travel-search"><label>Buscar</label><input data-travel-search value="${esc(local.search)}" placeholder="Destino, pasajero, origen…"></div>
       <button type="button" class="travel-reset" data-travel-reset>Limpiar</button>
     </div>`;
   }
 
   function historyTable(rows){
-    const sorted=rows.slice().sort((a,b)=>(date(b['Fecha salida'])?.getTime()||0)-(date(a['Fecha salida'])?.getTime()||0));
-    if(!sorted.length)return '<div class="travel-empty">No hay registros con estos filtros.</div>';
-    return `<div class="travel-table-wrap"><table class="travel-table"><thead><tr><th>Salida</th><th>Tipo</th><th>Pasajero</th><th>Ruta</th><th>Financiación</th><th>Período</th><th>Días</th><th>Estado</th><th>Beneficio Fibrazo</th></tr></thead><tbody>${sorted.map(r=>{
+    if(!rows.length)return '<div class="travel-empty">No hay registros con estos filtros.</div>';
+    return `<div class="travel-table-wrap"><table class="travel-table"><thead><tr><th>Salida</th><th>Tipo</th><th>Pasajero</th><th>Ruta</th><th>Financiación</th><th>Período</th><th>Días</th><th>Estado</th><th>Beneficio Fibrazo</th></tr></thead><tbody>${rows.map(r=>{
       const contractual=norm(r['Financiación']).includes('contractual');
       const route=[r.Origen,r.Destino].filter(Boolean).join(' → ');
       const days=r['Días hábiles']||r['Días calendario']||'—';
@@ -174,22 +238,20 @@
   }
 
   function render(data){
-    const {trips,benefits,movements}=data;
-    const airfareCurrent=currentBenefit(benefits,'Pasajes Argentina');
-    const airfareTotal=totalBenefit(benefits,'Pasajes Argentina');
-    const vacationTotal=totalBenefit(benefits,'Vacaciones');
+    const airfareCurrent=currentBenefit(data.benefitIndex,'Pasajes Argentina');
+    const airfareTotal=totalBenefit(data.benefitIndex,'Pasajes Argentina');
+    const vacationTotal=totalBenefit(data.benefitIndex,'Vacaciones');
     const annualAssigned=num(airfareCurrent['Causado / asignado']);
     const annualUsed=num(airfareCurrent.Usado);
     const annualBalance=num(airfareCurrent.Saldo);
     const accumulatedBalance=num(airfareTotal.Saldo);
-    const vacationRows=vacationRowsOnly(trips);
-    const vacationTaken=vacationRows.reduce((s,r)=>s+num(r['Días hábiles']),0);
+    const vacationTaken=data.vacationRows.reduce((s,r)=>s+num(r['Días hábiles']),0);
     const vacationAccrued=num(vacationTotal['Causado / asignado']);
     const vacationBalance=num(vacationTotal.Saldo)||Math.max(0,vacationAccrued-vacationTaken);
-    const needsVacationReview=vacationRows.some(r=>/revis|valid/i.test(String(r.Observaciones||'')));
-    const currentTrip=tripRowsOnly(trips).find(r=>norm(r.Estado).includes('curso')) || tripRowsOnly(trips).slice().sort((a,b)=>(date(b['Fecha salida'])?.getTime()||0)-(date(a['Fecha salida'])?.getTime()||0))[0];
-    const exp=currentTrip?expenseSummary(currentTrip,movements):null;
-    const filtered=filterTrips(trips);
+    const needsVacationReview=data.vacationRows.some(r=>/revis|valid/i.test(String(r.Observaciones||'')));
+    const currentTrip=data.tripRows.find(r=>norm(r.Estado).includes('curso')) || data.tripRows[0];
+    const exp=currentTrip?expenseSummary(currentTrip,data.expenseIndex):null;
+    const filtered=filterTrips(data.sortedTrips);
 
     return `<div class="travel-dashboard">
       <section class="travel-hero">
@@ -200,7 +262,7 @@
       <div class="travel-kpi-grid">
         ${kpi('Pasajes del período',`${number(annualBalance,0)} disponibles`,`${number(annualUsed,0)} usados de ${number(annualAssigned,0)} asignados`,'blue')}
         ${kpi('Pasajes acumulados',`${number(accumulatedBalance,0)} disponibles`,`${number(num(airfareTotal.Usado),0)} usados de ${number(num(airfareTotal['Causado / asignado']),0)} asignados`,'green')}
-        ${kpi('Vacaciones tomadas',`${number(vacationTaken)} días`,`Registrados en ${vacationRows.length} período(s)`,'gold')}
+        ${kpi('Vacaciones tomadas',`${number(vacationTaken)} días`,`Registrados en ${data.vacationRows.length} período(s)`,'gold')}
         ${kpi('Vacaciones pendientes',`${number(vacationBalance)} días`,`Saldo estimado al 30/08/2026`,'purple')}
       </div>
 
@@ -209,7 +271,7 @@
       <div class="travel-main-grid">
         <section class="travel-card">
           <div class="travel-card-head"><div><span>PASAJES FIBRAZO</span><strong>Uso por período laboral</strong><small>Asignados, usados y disponibles</small></div></div>
-          <div class="benefit-timeline">${benefitTimeline(benefits,'Pasajes Argentina')}</div>
+          <div class="benefit-timeline">${benefitTimeline(data.benefitIndex,'Pasajes Argentina')}</div>
         </section>
         <section class="travel-card vacation-card">
           <div class="travel-card-head"><div><span>VACACIONES</span><strong>${number(vacationBalance)} días pendientes</strong><small>${number(vacationAccrued)} causados estimados · ${number(vacationTaken)} registrados como tomados</small></div></div>
@@ -222,8 +284,8 @@
       ${expenseDetails(exp)}
 
       <section class="travel-card history-card">
-        <div class="travel-card-head history-head"><div><span>HISTORIAL</span><strong>Vacaciones y viajes</strong><small>${filtered.length} de ${trips.length} registros visibles</small></div></div>
-        ${travelFilters(trips)}
+        <div class="travel-card-head history-head"><div><span>HISTORIAL</span><strong>Vacaciones y viajes</strong><small>${filtered.length} de ${data.trips.length} registros visibles</small></div></div>
+        ${travelFilters(data)}
         ${historyTable(filtered)}
       </section>
     </div>`;
@@ -254,17 +316,17 @@
     if(activeView()!=='viajes'){ if(globalFilters)globalFilters.hidden=false; return; }
     if(globalFilters)globalFilters.hidden=true;
     const root=document.getElementById('viewRoot'); if(!root)return;
-    const get=window.__PANEL_GET_SOURCE_VALUES__; if(typeof get!=='function')return;
+    const getData=window.__PANEL_GET_BACKEND_DATA__; if(typeof getData!=='function')return;
     const v=++version;
     root.innerHTML='<div class="travel-loading">Actualizando vacaciones y viajes…</div>';
     try{
-      const [tripValues,benefitValues,movementValues]=await Promise.all([
-        get(FINANCE_ID,RANGES.trips,false),
-        get(FINANCE_ID,RANGES.benefits,false),
-        get(FINANCE_ID,RANGES.movements,false)
-      ]);
+      const payload=await getData(false);
       if(v!==version||activeView()!=='viajes'||!root.isConnected)return;
-      cache={trips:parseRows(tripValues),benefits:parseRows(benefitValues),movements:parseRows(movementValues)};
+      cache=prepareData(
+        rowsFromPayload(payload,RANGES.trips),
+        rowsFromPayload(payload,RANGES.benefits),
+        rowsFromPayload(payload,RANGES.movements)
+      );
       root.innerHTML=render(cache); bind(root);
     }catch(error){
       console.error('Travel dashboard:',error);
