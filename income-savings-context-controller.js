@@ -20,8 +20,13 @@
 
   async function rows(force=false){
     if(cache&&!force)return cache;
-    const get=window.__PANEL_GET_SOURCE_VALUES__;if(typeof get!=='function')return[];
-    cache=parseRows(await get(FINANCE_ID,'Flujo_Ahorro!A:P',force));return cache;
+    const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return[];
+    const payload=await getData(force);
+    const range='Flujo_Ahorro!A:P',key=`${FINANCE_ID}|${range}`;
+    if(payload?.sourceErrors?.[key]){cache=[];return cache;}
+    const cachedRows=window.__PANEL_GET_CACHED_ROWS__;
+    cache=typeof cachedRows==='function'?cachedRows(payload,FINANCE_ID,range):parseRows(payload?.sources?.[key]||[]);
+    return cache;
   }
 
   function ensureStyle(){if(document.getElementById('incomeSavingsContextStyle'))return;const s=document.createElement('style');s.id='incomeSavingsContextStyle';s.textContent=`.income-year-plan{display:grid;gap:10px}.income-year-plan-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}.income-year-plan-head strong{font-size:13px}.income-year-plan-head span{display:block;color:#71839a;font-size:10px;margin-top:4px}.income-year-plan-state{font-size:9px;font-weight:800;border:1px solid var(--border);border-radius:99px;padding:5px 8px;color:#8fb4ea;white-space:nowrap}.income-year-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.income-year-card{background:#0d1520;border:1px solid var(--border-soft);border-radius:11px;padding:10px;min-width:0}.income-year-card span{display:block;color:#6d7f96;font-size:8px;text-transform:uppercase;letter-spacing:.055em;font-weight:800}.income-year-card strong{display:block;margin-top:5px;font-size:16px;color:#eef5ff}.income-year-card small{display:block;margin-top:4px;color:#71839a;font-size:9px;line-height:1.35}.income-year-card.warn strong{color:#ffcb68}.income-year-card.bad strong{color:#ff8290}.income-year-card.good strong{color:#79e1ab}.income-year-note{color:#7d8fa7;font-size:9px;line-height:1.45}.income-year-note b{color:#bfd0e6}@media(max-width:1100px){.income-year-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:720px){.income-year-grid{grid-template-columns:1fr 1fr}.income-year-plan-head{align-items:flex-start;flex-direction:column}}@media(max-width:480px){.income-year-grid{grid-template-columns:1fr}}`;document.head.appendChild(s);}
@@ -30,7 +35,9 @@
     if(activeView()!=='ingresos')return;
     const root=document.getElementById('viewRoot');if(!root)return;
     const year=selectedYear();
-    const yearRows=data.map(r=>({...r,key:monthKey(r.Mes)})).filter(r=>r.key.startsWith(year+'-')).sort((a,b)=>a.key.localeCompare(b.key));
+    const yearRows=[];
+    data.forEach(row=>{const key=monthKey(row.Mes);if(key.startsWith(year+'-'))yearRows.push({...row,key});});
+    yearRows.sort((a,b)=>a.key.localeCompare(b.key));
     if(!yearRows.length)return;
     const actual=yearRows.filter(r=>!norm(r.Estado).includes('proyecc'));
     const latest=actual.at(-1)||yearRows[0];
