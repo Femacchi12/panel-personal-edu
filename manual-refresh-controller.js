@@ -42,11 +42,13 @@
     setRefreshingState(true);
 
     try {
+      const forceBackendRefresh = window.__PANEL_FORCE_BACKEND_REFRESH__;
       const getBackendData = window.__PANEL_GET_BACKEND_DATA__;
-      if (typeof getBackendData !== 'function') throw new Error('Adaptador central no disponible para actualizar');
+      if (typeof forceBackendRefresh === 'function') await forceBackendRefresh();
+      else if (typeof getBackendData === 'function') await getBackendData(true);
+      else throw new Error('Adaptador central no disponible para actualizar');
 
-      await getBackendData(true);
-      document.dispatchEvent(new CustomEvent('panel:backend-refresh-requested', { detail: { forced: true } }));
+      document.dispatchEvent(new CustomEvent('panel:backend-refresh-requested', { detail: { forced: true, alreadyRefreshed: true } }));
       if (typeof window.__PANEL_RELOAD_DATA__ === 'function') await window.__PANEL_RELOAD_DATA__(false);
       document.dispatchEvent(new CustomEvent('panel:manual-refresh-complete'));
     } catch (error) {
