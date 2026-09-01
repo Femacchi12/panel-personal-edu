@@ -31,10 +31,12 @@
 
     try {
       const payload = await getData(false);
-      const total = Object.keys(payload?.sources || {}).length;
+      const sourceKeys = Object.keys(payload?.sources || {});
       const sourceErrors = payload?.sourceErrors || {};
       const failedKeys = Object.keys(sourceErrors);
-      const failed = failedKeys.length;
+      const allKeys = new Set([...sourceKeys, ...failedKeys]);
+      const total = allKeys.size;
+      const failed = failedKeys.filter(key => allKeys.has(key)).length;
       const ok = Math.max(0, total - failed);
       const at = timeLabel(payload?.generatedAt);
 
@@ -42,7 +44,8 @@
         writeText(text, `Sincronizado parcial · ${ok}/${total}${at ? ` · ${at}` : ''}`);
         dot?.classList.remove('ok');
         dot?.classList.add('error');
-        text.title = `Fuentes pendientes: ${failedKeys.map(sourceLabel).join(', ')}. El resto del payload está disponible.`;
+        const labels = [...new Set(failedKeys.map(sourceLabel))];
+        text.title = `Fuentes pendientes: ${labels.join(', ')}. El resto del payload está disponible.`;
       } else {
         writeText(text, `Sincronizado · ${total} fuentes${at ? ` · ${at}` : ''}`);
         dot?.classList.add('ok');
