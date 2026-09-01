@@ -56,6 +56,19 @@
 
   function selectedGlobal(key){return [...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)].map(x=>String(x.dataset.value||'').trim()).filter(Boolean);}
 
+  function currentFilterState(){
+    const pay=window.__PAYMENT_FILTER_STATE__;
+    const view=activeView();
+    return {
+      years:new Set(selectedGlobal('year')),
+      months:new Set(selectedGlobal('month')),
+      categories:new Set(selectedGlobal('category')),
+      subcategories:new Set(selectedGlobal('subcategory')),
+      accounts:new Set(pay?.view===view?(pay.account||[]):[]),
+      methods:new Set(pay?.view===view?(pay.method||[]):[])
+    };
+  }
+
   function monthKeyFromText(value){
     const s=norm(value);
     let m=s.match(/^(20\d{2})-(\d{1,2})/); if(m)return `${m[1]}-${String(+m[2]).padStart(2,'0')}`;
@@ -85,28 +98,25 @@
   }
 
   function method(row){
+    if(typeof window.FinancePurchasePolicy?.method==='function')return window.FinancePurchasePolicy.method(row);
     const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;
     const n=norm(row['Cuenta / Tarjeta']);
     if(n.includes('credito'))return 'Crédito';if(n.includes('transferencia'))return 'Transferencia';if(n.includes('debito'))return 'Débito';if(n.includes('efectivo'))return 'Efectivo';
     return num(row.Cuotas)>0&&(n.includes('nu')||n.includes('arq'))?'Crédito':'Sin especificar';
   }
 
-  function movementMatches(row,overrideMonth=null){
+  function movementMatches(row,state,overrideMonth=null){
     if(!isActualExpense(row))return false;
-    const years=selectedGlobal('year'),months=selectedGlobal('month'),cats=selectedGlobal('category'),subs=selectedGlobal('subcategory');
     const mk=rowMonth(row),parts=mk.split('-');
     if(overrideMonth){if(mk!==overrideMonth)return false;}
     else {
-      if(years.length&&(!parts[0]||!years.includes(parts[0])))return false;
-      if(months.length&&(!parts[1]||!months.includes(String(+parts[1]))))return false;
+      if(state.years.size&&(!parts[0]||!state.years.has(parts[0])))return false;
+      if(state.months.size&&(!parts[1]||!state.months.has(String(+parts[1]))))return false;
     }
-    if(cats.length&&!cats.includes(String(row['Categoría']||'')))return false;
-    if(subs.length&&!subs.includes(String(row['Subcategoría']||'')))return false;
-    const pay=window.__PAYMENT_FILTER_STATE__;
-    if(pay?.view===activeView()){
-      if(pay.account?.length&&!pay.account.includes(account(row)))return false;
-      if(pay.method?.length&&!pay.method.includes(method(row)))return false;
-    }
+    if(state.categories.size&&!state.categories.has(String(row['Categoría']||'')))return false;
+    if(state.subcategories.size&&!state.subcategories.has(String(row['Subcategoría']||'')))return false;
+    if(state.accounts.size&&!state.accounts.has(account(row)))return false;
+    if(state.methods.size&&!state.methods.has(method(row)))return false;
     return true;
   }
 
@@ -200,7 +210,7 @@
     const targetRate=num(String(row['Meta de ahorro']||'').replace('%',''))/100;
     const projectedTarget=projIncome*targetRate;
     const projectedGap=projSaving-projectedTarget;
-    const isCurrent=n.includes('curso'),isProjection=n.includes('proyecc'),isClosed=n.includes('cerrad');
+    const isCurrent=n.includes('curso'),isProjection=n.includes('proyecc');
     const tone=isCurrent?'warn':isProjection?'':'good';
     const h=host();if(!h)return;
     const title=isCurrent?'Mes en curso: separa lo parcial del cierre esperado':isProjection?'Mes proyectado':'Mes cerrado: resultado definitivo';
@@ -212,41 +222,49 @@
     </div>${isCurrent?`<div class="finance-context-note"><b>Importante:</b> el ahorro real de ${esc(money(realSaving))} es parcial. Para decidir sobre el mes conviene mirar el cierre proyectado de ${esc(money(projSaving))}, no tratar el saldo de hoy como resultado definitivo.</div>`:''}`;
   }
 
-  function comparablePreviousKey(){
-    const years=selectedGlobal('year'),months=selectedGlobal('month');
-    const n=today();let y=n.getFullYear(),m=n.getMonth()+1;
-    if(years.length===1&&months.length===1){y=+years[0];m=+months[0];}
-    const d=new Date(y,m-2,1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-  }
-
-  function currentSelectedKey(){
-    const years=selectedGlobal('year'),months=selectedGlobal('month');
-    if(years.length===1&&months.length===1)return `${years[0]}-${String(+months[0]).padStart(2,'0')}`;
+  function selectedKeyFromState(state){
+    if(state.years.size===1&&state.months.size===1)return `${[...state.years][0]}-${String(+[...state.months][0]).padStart(2,'0')}`;
     return '';
   }
 
+  function previousKeyFor(selectedKey){
+    const match=String(selectedKey).match(/^(20\d{2})-(\d{2})$/);if(!match)return'';
+    const d=new Date(+match[1],+match[2]-2,1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  }
+
   function renderExpenses(data){
-    const rows=(data.movements||[]).filter(r=>movementMatches(r));
-    const total=rows.reduce((s,r)=>s+num(r['Monto COP']||r['Monto original']),0);
-    const days=new Set(rows.map(r=>String(r['Fecha real']||'')).filter(Boolean)).size;
-    const biggest=rows.slice().sort((a,b)=>num(b['Monto COP'])-num(a['Monto COP']))[0]||{};
-    const fixed=rows.filter(r=>/^(si|sí|true|1)$/i.test(String(r['Es fijo']||''))).reduce((s,r)=>s+num(r['Monto COP']),0);
-    const credit=rows.filter(r=>norm(method(r))==='credito').reduce((s,r)=>s+num(r['Monto COP']),0);
+    const state=currentFilterState();
+    const movements=data.movements||[];
+    const selectedKey=selectedKeyFromState(state);
+    const current=today(),currentKey=`${current.getFullYear()}-${String(current.getMonth()+1).padStart(2,'0')}`;
+    const compareKey=selectedKey?previousKeyFor(selectedKey):'';
+    const selectedDate=selectedKey===currentKey?current.getDate():31;
+    const days=new Set();
+    let total=0,fixed=0,credit=0,count=0,prevTotal=0,biggest=null,biggestAmount=0;
+
+    movements.forEach(row=>{
+      if(movementMatches(row,state)){
+        const amount=num(row['Monto COP']||row['Monto original']);
+        total+=amount;count+=1;
+        const day=String(row['Fecha real']||'').trim();if(day)days.add(day);
+        if(amount>biggestAmount){biggestAmount=amount;biggest=row;}
+        if(/^(si|sí|true|1)$/i.test(String(row['Es fijo']||'')))fixed+=amount;
+        if(norm(method(row))==='credito')credit+=amount;
+      }
+      if(compareKey&&movementMatches(row,state,compareKey)){
+        const d=date(row['Fecha real']||row['Fecha registrada']);
+        if(d&&d.getDate()<=selectedDate)prevTotal+=num(row['Monto COP']||row['Monto original']);
+      }
+    });
 
     let compare='Sin comparación automática',compareTone='';
-    const selectedKey=currentSelectedKey();
-    if(selectedKey){
-      const prevKey=comparablePreviousKey(),selectedDate=selectedKey===`${today().getFullYear()}-${String(today().getMonth()+1).padStart(2,'0')}`?today().getDate():31;
-      const prev=(data.movements||[]).filter(r=>movementMatches(r,prevKey)).filter(r=>{const d=date(r['Fecha real']||r['Fecha registrada']);return d&&d.getDate()<=selectedDate;});
-      const prevTotal=prev.reduce((s,r)=>s+num(r['Monto COP']||r['Monto original']),0);
-      if(prevTotal){const delta=(total-prevTotal)/prevTotal*100;compare=`${delta>=0?'+':''}${number(delta,1)}% vs. mes anterior a igual día`;compareTone=delta>10?'alert':delta<0?'positive':'';}
-    }
+    if(prevTotal){const delta=(total-prevTotal)/prevTotal*100;compare=`${delta>=0?'+':''}${number(delta,1)}% vs. mes anterior a igual día`;compareTone=delta>10?'alert':delta<0?'positive':'';}
 
     const h=host();if(!h)return;
-    h.innerHTML=`<div class="finance-context-head"><div><span>LECTURA DEL GASTO</span><strong>Resumen del período filtrado</strong><small>Los cálculos usan únicamente movimientos reales del maestro oficial.</small></div><div class="finance-context-state">${esc(`${rows.length} movimientos`)}</div></div><div class="finance-context-grid">
+    h.innerHTML=`<div class="finance-context-head"><div><span>LECTURA DEL GASTO</span><strong>Resumen del período filtrado</strong><small>Los cálculos usan únicamente movimientos reales del maestro oficial.</small></div><div class="finance-context-state">${esc(`${count} movimientos`)}</div></div><div class="finance-context-grid">
       ${item('Total gastado',money(total),compare,compareTone)}
-      ${item('Promedio por día',days?money(total/days):money(0),`${days} día(s) con gasto`)}
-      ${item('Mayor gasto',biggest['Monto COP']?money(num(biggest['Monto COP'])):'—',biggest['Descripción / Comercio']||'Sin movimientos')}
+      ${item('Promedio por día',days.size?money(total/days.size):money(0),`${days.size} día(s) con gasto`)}
+      ${item('Mayor gasto',biggest?money(biggestAmount):'—',biggest?.['Descripción / Comercio']||'Sin movimientos')}
       ${item('Composición',`${number(total?fixed/total*100:0,1)}% fijo`,`${number(total?credit/total*100:0,1)}% del gasto fue a crédito`,credit/Math.max(total,1)>.5?'alert':'')}
     </div>`;
   }
