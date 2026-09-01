@@ -51,7 +51,11 @@
     return getData(force);
   }
 
-  const sourceRows = (data, range) => parseRows(data?.sources?.[`${FINANCE_ID}|${range}`] || []);
+  const sourceRows = (data, range) => {
+    const cached = window.__PANEL_GET_CACHED_ROWS__;
+    if (typeof cached === 'function') return cached(data, FINANCE_ID, range);
+    return parseRows(data?.sources?.[`${FINANCE_ID}|${range}`] || []);
+  };
 
   function ensureFilters() {
     if (activeView() !== 'flujo') return;
