@@ -120,18 +120,24 @@
     return true;
   }
 
-  async function source(range,force=false){
-    const get=window.__PANEL_GET_SOURCE_VALUES__;
-    if(typeof get!=='function')return[];
-    return parseRows(await get(FINANCE_ID,range,force));
+  function rowsFromPayload(payload,range){
+    const cached=window.__PANEL_GET_CACHED_ROWS__;
+    if(typeof cached==='function')return cached(payload,FINANCE_ID,range);
+    return parseRows(payload?.sources?.[`${FINANCE_ID}|${range}`]||[]);
   }
 
   async function load(force=false){
     if(cache&&!force)return cache;
-    const [cards,cycles,flow,movements]=await Promise.all([
-      source(RANGES.cards,force),source(RANGES.cycles,force),source(RANGES.flow,force),source(RANGES.movements,force)
-    ]);
-    cache={cards,cycles,flow,movements};return cache;
+    const getData=window.__PANEL_GET_BACKEND_DATA__;
+    if(typeof getData!=='function')return {cards:[],cycles:[],flow:[],movements:[]};
+    const payload=await getData(force);
+    cache={
+      cards:rowsFromPayload(payload,RANGES.cards),
+      cycles:rowsFromPayload(payload,RANGES.cycles),
+      flow:rowsFromPayload(payload,RANGES.flow),
+      movements:rowsFromPayload(payload,RANGES.movements)
+    };
+    return cache;
   }
 
   function injectStyle(){
@@ -160,28 +166,38 @@
     let out=safe(n.getFullYear(),n.getMonth(),d);if(out<n)out=safe(n.getFullYear(),n.getMonth()+1,d);return out;
   }
 
-  function latestClosedCycle(cycles,id){
-    const n=today();return cycles.filter(r=>String(r.Tarjeta||'')===id&&date(r['Fecha corte'])&&date(r['Fecha corte'])<=n).sort((a,b)=>date(b['Fecha corte'])-date(a['Fecha corte']))[0]||null;
+  function latestClosedCycleMap(cycles){
+    const now=today(),map=new Map();
+    (cycles||[]).forEach(row=>{
+      const id=String(row.Tarjeta||''),cut=date(row['Fecha corte']);
+      if(!id||!cut||cut>now)return;
+      const previous=map.get(id);
+      if(!previous||cut>previous.cut)map.set(id,{row,cut});
+    });
+    return map;
   }
 
   function renderCards(data){
     const activeId=String(window.__PANEL_ACTIVE_CARD_ID__||'');
     const cards=(data.cards||[]).filter(r=>!activeId||String(r['ID tarjeta']||'')===activeId);
-    const used=cards.reduce((s,r)=>s+num(r['Cupo usado']),0);
-    const real=cards.reduce((s,r)=>s+num(r['Cupo total actual']),0);
-    const controls=cards.map(r=>({row:r,limit:num(r['Límite personal de gasto'])||num(r['Cupo total actual']),used:num(r['Cupo usado'])}));
-    const worst=controls.slice().sort((a,b)=>(b.limit?b.used/b.limit:0)-(a.limit?a.used/a.limit:0))[0];
-    const worstPct=worst?.limit?worst.used/worst.limit*100:0;
-    const alertCount=controls.filter(x=>x.limit&&x.used/x.limit>=.85).length;
-
-    const dues=[];
-    cards.forEach(r=>{const id=String(r['ID tarjeta']||'');const c=latestClosedCycle(data.cycles||[],id);const due=c&&date(c['Fecha vencimiento']);const paid=norm(c?.Pagado);if(due&&due>=today()&&!['si','sí','pagado','pago','true','yes'].includes(paid)){dues.push({date:due,amount:num(c['Pago total']||c['Pago mínimo']),label:`${r.Emisor||'Tarjeta'} ${r.Titular||''}`.trim()});}});
+    const cycleMap=latestClosedCycleMap(data.cycles||[]);
+    let used=0,real=0,alertCount=0,worst=null,worstPct=0;
+    const dues=[],cuts=[];
+    cards.forEach(r=>{
+      const cardUsed=num(r['Cupo usado']),limit=num(r['Límite personal de gasto'])||num(r['Cupo total actual']),realLimit=num(r['Cupo total actual']);
+      used+=cardUsed;real+=realLimit;
+      const ratio=limit?cardUsed/limit:0;
+      if(ratio>=.85)alertCount+=1;
+      if(!worst||ratio>worstPct/100){worst={row:r,limit,used:cardUsed};worstPct=ratio*100;}
+      const id=String(r['ID tarjeta']||''),cycle=cycleMap.get(id)?.row||null,due=cycle&&date(cycle['Fecha vencimiento']),paid=norm(cycle?.Pagado);
+      if(due&&due>=today()&&!['si','sí','pagado','pago','true','yes'].includes(paid))dues.push({date:due,amount:num(cycle['Pago total']||cycle['Pago mínimo']),label:`${r.Emisor||'Tarjeta'} ${r.Titular||''}`.trim()});
+      const cut=nextDateForDay(r['Día corte']);if(cut)cuts.push({date:cut,label:`${r.Emisor||'Tarjeta'} ${r.Titular||''}`.trim()});
+    });
     dues.sort((a,b)=>a.date-b.date);
+    cuts.sort((a,b)=>a.date-b.date);
     const firstDue=dues[0];
     const sameDue=firstDue?dues.filter(x=>x.date.getTime()===firstDue.date.getTime()):[];
     const dueTotal=sameDue.reduce((s,x)=>s+x.amount,0);
-
-    const cuts=cards.map(r=>({date:nextDateForDay(r['Día corte']),label:`${r.Emisor||'Tarjeta'} ${r.Titular||''}`.trim()})).filter(x=>x.date).sort((a,b)=>a.date-b.date);
     const cut=cuts[0];
     const state=alertCount?`${alertCount} en alerta`:'Controlado';
     const stateTone=worstPct>=100?'bad':worstPct>=85?'warn':'good';
