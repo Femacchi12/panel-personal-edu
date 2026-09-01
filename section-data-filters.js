@@ -9,7 +9,6 @@
   const DOCUMENTS_ID = cfg.documentsSpreadsheetId;
   const HEALTH_ID = cfg.healthSpreadsheetId;
   const localState = {};
-  const parsedRowsCache = new WeakMap();
   let lastView = null;
   let syncVersion = 0;
 
@@ -114,11 +113,12 @@
   }
 
   function parsedRowsFor(payload,key){
-    if(!payload||typeof payload!=='object')return parseRows(payload?.sources?.[key]||[]);
-    let cache=parsedRowsCache.get(payload);
-    if(!cache){cache=new Map();parsedRowsCache.set(payload,cache);}
-    if(!cache.has(key))cache.set(key,parseRows(payload?.sources?.[key]||[]));
-    return cache.get(key);
+    const split=String(key).indexOf('|');
+    const spreadsheetId=split>=0?key.slice(0,split):'';
+    const range=split>=0?key.slice(split+1):'';
+    const cached=window.__PANEL_GET_CACHED_ROWS__;
+    if(typeof cached==='function'&&spreadsheetId&&range)return cached(payload,spreadsheetId,range);
+    return parseRows(payload?.sources?.[key]||[]);
   }
 
   async function getOptions(def,payload=null){
