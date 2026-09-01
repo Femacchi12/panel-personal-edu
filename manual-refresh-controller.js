@@ -42,24 +42,10 @@
     setRefreshingState(true);
 
     try {
-      window.__PANEL_RESET_BACKEND_DATA__?.();
-      const getIdToken = window.__PANEL_GET_ID_TOKEN__;
-      if (typeof getIdToken !== 'function') throw new Error('Sesión no disponible para actualizar');
-      const token = await getIdToken(false);
-      if (!token) throw new Error('No se pudo validar la sesión');
+      const getBackendData = window.__PANEL_GET_BACKEND_DATA__;
+      if (typeof getBackendData !== 'function') throw new Error('Adaptador central no disponible para actualizar');
 
-      const response = await window.fetch(`${apiBaseUrl}/api/data?refresh=1`, {
-        method: 'GET',
-        headers: { Authorization: `Bearer ${token}` },
-        cache: 'no-store'
-      });
-      if (!response.ok) {
-        const body = await response.text();
-        throw new Error(`${response.status} ${response.statusText}: ${body}`);
-      }
-      await response.json();
-
-      window.__PANEL_RESET_BACKEND_DATA__?.();
+      await getBackendData(true);
       document.dispatchEvent(new CustomEvent('panel:backend-refresh-requested', { detail: { forced: true } }));
       if (typeof window.__PANEL_RELOAD_DATA__ === 'function') await window.__PANEL_RELOAD_DATA__(false);
       document.dispatchEvent(new CustomEvent('panel:manual-refresh-complete'));
