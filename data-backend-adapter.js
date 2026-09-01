@@ -64,14 +64,17 @@
   function jsonResponse(payload,status=200,statusText='OK'){return new Response(JSON.stringify(payload),{status,statusText,headers:{'Content-Type':'application/json'}});}
   function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const header=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(row=>row?.some(v=>String(v??'').trim()!=='')).map(row=>Object.fromEntries(header.map((name,index)=>[name||`Col ${index+1}`,row?.[index]??''])));}
   function rowsToMatrix(header,rows){return[header,...rows.map(row=>header.map(name=>row[name]??''))];}
-  function sourceKey(range){return `${financeId}|${range}`;}
-  function cachedRows(payload,range){
-    if(!payload||typeof payload!=='object')return parseRows(payload?.sources?.[sourceKey(range)]||[]);
+  function payloadSourceKey(spreadsheetId,range){return `${spreadsheetId}|${range}`;}
+  function sourceKey(range){return payloadSourceKey(financeId,range);}
+  function cachedRows(payload,range,spreadsheetId=financeId){
+    const key=payloadSourceKey(spreadsheetId,range);
+    if(!payload||typeof payload!=='object')return parseRows(payload?.sources?.[key]||[]);
     let cache=parsedRowsCache.get(payload);
     if(!cache){cache=new Map();parsedRowsCache.set(payload,cache);}
-    if(!cache.has(range))cache.set(range,parseRows(payload?.sources?.[sourceKey(range)]||[]));
-    return cache.get(range);
+    if(!cache.has(key))cache.set(key,parseRows(payload?.sources?.[key]||[]));
+    return cache.get(key);
   }
+  window.__PANEL_GET_CACHED_ROWS__=(payload,spreadsheetId,range)=>cachedRows(payload,range,spreadsheetId);
   function parseNumber(value){
     if(typeof value==='number')return Number.isFinite(value)?value:0;
     let s=String(value??'').trim().replace(/[^\d,.\-]/g,'');
