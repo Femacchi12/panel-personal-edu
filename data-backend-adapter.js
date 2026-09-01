@@ -30,7 +30,8 @@
       if(typeof getIdToken!=='function')throw new Error('No hay sesión Firebase disponible');
       const idToken=await getIdToken(false);
       if(!idToken)throw new Error('No se pudo obtener el token de sesión');
-      const response=await originalFetch(`${apiBaseUrl}/api/data`,{method:'GET',headers:{Authorization:`Bearer ${idToken}`},cache:'no-store'});
+      const url=`${apiBaseUrl}/api/data${force?'?refresh=1':''}`;
+      const response=await originalFetch(url,{method:'GET',headers:{Authorization:`Bearer ${idToken}`},cache:'no-store'});
       if(!response.ok){const body=await response.text();throw new Error(`${response.status} ${response.statusText}: ${body}`);}
       const payload=await response.json();
       document.dispatchEvent(new CustomEvent('panel:backend-data-loaded',{detail:{generatedAt:payload?.generatedAt||'',sourceErrors:payload?.sourceErrors||{}}}));
@@ -208,10 +209,4 @@
     const spreadsheetId=decodeURIComponent(match[1]),range=decodeURIComponent(match[2]);
     try{return jsonResponse({range,majorDimension:'ROWS',values:await getSourceValues(spreadsheetId,range,false)});}catch(error){return jsonResponse({error:{message:String(error?.message||error)}},502,'Backend Error');}
   };
-
-  document.addEventListener('click',event=>{
-    if(!event.isTrusted||!event.target.closest?.('#refreshBtn'))return;
-    resetBackendCache();
-    document.dispatchEvent(new CustomEvent('panel:backend-refresh-requested'));
-  },true);
 })();
