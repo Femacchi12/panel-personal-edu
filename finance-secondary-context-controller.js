@@ -22,8 +22,24 @@
   function number(v,d=1){return new Intl.NumberFormat('es-CO',{minimumFractionDigits:0,maximumFractionDigits:d}).format(Number(v)||0);}
   function dateLabel(d){const x=d instanceof Date?d:date(d);return x?new Intl.DateTimeFormat('es-CO',{day:'2-digit',month:'short',year:'numeric'}).format(x):'—';}
 
-  async function source(range,force=false){const get=window.__PANEL_GET_SOURCE_VALUES__;if(typeof get!=='function')return[];return parseRows(await get(FINANCE_ID,range,force));}
-  async function load(force=false){if(cache&&!force)return cache;const [services,pension,installments,cycles]=await Promise.all([source(RANGES.services,force),source(RANGES.pension,force),source(RANGES.installments,force),source(RANGES.cycles,force)]);cache={services,pension,installments,cycles};return cache;}
+  function rowsFromPayload(payload,range){
+    const cached=window.__PANEL_GET_CACHED_ROWS__;
+    if(typeof cached==='function')return cached(payload,FINANCE_ID,range);
+    return parseRows(payload?.sources?.[`${FINANCE_ID}|${range}`]||[]);
+  }
+  async function load(force=false){
+    if(cache&&!force)return cache;
+    const getData=window.__PANEL_GET_BACKEND_DATA__;
+    if(typeof getData!=='function')return {services:[],pension:[],installments:[],cycles:[]};
+    const payload=await getData(force);
+    cache={
+      services:rowsFromPayload(payload,RANGES.services),
+      pension:rowsFromPayload(payload,RANGES.pension),
+      installments:rowsFromPayload(payload,RANGES.installments),
+      cycles:rowsFromPayload(payload,RANGES.cycles)
+    };
+    return cache;
+  }
 
   function style(){if(document.getElementById('financeSecondaryContextStyles'))return;const s=document.createElement('style');s.id='financeSecondaryContextStyles';s.textContent=`
     .secondary-context{margin:0 0 14px;border:1px solid var(--border-soft);background:linear-gradient(180deg,rgba(15,24,38,.88),rgba(8,14,23,.94));border-radius:13px;padding:12px;display:grid;gap:10px}.secondary-context-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.secondary-context-head>div{display:grid;gap:3px}.secondary-context-head span{font-size:9px;font-weight:800;letter-spacing:.07em;color:#62a0ff}.secondary-context-head strong{font-size:13px;color:#edf4ff}.secondary-context-head small{font-size:10px;color:#71839a;line-height:1.4}.secondary-context-badge{border:1px solid var(--border);border-radius:99px;padding:5px 8px;font-size:9px;font-weight:800;color:#9eb7d8;white-space:nowrap}.secondary-context-badge.good{color:#79e1ab;border-color:rgba(38,208,124,.23);background:rgba(38,208,124,.06)}.secondary-context-badge.warn{color:#ffcb68;border-color:rgba(246,200,68,.24);background:rgba(246,200,68,.06)}.secondary-context-badge.bad{color:#ff8290;border-color:rgba(255,102,122,.24);background:rgba(255,102,122,.06)}
@@ -34,16 +50,26 @@
   function item(label,value,meta='',tone=''){return `<div class="secondary-context-item ${tone}"><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(meta)}</small></div>`;}
 
   function renderServices(data){
-    const rows=data.services||[],now=today();
-    const upcoming=rows.map(r=>({row:r,d:date(r['Próximo vencimiento']),amount:num(r['Pagado mes COP'])})).filter(x=>x.d&&x.d>=now).sort((a,b)=>a.d-b.d);
+    const rows=data.services||[],now=today(),upcoming=[],within7=[],within30=[];
+    let paid=0,sum7=0,sum30=0;
+    rows.forEach(r=>{
+      if(norm(r['Estado mes']).includes('pagad'))paid+=1;
+      const d=date(r['Próximo vencimiento']);
+      if(!d||d<now)return;
+      const entry={row:r,d,amount:num(r['Pagado mes COP'])};
+      upcoming.push(entry);
+      const days=daysUntil(d);
+      if(days<=7){within7.push(entry);sum7+=entry.amount;}
+      if(days<=30){within30.push(entry);sum30+=entry.amount;}
+    });
+    upcoming.sort((a,b)=>a.d-b.d);
     const first=upcoming[0],same=first?upcoming.filter(x=>x.d.getTime()===first.d.getTime()):[];
-    const nextAmount=same.reduce((s,x)=>s+x.amount,0),within7=upcoming.filter(x=>daysUntil(x.d)<=7),within30=upcoming.filter(x=>daysUntil(x.d)<=30);
-    const estimate30=within30.reduce((s,x)=>s+x.amount,0),paid=rows.filter(r=>norm(r['Estado mes']).includes('pagad')).length;
+    const nextAmount=same.reduce((s,x)=>s+x.amount,0);
     const h=host();if(!h)return;
     h.innerHTML=`<div class="secondary-context-head"><div><span>CONTROL DE SERVICIOS</span><strong>Próximos pagos y referencias</strong><small>Los importes futuros se estiman con el último valor mensual registrado; no se crean gastos futuros.</small></div><div class="secondary-context-badge ${within7.length?'warn':'good'}">${within7.length?`${within7.length} vencen ≤7 días`:'Sin vencimientos inmediatos'}</div></div><div class="secondary-context-grid">
       ${item('Próximo vencimiento',first?dateLabel(first.d):'—',first?`${same.map(x=>x.row.Servicio).join(' + ')} · estimado ${money(nextAmount)}`:'Sin fecha próxima')}
-      ${item('Próximos 7 días',money(within7.reduce((s,x)=>s+x.amount,0)),`${within7.length} servicio(s)`,within7.length?'alert':'')}
-      ${item('Próximos 30 días',money(estimate30),`${within30.length} servicio(s) · estimación por último pago`)}
+      ${item('Próximos 7 días',money(sum7),`${within7.length} servicio(s)`,within7.length?'alert':'')}
+      ${item('Próximos 30 días',money(sum30),`${within30.length} servicio(s) · estimación por último pago`)}
       ${item('Control del mes',`${paid}/${rows.length} pagados`,rows.length&&paid===rows.length?'Mes registrado al día':'Revisar servicios pendientes',rows.length&&paid===rows.length?'positive':'alert')}
     </div><div class="secondary-context-note"><b>Importante:</b> los montos de próximos vencimientos son referencias de planificación basadas en el último pago. El gasto real solo existe cuando se registra en Movimientos.</div>`;
   }
@@ -79,8 +105,15 @@
   }
 
   function dueForDebt(cycles,debts){
-    const ids=new Set(debts.map(x=>norm(x.current.Tarjeta)).map(v=>v.includes('nu')?'nu':v.includes('arq')?'arq':'').filter(Boolean));const now=today();
-    const rows=(cycles||[]).filter(r=>date(r['Fecha vencimiento'])&&date(r['Fecha vencimiento'])>=now&&!['si','sí','pagado','pago','true','yes'].includes(norm(r.Pagado))).filter(r=>{const t=norm(r.Tarjeta);return [...ids].some(id=>t.includes(id));}).sort((a,b)=>date(a['Fecha vencimiento'])-date(b['Fecha vencimiento']));return rows[0]||null;
+    const ids=[...new Set(debts.map(x=>norm(x.current.Tarjeta)).map(v=>v.includes('nu')?'nu':v.includes('arq')?'arq':'').filter(Boolean))],now=today(),rows=[];
+    (cycles||[]).forEach(r=>{
+      const due=date(r['Fecha vencimiento']);
+      if(!due||due<now||['si','sí','pagado','pago','true','yes'].includes(norm(r.Pagado)))return;
+      const card=norm(r.Tarjeta);
+      if(ids.some(id=>card.includes(id)))rows.push({row:r,due});
+    });
+    rows.sort((a,b)=>a.due-b.due);
+    return rows[0]?.row||null;
   }
 
   function renderDebt(data){
