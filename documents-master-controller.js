@@ -12,6 +12,7 @@
   let expanded = false;
   let frame = 0;
   let renderVersion = 0;
+  const derivedCache = new WeakMap();
 
   const norm = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -23,6 +24,12 @@
     return values.slice(1)
       .filter(row => row?.some(value => String(value ?? '').trim() !== ''))
       .map(row => Object.fromEntries(headers.map((header, index) => [header || `Col ${index + 1}`, row?.[index] ?? ''])));
+  }
+
+  function rowsFromPayload(payload) {
+    const cached = window.__PANEL_GET_CACHED_ROWS__;
+    if (typeof cached === 'function') return cached(payload, DOCUMENTS_ID, RANGE);
+    return parseRows(payload?.sources?.[`${DOCUMENTS_ID}|${RANGE}`] || []);
   }
 
   function parseDate(value) {
@@ -40,53 +47,17 @@
     return new Intl.DateTimeFormat('es-CO', {day:'2-digit', month:'2-digit', year:'numeric'}).format(date);
   }
 
-  function isHistorical(row) {
-    const status = norm(row?.Estado);
-    return status.includes('histor') || status.includes('archivo historico');
+  function currentDayKey() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   }
 
-  function expiryState(row) {
-    const date = parseDate(row['Fecha vencimiento']);
-    if (!date) return {kind:'none', days:null};
-    if (isHistorical(row)) return {kind:'historical', days:null};
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    date.setHours(0,0,0,0);
-    const days = Math.ceil((date - today) / 86400000);
-    if (days < 0) return {kind:'expired', days};
-    if (days <= 90) return {kind:'soon', days};
-    if (days <= 180) return {kind:'watch', days};
-    return {kind:'ok', days};
-  }
-
-  function statusNeedsAttention(row) {
-    const status = norm(row?.Estado);
-    return status === 'por revisar' || status === 'pendiente' || status.includes('pendiente') || status.includes('revisar');
-  }
-
-  function isAttention(row) {
-    return statusNeedsAttention(row) || ['expired','soon','watch'].includes(expiryState(row).kind);
-  }
-
-  function sectionValues(key) {
-    const state = window.__PANEL_SECTION_FILTERS__;
-    if (!state || state.view !== 'documentos') return [];
-    return (state.rules || []).find(rule => rule.key === key)?.values || [];
-  }
-
-  function fieldMatches(value, selected) {
-    if (!selected.length) return true;
-    const current = norm(value);
-    return selected.some(item => current === norm(item));
-  }
-
-  function matchesSectionFilters(row) {
-    return fieldMatches(row['Área'], sectionValues('documentArea'))
-      && fieldMatches(row['Categoría'], sectionValues('documentCategory'))
-      && fieldMatches(row['Tipo'], sectionValues('documentType'))
-      && fieldMatches(row['Titular'], sectionValues('documentHolder'))
-      && fieldMatches(row['Estado'], sectionValues('documentStatus'))
-      && fieldMatches(row['País / Entidad'], sectionValues('documentEntity'));
+  function searchText(row) {
+    return [
+      row['Área'], row['Categoría'], row['Tipo'], row['Documento'], row['Titular'], row['País / Entidad'],
+      row['N.º / Identificación'], row['Dato copiable 2'], row['Fecha documento'], row['Fecha expedición'],
+      row['Fecha vencimiento'], row['Período'], row['Estado'], row['Prioridad'], row['Observaciones']
+    ].join(' ');
   }
 
   function areaRank(value) {
@@ -100,14 +71,75 @@
     return 6;
   }
 
-  function dateRank(row) {
-    return parseDate(row['Fecha vencimiento'])?.getTime()
+  function computeExpiry(row) {
+    const date = parseDate(row['Fecha vencimiento']);
+    if (!date) return {kind:'none', days:null};
+    const status = norm(row?.Estado);
+    if (status.includes('histor') || status.includes('archivo historico')) return {kind:'historical', days:null};
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    date.setHours(0,0,0,0);
+    const days = Math.ceil((date - today) / 86400000);
+    if (days < 0) return {kind:'expired', days};
+    if (days <= 90) return {kind:'soon', days};
+    if (days <= 180) return {kind:'watch', days};
+    return {kind:'ok', days};
+  }
+
+  function derived(row) {
+    const day = currentDayKey();
+    const previous = derivedCache.get(row);
+    if (previous?.day === day) return previous;
+    const status = norm(row?.Estado);
+    const statusAttention = status === 'por revisar' || status === 'pendiente' || status.includes('pendiente') || status.includes('revisar');
+    const expiry = computeExpiry(row);
+    const period = String(row['Período'] || '').match(/^(20\d{2})-(\d{2})/);
+    const dateRank = parseDate(row['Fecha vencimiento'])?.getTime()
       || parseDate(row['Fecha expedición'])?.getTime()
       || parseDate(row['Fecha documento'])?.getTime()
-      || (() => {
-        const period = String(row['Período'] || '').match(/^(20\d{2})-(\d{2})/);
-        return period ? new Date(Number(period[1]), Number(period[2]) - 1, 1).getTime() : 0;
-      })();
+      || (period ? new Date(Number(period[1]), Number(period[2]) - 1, 1).getTime() : 0);
+    const value = {
+      day,
+      expiry,
+      statusAttention,
+      attention: statusAttention || ['expired','soon','watch'].includes(expiry.kind),
+      areaRank: areaRank(row['Área']),
+      dateRank,
+      searchable: norm(searchText(row))
+    };
+    derivedCache.set(row, value);
+    return value;
+  }
+
+  const expiryState = row => derived(row).expiry;
+  const statusNeedsAttention = row => derived(row).statusAttention;
+  const isAttention = row => derived(row).attention;
+
+  function sectionFilterState() {
+    const state = window.__PANEL_SECTION_FILTERS__;
+    const rules = state?.view === 'documentos' ? (state.rules || []) : [];
+    const selected = key => new Set((rules.find(rule => rule.key === key)?.values || []).map(norm).filter(Boolean));
+    return {
+      area:selected('documentArea'),
+      category:selected('documentCategory'),
+      type:selected('documentType'),
+      holder:selected('documentHolder'),
+      status:selected('documentStatus'),
+      entity:selected('documentEntity')
+    };
+  }
+
+  function fieldMatches(value, selected) {
+    return !selected.size || selected.has(norm(value));
+  }
+
+  function matchesSectionFilters(row, state) {
+    return fieldMatches(row['Área'], state.area)
+      && fieldMatches(row['Categoría'], state.category)
+      && fieldMatches(row['Tipo'], state.type)
+      && fieldMatches(row['Titular'], state.holder)
+      && fieldMatches(row['Estado'], state.status)
+      && fieldMatches(row['País / Entidad'], state.entity);
   }
 
   function sortRows(rows) {
@@ -115,12 +147,13 @@
       const priorityA = norm(a.Prioridad) === 'alta' ? 0 : 1;
       const priorityB = norm(b.Prioridad) === 'alta' ? 0 : 1;
       if (priorityA !== priorityB) return priorityA - priorityB;
-      const attentionA = isAttention(a) ? 0 : 1;
-      const attentionB = isAttention(b) ? 0 : 1;
+      const da = derived(a), db = derived(b);
+      const attentionA = da.attention ? 0 : 1;
+      const attentionB = db.attention ? 0 : 1;
       if (attentionA !== attentionB) return attentionA - attentionB;
-      const area = areaRank(a['Área']) - areaRank(b['Área']);
+      const area = da.areaRank - db.areaRank;
       if (area) return area;
-      const date = dateRank(b) - dateRank(a);
+      const date = db.dateRank - da.dateRank;
       if (date) return date;
       return String(a.Documento || '').localeCompare(String(b.Documento || ''), 'es', {numeric:true, sensitivity:'base'});
     });
@@ -129,14 +162,6 @@
   function periodOptions(rows) {
     return [...new Set(rows.map(row => String(row['Período'] || '').trim()).filter(Boolean))]
       .sort((a, b) => b.localeCompare(a, 'es', {numeric:true, sensitivity:'base'}));
-  }
-
-  function searchable(row) {
-    return [
-      row['Área'], row['Categoría'], row['Tipo'], row['Documento'], row['Titular'], row['País / Entidad'],
-      row['N.º / Identificación'], row['Dato copiable 2'], row['Fecha documento'], row['Fecha expedición'],
-      row['Fecha vencimiento'], row['Período'], row['Estado'], row['Prioridad'], row['Observaciones']
-    ].join(' ');
   }
 
   function copyMarkup(value, label) {
@@ -177,21 +202,24 @@
   }
 
   function applyLocalFilters(sourceRows) {
-    let rows = sortRows(sourceRows);
-    if (query) {
-      const q = norm(query);
-      rows = rows.filter(row => norm(searchable(row)).includes(q));
-    }
-    if (periodFilter !== 'all') rows = rows.filter(row => String(row['Período'] || '').trim() === periodFilter);
-    if (expiryMode === 'dated') rows = rows.filter(row => String(row['Fecha vencimiento'] || '').trim());
-    if (expiryMode === 'attention') rows = rows.filter(isAttention);
-    return rows;
+    const q = norm(query);
+    const rows = sourceRows.filter(row => {
+      if (q && !derived(row).searchable.includes(q)) return false;
+      if (periodFilter !== 'all' && String(row['Período'] || '').trim() !== periodFilter) return false;
+      if (expiryMode === 'dated' && !String(row['Fecha vencimiento'] || '').trim()) return false;
+      if (expiryMode === 'attention' && !isAttention(row)) return false;
+      return true;
+    });
+    return sortRows(rows);
   }
 
   function summaryMarkup(sectionRows, totalRows) {
-    const withId = sectionRows.filter(row => String(row['N.º / Identificación'] || '').trim()).length;
-    const withExpiry = sectionRows.filter(row => String(row['Fecha vencimiento'] || '').trim()).length;
-    const alertCount = sectionRows.filter(isAttention).length;
+    let withId=0, withExpiry=0, alertCount=0;
+    sectionRows.forEach(row => {
+      if (String(row['N.º / Identificación'] || '').trim()) withId++;
+      if (String(row['Fecha vencimiento'] || '').trim()) withExpiry++;
+      if (isAttention(row)) alertCount++;
+    });
     const scope = sectionRows.length === totalRows ? 'documentos' : `filtrados de ${totalRows}`;
     return `<div class="documents-summary" aria-label="Resumen documental">
       <span><strong>${sectionRows.length}</strong> ${scope}</span>
@@ -202,7 +230,8 @@
   }
 
   function renderHost(host, sourceRows) {
-    const sectionRows = sourceRows.filter(matchesSectionFilters);
+    const state = sectionFilterState();
+    const sectionRows = sourceRows.filter(row => matchesSectionFilters(row, state));
     const periods = periodOptions(sectionRows);
     if (periodFilter !== 'all' && !periods.includes(periodFilter)) periodFilter = 'all';
     const rows = applyLocalFilters(sectionRows);
@@ -279,15 +308,15 @@
     const host = document.getElementById('documentsMasterHost');
     if (!host) return;
     const version = ++renderVersion;
-    const getValues = window.__PANEL_GET_SOURCE_VALUES__;
-    if (typeof getValues !== 'function') {
+    const getData = window.__PANEL_GET_BACKEND_DATA__;
+    if (typeof getData !== 'function') {
       host.innerHTML = '<div class="empty-state"><strong>Fuente documental no disponible</strong><span>Actualiza el dashboard para volver a cargar la base documental.</span></div>';
       return;
     }
     try {
-      const values = await getValues(DOCUMENTS_ID, RANGE, false);
+      const payload = await getData(false);
       if (version !== renderVersion || activeView() !== 'documentos' || !host.isConnected) return;
-      renderHost(host, parseRows(values));
+      renderHost(host, rowsFromPayload(payload));
     } catch (error) {
       console.error('Documentos_Master:', error);
       if (version !== renderVersion || !host.isConnected) return;
