@@ -107,7 +107,11 @@ async function loadDashboard() {
   if (dashboardLoaded) return;
   dashboardLoaded = true;
   try {
-    if (BACKEND_MODE) await loadScript("data-backend-adapter.js");
+    if (BACKEND_MODE) {
+      await loadScript("data-backend-adapter.js");
+      const getData = window.__PANEL_GET_BACKEND_DATA__;
+      if (typeof getData === 'function') await getData(false);
+    }
     await loadScript("regular-income-core.js");
     await loadScript("finance-purchase-policy.js");
     await loadScript("app.js");
