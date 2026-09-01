@@ -4,6 +4,7 @@
   const cfg = window.PANEL_CONFIG || {};
   const DEFAULT_USD_BASE = Number(cfg.regularIncome?.fibrazoLlcUsdBase || 1300);
   const DEFAULT_USD_COP = Number(cfg.regularIncome?.usdCopReference || 3150);
+  const modelCache = new WeakMap();
 
   const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const num = value => {
@@ -32,7 +33,7 @@
     return parseRows(payload?.sources?.[`${financeId}|${range}`] || []);
   }
 
-  function build(payload, financeId){
+  function buildUncached(payload, financeId){
     const concepts = rowsFor(payload,financeId,'Resumen_Conceptos_Ingresos!A:L');
     const details = rowsFor(payload,financeId,'Detalle_Ingresos!A:L');
     const conceptByMonth = new Map();
@@ -119,6 +120,17 @@
     }
 
     return {months,period,average,usdBase:DEFAULT_USD_BASE,usdCopReference:DEFAULT_USD_COP};
+  }
+
+  function build(payload, financeId){
+    if(!payload || typeof payload!=='object') return buildUncached(payload,financeId);
+    let byFinance=modelCache.get(payload);
+    if(!byFinance){byFinance=new Map();modelCache.set(payload,byFinance);}
+    const key=String(financeId||'');
+    if(byFinance.has(key))return byFinance.get(key);
+    const model=buildUncached(payload,financeId);
+    byFinance.set(key,model);
+    return model;
   }
 
   window.RegularIncomeCore = { build, monthKey, parseRows, num };
