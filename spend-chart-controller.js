@@ -8,6 +8,7 @@
   const COLORS=['#1769ff','#f6c844','#26d07c','#ff667a','#ffad42','#7a8ba5','#8b5cf6','#22d3ee','#f472b6','#a3e635'];
   const MONTH_LABELS=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   let renderFrame=0,loadVersion=0,chartMode='cumulative',rawRows=[],lastPayload=null;
+  const dateCache=new WeakMap();
 
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
@@ -17,8 +18,9 @@
   function parseNumber(value){if(typeof value==='number')return Number.isFinite(value)?value:0;let s=String(value??'').trim().replace(/[^\d,.\-]/g,'');if(!s)return 0;const c=s.lastIndexOf(','),d=s.lastIndexOf('.');if(c>=0&&d>=0){if(c>d)s=s.replace(/\./g,'').replace(',','.');else s=s.replace(/,/g,'');}else if(c>=0){const p=s.split(',');s=p.length===2&&p[1].length<=2?p[0].replace(/\./g,'')+'.'+p[1]:s.replace(/,/g,'');}else if(d>=0){const p=s.split('.');if(p.length>2||(p.length===2&&p[1].length===3))s=s.replace(/\./g,'');}const n=Number(s);return Number.isFinite(n)?n:0;}
   function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const headers=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(row=>row?.some(v=>String(v??'').trim()!=='')).map(row=>Object.fromEntries(headers.map((key,i)=>[key||`Col ${i+1}`,row?.[i]??''])));}
   function parseDate(value){const s=String(value||'').trim();let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?new Date(+m[3],+m[2]-1,+m[1]):null;}
+  function rowDate(row){if(dateCache.has(row))return dateCache.get(row);const d=parseDate(row['Fecha real']||row['Fecha registrada']);dateCache.set(row,d);return d;}
   function account(row){const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);if(n.includes('efectivo'))return'Efectivo';if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';if(n.includes('arq'))return'ARQ Edu';if(n.includes('nu')){if(n.includes(' ro')||n.endsWith('ro')||holder==='ro'||holder.includes('rocio'))return'Nu Ro';if(n.includes('edu')||holder.includes('edu'))return'Nu Edu';return'Nu';}return raw||'Sin especificar';}
-  function method(row){const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;const raw=norm(row['Cuenta / Tarjeta']);if(raw.includes('credito'))return'Crédito';if(raw.includes('transferencia'))return'Transferencia';if(raw.includes('debito'))return'Débito';if(raw.includes('efectivo'))return'Efectivo';if(parseNumber(row.Cuotas)>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';return'Sin especificar';}
+  function method(row){const policy=window.FinancePurchasePolicy;if(typeof policy?.method==='function')return policy.method(row);const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;const raw=norm(row['Cuenta / Tarjeta']);if(raw.includes('credito'))return'Crédito';if(raw.includes('transferencia'))return'Transferencia';if(raw.includes('debito'))return'Débito';if(raw.includes('efectivo'))return'Efectivo';if(parseNumber(row.Cuotas)>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';return'Sin especificar';}
 
   function filterContext(){
     const payment=window.__PAYMENT_FILTER_STATE__?.view==='gastos'?window.__PAYMENT_FILTER_STATE__:{account:[],method:[]};
@@ -34,7 +36,7 @@
 
   function matches(row,ctx){
     if(!(window.MovementStatusCore?.isActual(row.Estado)??!/proyecc|proyect|programad/.test(norm(row.Estado))))return false;
-    const d=parseDate(row['Fecha real']||row['Fecha registrada']);
+    const d=rowDate(row);
     if(ctx.years.size&&(!d||!ctx.years.has(String(d.getFullYear()))))return false;
     if(ctx.months.size&&(!d||!ctx.months.has(String(d.getMonth()+1))))return false;
     if(ctx.categories.size&&!ctx.categories.has(String(row['Categoría']||'')))return false;
@@ -101,7 +103,7 @@
       const year=Number(years[0]),monthIndex=Number(months[0])-1,now=new Date();
       const endDay=year===now.getFullYear()&&monthIndex===now.getMonth()?now.getDate():new Date(year,monthIndex+1,0).getDate();
       const daily=new Map();
-      rows.forEach(row=>{const d=parseDate(row['Fecha real']||row['Fecha registrada']);if(!d||d.getFullYear()!==year||d.getMonth()!==monthIndex)return;daily.set(d.getDate(),(daily.get(d.getDate())||0)+amount(row,currency));});
+      rows.forEach(row=>{const d=rowDate(row);if(!d||d.getFullYear()!==year||d.getMonth()!==monthIndex)return;daily.set(d.getDate(),(daily.get(d.getDate())||0)+amount(row,currency));});
       let running=0;
       for(let day=1;day<=endDay;day++){
         const dayValue=daily.get(day)||0;running+=dayValue;
@@ -112,7 +114,7 @@
       else seriesLabel='Gasto acumulado';
     }else{
       const totals=new Map();
-      rows.forEach(row=>{const d=parseDate(row['Fecha real']||row['Fecha registrada']);if(!d)return;const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;totals.set(key,(totals.get(key)||0)+amount(row,currency));});
+      rows.forEach(row=>{const d=rowDate(row);if(!d)return;const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;totals.set(key,(totals.get(key)||0)+amount(row,currency));});
       const periods=[...totals.keys()].sort();
       labels=periods.map(period=>{const[year,month]=period.split('-').map(Number);return`${MONTH_LABELS[month-1]} ${year}`;});
       values=periods.map(period=>totals.get(period)||0);seriesLabel='Total del período';
@@ -130,7 +132,11 @@
     const version=++loadVersion;
     const data=await getData(false);
     if(version!==loadVersion||activeView()!=='gastos')return;
-    if(data!==lastPayload){lastPayload=data;rawRows=parseRows(data?.sources?.[`${FINANCE_ID}|Movimientos!A:Z`]||[]);}
+    if(data!==lastPayload){
+      lastPayload=data;
+      const cached=window.__PANEL_GET_CACHED_ROWS__;
+      rawRows=typeof cached==='function'?cached(data,FINANCE_ID,'Movimientos!A:Z'):parseRows(data?.sources?.[`${FINANCE_ID}|Movimientos!A:Z`]||[]);
+    }
     renderCurrent();
   }
 
