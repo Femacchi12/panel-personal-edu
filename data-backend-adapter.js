@@ -62,19 +62,50 @@
   window.__PANEL_RESET_BACKEND_DATA__=resetBackendCache;
 
   function jsonResponse(payload,status=200,statusText='OK'){return new Response(JSON.stringify(payload),{status,statusText,headers:{'Content-Type':'application/json'}});}
-  function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const header=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(row=>row?.some(v=>String(v??'').trim()!=='')).map(row=>Object.fromEntries(header.map((name,index)=>[name||`Col ${index+1}`,row?.[index]??''])));}
+  function parseRowsAt(values,headerIndex=0){
+    if(!Array.isArray(values)||!values.length||!Array.isArray(values[headerIndex]))return[];
+    const header=(values[headerIndex]||[]).map(v=>String(v??'').trim());
+    if(!header.some(Boolean))return[];
+    return values.slice(headerIndex+1).filter(row=>row?.some(v=>String(v??'').trim()!=='')).map(row=>Object.fromEntries(header.map((name,index)=>[name||`Col ${index+1}`,row?.[index]??''])));
+  }
+  function parseRows(values){return parseRowsAt(values,0);}
+  function parseRowsSmart(values){
+    if(!Array.isArray(values)||!values.length)return[];
+    let best=0,score=-1;
+    for(let i=0;i<Math.min(values.length,12);i++){
+      const row=values[i]||[];
+      const nonEmpty=row.filter(v=>String(v??'').trim()!=='').length;
+      const textual=row.filter(v=>typeof v==='string'&&/[A-Za-zÁÉÍÓÚáéíóúÑñ]/.test(v)).length;
+      const next=nonEmpty*2+textual;
+      if(nonEmpty>=2&&next>score){score=next;best=i;}
+    }
+    return parseRowsAt(values,best);
+  }
   function rowsToMatrix(header,rows){return[header,...rows.map(row=>header.map(name=>row[name]??''))];}
   function payloadSourceKey(spreadsheetId,range){return `${spreadsheetId}|${range}`;}
   function sourceKey(range){return payloadSourceKey(financeId,range);}
-  function cachedRows(payload,range,spreadsheetId=financeId){
-    const key=payloadSourceKey(spreadsheetId,range);
-    if(!payload||typeof payload!=='object')return parseRows(payload?.sources?.[key]||[]);
+  function payloadRowCache(payload){
+    if(!payload||typeof payload!=='object')return null;
     let cache=parsedRowsCache.get(payload);
     if(!cache){cache=new Map();parsedRowsCache.set(payload,cache);}
-    if(!cache.has(key))cache.set(key,parseRows(payload?.sources?.[key]||[]));
-    return cache.get(key);
+    return cache;
+  }
+  function cachedRows(payload,range,spreadsheetId=financeId){
+    const key=payloadSourceKey(spreadsheetId,range),cache=payloadRowCache(payload);
+    if(!cache)return parseRows(payload?.sources?.[key]||[]);
+    const cacheKey=`rows|${key}`;
+    if(!cache.has(cacheKey))cache.set(cacheKey,parseRows(payload?.sources?.[key]||[]));
+    return cache.get(cacheKey);
+  }
+  function cachedSmartRows(payload,range,spreadsheetId=financeId){
+    const key=payloadSourceKey(spreadsheetId,range),cache=payloadRowCache(payload);
+    if(!cache)return parseRowsSmart(payload?.sources?.[key]||[]);
+    const cacheKey=`smart|${key}`;
+    if(!cache.has(cacheKey))cache.set(cacheKey,parseRowsSmart(payload?.sources?.[key]||[]));
+    return cache.get(cacheKey);
   }
   window.__PANEL_GET_CACHED_ROWS__=(payload,spreadsheetId,range)=>cachedRows(payload,range,spreadsheetId);
+  window.__PANEL_GET_CACHED_SMART_ROWS__=(payload,spreadsheetId,range)=>cachedSmartRows(payload,range,spreadsheetId);
   function parseNumber(value){
     if(typeof value==='number')return Number.isFinite(value)?value:0;
     let s=String(value??'').trim().replace(/[^\d,.\-]/g,'');
@@ -91,7 +122,7 @@
     if(match)return `${match[1]}-${String(+match[2]).padStart(2,'0')}`;
     match=s.match(/^(\d{1,2})[-\/]([01]?\d)[-\/](20\d{2})/);
     if(match)return `${match[3]}-${String(+match[2]).padStart(2,'0')}`;
-    const months={ene:1,enero:1,feb:2,febrero:2,mar:3,marzo:3,abr:4,abril:4,may:5,mayo:5,jun:6,junio:6,jul:7,julio:7,ago:8,agosto:8,sep:9,sept:9,septiembre:9,oct:10,octubre:10,nov:11,noviembre:11,dic:12,diciembre:12};
+    const months={ene:1,enero:1,feb:2,febrero:2,mar:3,marzo:3,abr:4,abril:4,may:5,mayo:5,jun:6,junio:6,jul:7,julio:7,ago:8,agosto:8,sep:9,sept:9,septiembre:9,oct:10,octubre:10,nov:11,dic:12,diciembre:12,noviembre:11,octubre:10};
     match=s.match(/^(ene|enero|feb|febrero|mar|marzo|abr|abril|may|mayo|jun|junio|jul|julio|ago|agosto|sep|sept|septiembre|oct|octubre|nov|noviembre|dic|diciembre)[\s\-\/]+(20\d{2})/);
     return match?`${match[2]}-${String(months[match[1]]).padStart(2,'0')}`:'';
   }
