@@ -52,6 +52,7 @@ const googleAuth = new google.auth.GoogleAuth({ scopes: ['https://www.googleapis
 const sheets = google.sheets({ version: 'v4', auth: googleAuth });
 
 let cache = { expiresAt: 0, payload: null };
+let buildPromise = null;
 
 function normalizeEmail(value) { return String(value || '').trim().toLowerCase(); }
 function errorMessage(error) { return String(error?.message || error || 'Error de lectura'); }
@@ -149,37 +150,47 @@ function attachSourceErrors(target, spreadsheetId, result) {
 async function buildPayload(force = false) {
   const now = Date.now();
   if (!force && cache.payload && now < cache.expiresAt) return cache.payload;
-  const financeSources = SOURCES.filter(s => s.book === 'finance');
-  const documentSources = SOURCES.filter(s => s.book === 'documents');
-  const healthSources = SOURCES.filter(s => s.book === 'health');
-  const [financeResult, documentResult, healthResult, pensionUsdValues] = await Promise.all([
-    readWorkbook(FINANCE_SPREADSHEET_ID, financeSources),
-    readWorkbook(DOCUMENTS_SPREADSHEET_ID, documentSources),
-    readWorkbook(HEALTH_SPREADSHEET_ID, healthSources),
-    readRangeUnformatted(FINANCE_SPREADSHEET_ID, 'Pensiones_Cesantias!R:S')
-  ]);
-  const financeValues = financeResult.valueRanges;
-  const documentValues = documentResult.valueRanges;
-  const healthValues = healthResult.valueRanges;
-  patchPensionUsdColumns(financeSources, financeValues, pensionUsdValues);
+  if (buildPromise) return buildPromise;
 
-  const sources = {};
-  financeSources.forEach((src, index) => { sources[`${FINANCE_SPREADSHEET_ID}|${src.range}`] = financeValues[index]?.values || []; });
-  documentSources.forEach((src, index) => { sources[`${DOCUMENTS_SPREADSHEET_ID}|${src.range}`] = documentValues[index]?.values || []; });
-  healthSources.forEach((src, index) => { sources[`${HEALTH_SPREADSHEET_ID}|${src.range}`] = healthValues[index]?.values || []; });
+  buildPromise = (async () => {
+    const financeSources = SOURCES.filter(s => s.book === 'finance');
+    const documentSources = SOURCES.filter(s => s.book === 'documents');
+    const healthSources = SOURCES.filter(s => s.book === 'health');
+    const [financeResult, documentResult, healthResult, pensionUsdValues] = await Promise.all([
+      readWorkbook(FINANCE_SPREADSHEET_ID, financeSources),
+      readWorkbook(DOCUMENTS_SPREADSHEET_ID, documentSources),
+      readWorkbook(HEALTH_SPREADSHEET_ID, healthSources),
+      readRangeUnformatted(FINANCE_SPREADSHEET_ID, 'Pensiones_Cesantias!R:S')
+    ]);
+    const financeValues = financeResult.valueRanges;
+    const documentValues = documentResult.valueRanges;
+    const healthValues = healthResult.valueRanges;
+    patchPensionUsdColumns(financeSources, financeValues, pensionUsdValues);
 
-  const sourceErrors = {};
-  attachSourceErrors(sourceErrors, FINANCE_SPREADSHEET_ID, financeResult);
-  attachSourceErrors(sourceErrors, DOCUMENTS_SPREADSHEET_ID, documentResult);
-  attachSourceErrors(sourceErrors, HEALTH_SPREADSHEET_ID, healthResult);
+    const sources = {};
+    financeSources.forEach((src, index) => { sources[`${FINANCE_SPREADSHEET_ID}|${src.range}`] = financeValues[index]?.values || []; });
+    documentSources.forEach((src, index) => { sources[`${DOCUMENTS_SPREADSHEET_ID}|${src.range}`] = documentValues[index]?.values || []; });
+    healthSources.forEach((src, index) => { sources[`${HEALTH_SPREADSHEET_ID}|${src.range}`] = healthValues[index]?.values || []; });
 
-  const payload = { ok: true, generatedAt: new Date().toISOString(), sources, sourceErrors };
-  cache = { expiresAt: now + 60_000, payload };
-  return payload;
+    const sourceErrors = {};
+    attachSourceErrors(sourceErrors, FINANCE_SPREADSHEET_ID, financeResult);
+    attachSourceErrors(sourceErrors, DOCUMENTS_SPREADSHEET_ID, documentResult);
+    attachSourceErrors(sourceErrors, HEALTH_SPREADSHEET_ID, healthResult);
+
+    const payload = { ok: true, generatedAt: new Date().toISOString(), sources, sourceErrors };
+    cache = { expiresAt: Date.now() + 60_000, payload };
+    return payload;
+  })();
+
+  try {
+    return await buildPromise;
+  } finally {
+    buildPromise = null;
+  }
 }
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'panel-personal-edu-backend', sourceCount: SOURCES.length, revision: 'lean-sources-2026-08-31' });
+  res.json({ ok: true, service: 'panel-personal-edu-backend', sourceCount: SOURCES.length, revision: 'final-audit-2026-09-01' });
 });
 
 app.get('/api/data', requireAuthorizedUser, async (req, res) => {
