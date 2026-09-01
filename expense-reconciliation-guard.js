@@ -10,12 +10,13 @@
   const monthLabel=value=>{const m=String(value||'').match(/^(20\d{2})-(\d{2})$/);if(!m)return value||'—';const names=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];return `${names[Number(m[2])-1]} ${m[1]}`;};
 
   function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const headers=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(row=>row?.some(v=>String(v??'').trim()!=='')).map(row=>Object.fromEntries(headers.map((name,index)=>[name||`Col ${index+1}`,row?.[index]??''])));}
+  function rowsFromPayload(payload,range){const cached=window.__PANEL_GET_CACHED_ROWS__;return typeof cached==='function'?cached(payload,financeId,range):parseRows(payload?.sources?.[`${financeId}|${range}`]||[]);}
   function parseNumber(value){if(typeof value==='number')return Number.isFinite(value)?value:0;let s=String(value??'').trim().replace(/[^\d,.\-]/g,'');if(!s)return 0;const c=s.lastIndexOf(','),d=s.lastIndexOf('.');if(c>=0&&d>=0){if(c>d)s=s.replace(/\./g,'').replace(',','.');else s=s.replace(/,/g,'');}else if(c>=0){const p=s.split(',');s=p.length===2&&p[1].length<=2?p[0].replace(/\./g,'')+'.'+p[1]:s.replace(/,/g,'');}else if(d>=0){const p=s.split('.');if(p.length>2||(p.length===2&&p[1].length===3))s=s.replace(/\./g,'');}const n=Number(s);return Number.isFinite(n)?n:0;}
 
   function categoryReconciliation(payload,policy){
     if(!financeId||!payload?.sources)return[];
-    const movementRows=parseRows(payload.sources[`${financeId}|Movimientos!A:Z`]||[]);
-    const summaryRows=parseRows(payload.sources[`${financeId}|Flujo_Mensual!A:J`]||[]);
+    const movementRows=rowsFromPayload(payload,'Movimientos!A:Z');
+    const summaryRows=rowsFromPayload(payload,'Flujo_Mensual!A:J');
     const now=new Date(),current=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
     const start=String(policy?.reconciliationStart||'2026-01');
     const canonical=new Map(),summary=new Map(),labels=new Map();
