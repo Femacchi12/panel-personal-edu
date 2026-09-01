@@ -7,20 +7,39 @@
 
   let refreshing = false;
 
+  function refreshButtons() {
+    return [...document.querySelectorAll('#refreshBtn, [data-general-refresh]')];
+  }
+
+  function setRefreshingState(active) {
+    refreshButtons().forEach(button => {
+      if (active) {
+        if (!button.dataset.refreshPreviousText) button.dataset.refreshPreviousText = button.textContent || '';
+        button.disabled = true;
+        button.classList.add('is-refreshing');
+        button.textContent = '↻ Actualizando…';
+      } else {
+        button.disabled = false;
+        button.classList.remove('is-refreshing');
+        if (button.dataset.refreshPreviousText) {
+          button.textContent = button.dataset.refreshPreviousText;
+          delete button.dataset.refreshPreviousText;
+        }
+      }
+    });
+  }
+
   async function refreshFromSource(event) {
-    const button = event.target?.closest?.('#refreshBtn');
-    if (!button) return;
+    const trigger = event.target?.closest?.('#refreshBtn, [data-general-refresh]');
+    if (!trigger) return;
+
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation?.();
     if (refreshing) return;
 
     refreshing = true;
-    const previousDisabled = Boolean(button.disabled);
-    const previousText = button.textContent;
-    button.disabled = true;
-    button.classList.add('is-refreshing');
-    button.textContent = '↻ Actualizando…';
+    setRefreshingState(true);
 
     try {
       window.__PANEL_RESET_BACKEND_DATA__?.();
@@ -51,9 +70,7 @@
       if (typeof window.__PANEL_RELOAD_DATA__ === 'function') await window.__PANEL_RELOAD_DATA__(true);
     } finally {
       refreshing = false;
-      button.classList.remove('is-refreshing');
-      button.textContent = previousText;
-      button.disabled = previousDisabled;
+      setRefreshingState(false);
     }
   }
 
