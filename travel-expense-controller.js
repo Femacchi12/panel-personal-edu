@@ -76,8 +76,15 @@
   }
 
   function isActualMovement(row){
+    if(typeof window.MovementStatusCore?.isActual==='function')return window.MovementStatusCore.isActual(row.Estado);
     const s=norm(row.Estado);
     return s.includes('registrad')||s.includes('realiz')||s.includes('conciliad');
+  }
+
+  function paymentMethod(row){
+    const policy=window.FinancePurchasePolicy;
+    if(typeof policy?.method==='function')return policy.method(row);
+    return String(row['Modalidad de pago']||row['Cuenta / Tarjeta']||'Sin medio');
   }
 
   function indexBenefits(rows){
@@ -107,11 +114,11 @@
       if(!key||!isActualMovement(r))return;
       let item=index.get(key);
       if(!item){item={rows:[],total:0,categories:new Map(),payments:new Map(),days:new Set()};index.set(key,item);}
-      const amount=num(r['Monto COP']||r['Monto original']);
+      const amount=num(r['Monto COP']);
       item.total+=amount;
       item.rows.push(r);
       const cat=String(r['Categoría']||'Sin categoría');item.categories.set(cat,(item.categories.get(cat)||0)+amount);
-      const pay=String(r['Modalidad de pago']||r['Cuenta / Tarjeta']||'Sin medio');item.payments.set(pay,(item.payments.get(pay)||0)+amount);
+      const pay=paymentMethod(r);item.payments.set(pay,(item.payments.get(pay)||0)+amount);
       const day=String(r['Fecha real']||'').trim();if(day)item.days.add(day);
     });
     index.forEach(item=>{
@@ -233,7 +240,7 @@
     return `<section class="travel-card current-expenses">
       <div class="travel-card-head"><div><span>VIAJE EN CURSO · GASTOS EN DESTINO</span><strong>${money(exp.total)}</strong><small>${exp.rows.length} movimientos · ${exp.days} días con gastos</small></div></div>
       <div class="trip-grid"><div><h4>Por categoría</h4>${breakdown(exp.categories)}</div><div><h4>Por medio de pago</h4>${breakdown(exp.payments)}</div></div>
-      <details class="travel-details"><summary>Ver detalle de gastos (${exp.rows.length})</summary><div class="travel-table-wrap"><table class="travel-table expense"><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cuenta</th><th>Modalidad</th><th>Monto</th></tr></thead><tbody>${exp.rows.map(r=>`<tr><td>${esc(dateLabel(r['Fecha real']))}</td><td>${esc(r['Descripción / Comercio']||'—')}</td><td>${esc(r['Categoría']||'—')}</td><td>${esc(r['Cuenta / Tarjeta']||'—')}</td><td>${esc(r['Modalidad de pago']||'—')}</td><td class="trip-money">${esc(money(num(r['Monto COP']||r['Monto original'])))}</td></tr>`).join('')}</tbody></table></div></details>
+      <details class="travel-details"><summary>Ver detalle de gastos (${exp.rows.length})</summary><div class="travel-table-wrap"><table class="travel-table expense"><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cuenta</th><th>Modalidad</th><th>Monto</th></tr></thead><tbody>${exp.rows.map(r=>`<tr><td>${esc(dateLabel(r['Fecha real']))}</td><td>${esc(r['Descripción / Comercio']||'—')}</td><td>${esc(r['Categoría']||'—')}</td><td>${esc(r['Cuenta / Tarjeta']||'—')}</td><td>${esc(paymentMethod(r)||'—')}</td><td class="trip-money">${esc(money(num(r['Monto COP'])))}</td></tr>`).join('')}</tbody></table></div></details>
     </section>`;
   }
 
