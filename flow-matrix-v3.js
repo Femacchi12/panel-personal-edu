@@ -144,19 +144,30 @@
   }
   function pctClass(v){const p=(Number(v)||0)*100;return p>15?'pct-red':p>10?'pct-yellow':p>5?'pct-green':'pct-white';}
 
-  function movementMonthValues(movements,month){
-    const rows=movements.filter(r=>matchesActiveFilters(r)&&monthKey(r['Mes consumo'])===month);
-    const byCat=new Map(); rows.forEach(r=>byCat.set(norm(r['Categoría']),(byCat.get(norm(r['Categoría']))||0)+num(r['Monto COP'])));
-    const supermarket=rows.filter(r=>norm(r['Categoría'])==='supermercado').reduce((s,r)=>s+num(r['Monto COP']),0);
-    const fixed=rows.filter(r=>/^(si|sí|true|1)$/i.test(String(r['Es fijo']||''))).reduce((s,r)=>s+num(r['Monto COP']),0);
-    const variable=rows.filter(r=>!/^(si|sí|true|1)$/i.test(String(r['Es fijo']||''))).reduce((s,r)=>s+num(r['Monto COP']),0);
-    const financed=rows.filter(isCreditPurchase).reduce((s,r)=>s+num(r['Monto COP']),0);
-    const total=rows.reduce((s,r)=>s+num(r['Monto COP']),0);
-    const summary=new Map([
-      ['fijo',fixed],['fijo + super',fixed+supermarket],['variable',variable],['variable - super',Math.max(0,variable-supermarket)],
-      ['egresos efectivos',total-financed],['egresos financiados',financed],['egresos totales',total]
-    ]);
-    return {byCat,summary,total};
+  function movementMonthMap(movements){
+    const map=new Map();
+    movements.forEach(row=>{
+      if(!matchesActiveFilters(row))return;
+      const month=monthKey(row['Mes consumo']||row['Fecha real']||row['Fecha registrada']);
+      if(!month)return;
+      let item=map.get(month);
+      if(!item){item={byCat:new Map(),total:0,fixed:0,variable:0,supermarket:0,financed:0,summary:null};map.set(month,item);}
+      const amount=num(row['Monto COP']);
+      const category=norm(row['Categoría']);
+      item.byCat.set(category,(item.byCat.get(category)||0)+amount);
+      item.total+=amount;
+      if(category==='supermercado')item.supermarket+=amount;
+      if(/^(si|sí|true|1)$/i.test(String(row['Es fijo']||'')))item.fixed+=amount;
+      else item.variable+=amount;
+      if(isCreditPurchase(row))item.financed+=amount;
+    });
+    map.forEach(item=>{
+      item.summary=new Map([
+        ['fijo',item.fixed],['fijo + super',item.fixed+item.supermarket],['variable',item.variable],['variable - super',Math.max(0,item.variable-item.supermarket)],
+        ['egresos efectivos',item.total-item.financed],['egresos financiados',item.financed],['egresos totales',item.total]
+      ]);
+    });
+    return map;
   }
   function shouldUseMovements(month,current){ return month>=MIGRATION_START && month<=current; }
 
@@ -179,8 +190,8 @@
 
   function render(host,detail,data){
     const year=selectedYear(),months=monthList(year),current=currentMonthKey(),historical=historicalMap(data.flowRows),salary=salaryMap(data.concepts,data.regularIncome),categories=categoryList(data.flowRows,data.movements,year);
-    const movementCache=new Map();
-    const mdata=m=>{if(!movementCache.has(m))movementCache.set(m,movementMonthValues(data.movements,m));return movementCache.get(m);};
+    const movementCache=movementMonthMap(data.movements),emptyMovement={byCat:new Map(),summary:new Map(),total:0};
+    const mdata=m=>movementCache.get(m)||emptyMovement;
     const values=new Map(historical);
     months.forEach(m=>{if(shouldUseMovements(m,current))categories.forEach(cat=>values.set(`${m}|${norm(cat)}`,mdata(m).byCat.get(norm(cat))||0));});
     const ordered=sortedCategories(categories,values),arrow=(type,month=null)=>sortState.type===type&&(type!=='month'||sortState.month===month)?(sortState.dir==='asc'?' ↑':' ↓'):'';
