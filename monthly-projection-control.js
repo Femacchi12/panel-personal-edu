@@ -8,6 +8,7 @@
   const STORAGE_KEY='panel-personal-edu.include-monthly-projection';
   const MONTHS=['ene','feb','mar','abr','may','jun','jul','ago','sept','oct','nov','dic'];
   let frame=0,pendingForce=false,requestVersion=0,lastPayload=null,lastRows=[];
+  const rowDateCache=new WeakMap();
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -32,7 +33,8 @@
   function monthLabel(key){const m=String(key).match(/^(20\d{2})-(\d{2})$/);return m?`${MONTHS[+m[2]-1]} ${m[1]}`:key;}
   function currentMonthKey(){const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
   function parseDate(value){const s=String(value||'').trim();let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);const d=new Date(s);return Number.isNaN(d.getTime())?null:d;}
-  function dateLabel(row){const d=parseDate(row['Fecha real']||row['Fecha registrada']);return d?`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`:'—';}
+  function rowDate(row){if(rowDateCache.has(row))return rowDateCache.get(row);const d=parseDate(row['Fecha real']||row['Fecha registrada']);rowDateCache.set(row,d);return d;}
+  function dateLabel(row){const d=rowDate(row);return d?`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`:'—';}
   function selectedGlobal(key){return[...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)].map(el=>String(el.dataset.value||'').trim()).filter(Boolean);}
   function activeView(){return document.querySelector('.nav-item.active')?.dataset.view||'';}
   function rowMonth(row){return monthKey(row['Mes consumo']||row['Mes pago']||row['Fecha real']||row['Fecha registrada']);}
@@ -63,7 +65,7 @@
   function isFixed(row){return/^(si|sí|true|1)$/i.test(String(row['Es fijo']||'').trim());}
   function isSuper(row){return norm(row['Categoría'])==='supermercado';}
   function account(row){const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);if(n.includes('efectivo'))return'Efectivo';if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';if(n.includes('arq'))return'ARQ Edu';if(n.includes('nu'))return(n.includes(' ro')||holder.includes('rocio')||holder==='ro')?'Nu Ro':'Nu Edu';return raw||'Sin especificar';}
-  function method(row){const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;const raw=norm(row['Cuenta / Tarjeta']);if(raw.includes('credito')||raw.includes('crédito'))return'Crédito';if(raw.includes('transferencia'))return'Transferencia';if(raw.includes('debito')||raw.includes('débito'))return'Débito';if(raw.includes('efectivo'))return'Efectivo';const q=parseNumber(row.Cuotas);if(q>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';return'Sin especificar';}
+  function method(row){const policy=window.FinancePurchasePolicy;if(typeof policy?.method==='function')return policy.method(row);const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;const raw=norm(row['Cuenta / Tarjeta']);if(raw.includes('credito')||raw.includes('crédito'))return'Crédito';if(raw.includes('transferencia'))return'Transferencia';if(raw.includes('debito')||raw.includes('débito'))return'Débito';if(raw.includes('efectivo'))return'Efectivo';const q=parseNumber(row.Cuotas);if(q>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';return'Sin especificar';}
   function matchesExtraFilters(row,ctx){
     if(ctx.categories.length&&!ctx.categories.includes(String(row['Categoría']||'')))return false;
     if(ctx.account.length&&!ctx.account.includes(account(row)))return false;
@@ -90,7 +92,7 @@
       if(month===key){if(isActual(row))actual.push(row);else if(isProjection(row))projections.push(row);}
       else if(month===prev&&isActual(row))previous.push(row);
     }
-    projections.sort((a,b)=>(parseDate(a['Fecha real']||a['Fecha registrada'])?.getTime()||0)-(parseDate(b['Fecha real']||b['Fecha registrada'])?.getTime()||0));
+    projections.sort((a,b)=>(rowDate(a)?.getTime()||0)-(rowDate(b)?.getTime()||0));
     const groups=groupTotals(actual,previous,projections);
     groups.super.remaining=current?Math.max(0,groups.super.previous-groups.super.current-groups.super.projection):0;
     groups.fixed.remaining=current?Math.max(0,groups.fixed.previous-groups.fixed.current-groups.fixed.projection):0;
@@ -102,7 +104,7 @@
   function includeProjection(){const stored=localStorage.getItem(STORAGE_KEY);return stored===null?true:stored==='1';}
   function setProjection(value){localStorage.setItem(STORAGE_KEY,value?'1':'0');window.__PANEL_INCLUDE_MONTHLY_PROJECTION__=Boolean(value);document.dispatchEvent(new CustomEvent('panel:monthly-projection-change',{detail:{enabled:Boolean(value)}}));}
   function differenceCell(current,previous){const diff=current-previous;if(Math.abs(diff)<.5)return'<span class="monthly-diff neutral">Igual al mes pasado</span>';return diff<0?`<span class="monthly-diff under">Faltan ${esc(money(Math.abs(diff)))}</span>`:`<span class="monthly-diff over">Supera ${esc(money(diff))}</span>`;}
-  function projectionStatus(row){const d=parseDate(row['Fecha real']||row['Fecha registrada']);if(!d)return'Proyección';const now=new Date();now.setHours(0,0,0,0);d.setHours(0,0,0,0);if(d.getTime()===now.getTime())return'Proyección hoy';if(d<now)return'Proyección vencida';return'Proyección';}
+  function projectionStatus(row){const d=rowDate(row);if(!d)return'Proyección';const now=new Date();now.setHours(0,0,0,0);const normalized=new Date(d.getFullYear(),d.getMonth(),d.getDate());if(normalized.getTime()===now.getTime())return'Proyección hoy';if(normalized<now)return'Proyección vencida';return'Proyección';}
   function comparisonRows(stats){return[['Supermercado',stats.groups.super],['Gastos fijos / servicios',stats.groups.fixed],['Variables sin supermercado',stats.groups.variable]].map(([label,g])=>`<tr><td><strong>${esc(label)}</strong></td><td>${esc(money(g.current))}</td><td>${esc(money(g.previous))}</td><td>${differenceCell(g.current,g.previous)}</td></tr>`).join('');}
 
   function renderSuite(host,stats){
@@ -122,7 +124,11 @@
     const view=activeView();if(view!=='gastos'&&view!=='flujo')return;
     const root=document.getElementById('viewRoot');if(!root)return;
     const p=await payload(force);if(!p||version!==requestVersion||activeView()!==view||!root.isConnected)return;
-    if(p!==lastPayload){lastPayload=p;lastRows=parseRows(p.sources?.[`${financeId}|Movimientos!A:Z`]||[]);}
+    if(p!==lastPayload){
+      lastPayload=p;
+      const cached=window.__PANEL_GET_CACHED_ROWS__;
+      lastRows=typeof cached==='function'?cached(p,financeId,'Movimientos!A:Z'):parseRows(p.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
+    }
     const ctx=filterContext(view),stats=monthlyStats(lastRows,targetMonth(lastRows,ctx),ctx);
     let host=root.querySelector('#monthlyProjectionSuite');
     if(!host){
