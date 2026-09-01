@@ -204,12 +204,40 @@
     return next;
   }
 
+  function columnIndex(label){
+    const text=String(label||'').toUpperCase();let value=0;
+    for(const char of text){const code=char.charCodeAt(0)-64;if(code<1||code>26)return-1;value=value*26+code;}
+    return value-1;
+  }
+  function parseColumnRange(range){
+    const match=String(range||'').match(/^([^!]+)!([A-Z]+):([A-Z]+)$/i);
+    if(!match)return null;
+    const start=columnIndex(match[2]),end=columnIndex(match[3]);
+    if(start<0||end<start)return null;
+    return {sheet:match[1],start,end};
+  }
+  function resolveSource(payload,spreadsheetId,range){
+    const exactKey=`${spreadsheetId}|${range}`;
+    const exact=payload?.sources?.[exactKey];
+    if(Array.isArray(exact))return{key:exactKey,values:exact};
+    const wanted=parseColumnRange(range);if(!wanted)return null;
+    const prefix=`${spreadsheetId}|`;
+    for(const [key,values] of Object.entries(payload?.sources||{})){
+      if(!key.startsWith(prefix)||!Array.isArray(values))continue;
+      const candidate=parseColumnRange(key.slice(prefix.length));
+      if(!candidate||candidate.sheet!==wanted.sheet||candidate.start>wanted.start||candidate.end<wanted.end)continue;
+      const offset=wanted.start-candidate.start,width=wanted.end-wanted.start+1;
+      return{key,values:values.map(row=>Array.isArray(row)?row.slice(offset,offset+width):[])};
+    }
+    return null;
+  }
   function sourceValuesFromPayload(payload,spreadsheetId,range){
-    const key=`${spreadsheetId}|${range}`;
-    const sourceError=payload?.sourceErrors?.[key];
+    const exactKey=`${spreadsheetId}|${range}`;
+    const resolved=resolveSource(payload,spreadsheetId,range);
+    const sourceError=payload?.sourceErrors?.[resolved?.key||exactKey];
     if(sourceError)throw new Error(`Fuente no disponible: ${range} · ${sourceError}`);
-    const sourceValues=payload?.sources?.[key];
-    if(!Array.isArray(sourceValues))throw new Error(`Fuente no permitida: ${range}`);
+    if(!resolved)throw new Error(`Fuente no permitida: ${range}`);
+    const sourceValues=resolved.values;
     const canonicalValues=spreadsheetId===financeId?canonicalizeExpenseSummary(sourceValues,range,payload):sourceValues;
     const actualValues=applyMovementStateFilter(canonicalValues,range),sectionValues=applySectionFilters(actualValues,range);
     return spreadsheetId===financeId?applyCardFilter(sectionValues,range,payload):sectionValues;
