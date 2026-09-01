@@ -65,6 +65,13 @@
       .filter(Boolean);
   }
 
+  function currentPeriodState() {
+    return {
+      years: new Set(selectedValues('year')),
+      months: new Set(selectedValues('month').map(Number))
+    };
+  }
+
   function monthNumber(value) {
     const raw = norm(value);
     if (/^\d+$/.test(raw)) {
@@ -92,13 +99,11 @@
     return {year, month};
   }
 
-  function filterPeriod(rows) {
-    const years = selectedValues('year');
-    const months = selectedValues('month').map(Number);
+  function filterPeriod(rows, state) {
     return (rows || []).filter(row => {
       const p = rowPeriod(row);
-      if (years.length && (!p.year || !years.includes(String(p.year)))) return false;
-      if (months.length && (!p.month || !months.includes(Number(p.month)))) return false;
+      if (state.years.size && (!p.year || !state.years.has(String(p.year)))) return false;
+      if (state.months.size && (!p.month || !state.months.has(Number(p.month)))) return false;
       return true;
     });
   }
@@ -109,11 +114,12 @@
     return getData(force);
   }
 
-  async function getRows(range, spreadsheetId = financeId, force = false) {
-    const direct = window.__PANEL_GET_SOURCE_VALUES__;
-    if (typeof direct === 'function') return parseRows(await direct(spreadsheetId, range, force));
-    const payload = await getPayload(force);
-    return parseRows(payload?.sources?.[`${spreadsheetId}|${range}`] || []);
+  function rowsFromPayload(payload, range, spreadsheetId = financeId) {
+    const key = `${spreadsheetId}|${range}`;
+    if (payload?.sourceErrors?.[key]) return [];
+    const cached = window.__PANEL_GET_CACHED_ROWS__;
+    if (typeof cached === 'function') return cached(payload, spreadsheetId, range);
+    return parseRows(payload?.sources?.[key] || []);
   }
 
   function linkCell(value) {
@@ -152,11 +158,17 @@
     chart?.destroy();
     const canvas = document.getElementById('incomeCompleteChart');
     if (!canvas || !concepts.length) return;
-    const labels = concepts.map(r => r['Mes'] || '');
-    const salaryCop = concepts.map(r => parseNumber(r['Sueldo COP']));
-    const salaryUsd = concepts.map(r => parseNumber(r['Sueldo USD (equiv. COP)']));
-    const totals = concepts.map(r => parseNumber(r['Total consolidado']));
-    const extras = totals.map((v,i) => Math.max(0, v - salaryCop[i] - salaryUsd[i]));
+    const labels = [], salaryCop = [], salaryUsd = [], totals = [], extras = [];
+    concepts.forEach(row => {
+      const salary = parseNumber(row['Sueldo COP']);
+      const usdSalary = parseNumber(row['Sueldo USD (equiv. COP)']);
+      const total = parseNumber(row['Total consolidado']);
+      labels.push(row['Mes'] || '');
+      salaryCop.push(salary);
+      salaryUsd.push(usdSalary);
+      totals.push(total);
+      extras.push(Math.max(0, total - salary - usdSalary));
+    });
     chart = new Chart(canvas, {
       type:'line',
       data:{labels,datasets:[
@@ -177,38 +189,34 @@
     if (!root || root.querySelector('[data-income-complete]') || root.dataset.incomeLoading === '1') return;
     root.dataset.incomeLoading = '1';
     try {
-      const [nominaAll, usdAll, detailAll, conceptsAll, invoicesAll, savingAll] = await Promise.all([
-        getRows('Nomina_Colombia!A:AI'),
-        getRows('Ingresos!A:T'),
-        getRows('Detalle_Ingresos!A:L'),
-        getRows('Resumen_Conceptos_Ingresos!A:L'),
-        getRows('Facturas_USD!A:L'),
-        getRows('Flujo_Ahorro!A:P')
-      ]);
+      const payload = await getPayload(false);
       if (version !== renderVersion || activeView() !== 'ingresos' || !root.isConnected) return;
 
-      const nomina = filterPeriod(nominaAll);
-      const usdRows = filterPeriod(usdAll);
-      const details = filterPeriod(detailAll);
-      const concepts = filterPeriod(conceptsAll);
-      const invoices = filterPeriod(invoicesAll);
-      const saving = filterPeriod(savingAll);
+      const period = currentPeriodState();
+      const nomina = filterPeriod(rowsFromPayload(payload,'Nomina_Colombia!A:AI'), period);
+      const usdRows = filterPeriod(rowsFromPayload(payload,'Ingresos!A:T'), period);
+      const details = filterPeriod(rowsFromPayload(payload,'Detalle_Ingresos!A:L'), period);
+      const concepts = filterPeriod(rowsFromPayload(payload,'Resumen_Conceptos_Ingresos!A:L'), period);
+      const invoices = filterPeriod(rowsFromPayload(payload,'Facturas_USD!A:L'), period);
+      const saving = filterPeriod(rowsFromPayload(payload,'Flujo_Ahorro!A:P'), period);
 
-      const payrollNet = nomina.reduce((a,r)=>a+parseNumber(r['Neto pagado']),0);
-      const usdNet = usdRows.reduce((a,r)=>a+parseNumber(r['Valor neto']),0);
-      const extras = details.filter(r => {
-        const type = norm(r['Tipo']);
-        const concept = norm(r['Concepto']);
-        return !type.includes('ingreso laboral') && !concept.includes('sueldo componente');
-      }).reduce((a,r)=>a+parseNumber(r['Equivalente COP']),0);
-      const consolidated = concepts.reduce((a,r)=>a+parseNumber(r['Total consolidado']),0);
+      let payrollNet = 0, usdNet = 0, extras = 0, extraCount = 0, consolidated = 0;
+      nomina.forEach(row => { payrollNet += parseNumber(row['Neto pagado']); });
+      usdRows.forEach(row => { usdNet += parseNumber(row['Valor neto']); });
+      details.forEach(row => {
+        const type = norm(row['Tipo']);
+        const concept = norm(row['Concepto']);
+        if (!type.includes('ingreso laboral')) extraCount += 1;
+        if (!type.includes('ingreso laboral') && !concept.includes('sueldo componente')) extras += parseNumber(row['Equivalente COP']);
+      });
+      concepts.forEach(row => { consolidated += parseNumber(row['Total consolidado']); });
 
       const head = root.querySelector('.section-head')?.outerHTML || '';
       root.innerHTML = `${head}<div data-income-complete>
         <div class="kpi-grid">
           ${kpi('Nómina Colombia neta',cop(payrollNet),`${nomina.length} período(s) con el filtro`,'green')}
           ${kpi('Ingresos USD recibidos',usd(usdNet),`${usdRows.length} pago(s) registrados`,'blue')}
-          ${kpi('Extras / otros ingresos',cop(extras),`${details.filter(r=>!norm(r['Tipo']).includes('ingreso laboral')).length} concepto(s)`,'gold')}
+          ${kpi('Extras / otros ingresos',cop(extras),`${extraCount} concepto(s)`,'gold')}
           ${kpi('Total consolidado',concepts.length?cop(consolidated):'—',concepts.length?'Según Resumen_Conceptos_Ingresos':'Disponible para los períodos consolidados de 2026')}
         </div>
         <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Composición mensual de ingresos</strong><span>Sueldo COP, componente USD, extras y total consolidado</span></div></div><div class="chart-scroll"><div class="chart-inner" style="min-width:100%;height:330px"><canvas id="incomeCompleteChart"></canvas></div></div></div>
