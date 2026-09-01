@@ -7,7 +7,7 @@
   if(!apiBaseUrl)return;
 
   const originalFetch=window.fetch.bind(window);
-  let dataPromise=null,cacheUntil=0;
+  let dataPromise=null,cacheUntil=0,forcedReuseUntil=0;
   const parsedRowsCache=new WeakMap();
   const norm=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 
@@ -20,27 +20,45 @@
     rule:'Los egresos reales se toman únicamente de Movimientos. Los resúmenes sirven para conciliar y nunca crean gastos automáticamente.'
   });
 
-  function resetBackendCache(){dataPromise=null;cacheUntil=0;}
-  async function getBackendData(force=false){
-    const now=Date.now();
-    if(force)resetBackendCache();
-    if(dataPromise&&now<cacheUntil)return dataPromise;
-    dataPromise=(async()=>{
+  function resetBackendCache(){dataPromise=null;cacheUntil=0;forcedReuseUntil=0;}
+  function requestBackend(forceRoute=false){
+    return (async()=>{
       const getIdToken=window.__PANEL_GET_ID_TOKEN__;
       if(typeof getIdToken!=='function')throw new Error('No hay sesión Firebase disponible');
       const idToken=await getIdToken(false);
       if(!idToken)throw new Error('No se pudo obtener el token de sesión');
-      const url=`${apiBaseUrl}/api/data${force?'?refresh=1':''}`;
+      const url=`${apiBaseUrl}/api/data${forceRoute?'?refresh=1':''}`;
       const response=await originalFetch(url,{method:'GET',headers:{Authorization:`Bearer ${idToken}`},cache:'no-store'});
       if(!response.ok){const body=await response.text();throw new Error(`${response.status} ${response.statusText}: ${body}`);}
       const payload=await response.json();
       document.dispatchEvent(new CustomEvent('panel:backend-data-loaded',{detail:{generatedAt:payload?.generatedAt||'',sourceErrors:payload?.sourceErrors||{}}}));
       return payload;
     })();
+  }
+  async function startBackendRequest(forceRoute=false){
+    const now=Date.now();
+    dataPromise=requestBackend(forceRoute);
     cacheUntil=now+55_000;
     try{return await dataPromise;}catch(error){resetBackendCache();throw error;}
   }
+  async function getBackendData(force=false){
+    const now=Date.now();
+    if(force&&dataPromise&&now<cacheUntil&&now<forcedReuseUntil)return dataPromise;
+    if(force)resetBackendCache();
+    if(dataPromise&&now<cacheUntil)return dataPromise;
+    return startBackendRequest(force);
+  }
+  async function forceBackendRefresh(){
+    resetBackendCache();
+    forcedReuseUntil=Number.POSITIVE_INFINITY;
+    try{
+      const payload=await startBackendRequest(true);
+      forcedReuseUntil=Date.now()+5_000;
+      return payload;
+    }catch(error){forcedReuseUntil=0;throw error;}
+  }
   window.__PANEL_GET_BACKEND_DATA__=getBackendData;
+  window.__PANEL_FORCE_BACKEND_REFRESH__=forceBackendRefresh;
   window.__PANEL_RESET_BACKEND_DATA__=resetBackendCache;
 
   function jsonResponse(payload,status=200,statusText='OK'){return new Response(JSON.stringify(payload),{status,statusText,headers:{'Content-Type':'application/json'}});}
