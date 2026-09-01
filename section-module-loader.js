@@ -5,6 +5,9 @@
   const scripts = new Map();
   const loadedViews = new Set();
   const loadingViews = new Map();
+  const HOVER_PREFETCH_DELAY_MS = 140;
+  let hoverTimer = 0;
+  let hoverView = '';
 
   const GROUPS = Object.freeze({
     gastos: [
@@ -119,23 +122,56 @@
     loadView(view).catch(() => {});
   }
 
+  function cancelHoverPrefetch(view = '') {
+    if (view && hoverView && view !== hoverView) return;
+    if (hoverTimer) clearTimeout(hoverTimer);
+    hoverTimer = 0;
+    hoverView = '';
+  }
+
+  function scheduleHoverPrefetch(view) {
+    if (!GROUPS[view] || loadedViews.has(view) || loadingViews.has(view)) return;
+    cancelHoverPrefetch();
+    hoverView = view;
+    hoverTimer = setTimeout(() => {
+      const target = hoverView;
+      hoverTimer = 0;
+      hoverView = '';
+      if (target) schedule(target);
+    }, HOVER_PREFETCH_DELAY_MS);
+  }
+
   function navView(event) {
     return event.target.closest?.('.nav-item[data-view]')?.dataset.view || '';
   }
 
   document.addEventListener('pointerover', event => {
     const view = navView(event);
-    if (view) schedule(view);
+    if (view) scheduleHoverPrefetch(view);
+  }, { passive: true });
+
+  document.addEventListener('pointerout', event => {
+    const item = event.target.closest?.('.nav-item[data-view]');
+    if (!item) return;
+    const next = event.relatedTarget;
+    if (next && item.contains(next)) return;
+    cancelHoverPrefetch(item.dataset.view || '');
   }, { passive: true });
 
   document.addEventListener('focusin', event => {
     const view = navView(event);
-    if (view) schedule(view);
+    if (view) {
+      cancelHoverPrefetch();
+      schedule(view);
+    }
   });
 
   document.addEventListener('click', event => {
     const view = navView(event);
-    if (view) schedule(view);
+    if (view) {
+      cancelHoverPrefetch();
+      schedule(view);
+    }
   }, true);
 
   document.addEventListener('panel:view-root-changed', event => schedule(event.detail?.view || activeView()));
