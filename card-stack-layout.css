@@ -7,6 +7,19 @@
 .credit-grid .credit-card:nth-child(2){order:2}
 .credit-grid .credit-card:nth-child(3){order:3}
 
+/* El titular debe identificarse de inmediato sin competir con el monto principal. */
+#viewRoot .credit-card .credit-owner{
+  font-size:12px!important;
+  line-height:1.2!important;
+  font-weight:700!important;
+  color:#d8e4f4!important;
+  padding:4px 7px!important;
+  border:1px solid rgba(117,144,180,.22)!important;
+  background:rgba(255,255,255,.025)!important;
+  border-radius:999px!important;
+  letter-spacing:.01em!important;
+}
+
 /*
   Control compacto del último corte.
   Regla base: no depende del breakpoint móvil porque algunos navegadores Android
@@ -80,6 +93,10 @@
 }
 
 @media (max-width:380px){
+  #viewRoot .credit-card .credit-owner{
+    font-size:11px!important;
+    padding:3px 6px!important;
+  }
   #viewRoot .credit-card .card-cycle-item,
   #viewRoot .credit-card .card-cycle-item.wide{
     padding:6px 7px!important;
