@@ -1,6 +1,8 @@
 (() => {
   'use strict';
 
+  const CURRENCY_VIEWS=new Set(['general','gastos','flujo','tarjetas','deudas','inversiones','pension','ingresos','servicios']);
+
   function applyChartDefaults(){
     const Chart=window.Chart;
     if(!Chart?.defaults)return;
@@ -22,7 +24,10 @@
   }
 
   function syncView(){
-    document.body.dataset.panelView=document.querySelector('.nav-item.active')?.dataset.view||'general';
+    const view=document.querySelector('.nav-item.active')?.dataset.view||'general';
+    document.body.dataset.panelView=view;
+    const currency=document.querySelector('.currency-switch');
+    if(currency)currency.hidden=!CURRENCY_VIEWS.has(view);
   }
 
   applyChartDefaults();
