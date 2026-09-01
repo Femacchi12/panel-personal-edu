@@ -22,8 +22,11 @@
     cardsPromise=(async()=>{
       const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return[];
       const payload=await getData(force);
-      const values=payload?.sources?.[`${financeId}|Tarjetas!A:T`]||[];
-      cards=parseRows(values).filter(card=>cardId(card)&&norm(card?.Activa||'sí')!=='no');
+      const cached=window.__PANEL_GET_CACHED_ROWS__;
+      const rows=typeof cached==='function'
+        ?cached(payload,financeId,'Tarjetas!A:T')
+        :parseRows(payload?.sources?.[`${financeId}|Tarjetas!A:T`]||[]);
+      cards=rows.filter(card=>cardId(card)&&norm(card?.Activa||'sí')!=='no');
       return cards;
     })();
     try{return await cardsPromise;}finally{cardsPromise=null;}
