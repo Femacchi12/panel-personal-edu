@@ -17,6 +17,7 @@
   const currentCurrency = () => document.querySelector('.currency-btn.active')?.dataset.currency || 'COP';
 
   function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const h=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(r=>r?.some(v=>String(v??'').trim()!=='')).map(r=>Object.fromEntries(h.map((k,i)=>[k||`Col ${i+1}`,r?.[i]??''])));}
+  function rowsFromPayload(payload,range){const cached=window.__PANEL_GET_CACHED_ROWS__;if(typeof cached==='function')return cached(payload,financeId,range);return parseRows(payload?.sources?.[`${financeId}|${range}`]||[]);}
   function parseNumber(value){if(typeof value==='number')return Number.isFinite(value)?value:0;let s=String(value??'').trim().replace(/[^\d,.\-]/g,'');if(!s)return 0;const c=s.lastIndexOf(','),d=s.lastIndexOf('.');if(c>=0&&d>=0){if(c>d)s=s.replace(/\./g,'').replace(',','.');else s=s.replace(/,/g,'');}else if(c>=0){const p=s.split(',');s=p.length===2&&p[1].length<=4?p[0].replace(/\./g,'')+'.'+p[1]:s.replace(/,/g,'');}else if(d>=0){const p=s.split('.');if(p.length>2||(p.length===2&&p[1].length===3))s=s.replace(/\./g,'');}const n=Number(s);return Number.isFinite(n)?n:0;}
   function parseDate(value){const s=String(value||'').trim();if(!s)return null;let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);const d=new Date(s);return Number.isNaN(d.getTime())?null:d;}
   function dateLabel(value){const d=value instanceof Date?value:parseDate(value);return d?`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`:'—';}
@@ -25,18 +26,99 @@
   function selectedGlobal(key){return[...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)].map(el=>String(el.dataset.value||'').trim()).filter(Boolean);}
   function selectedLocal(key){return[...document.querySelectorAll(`.local-multi-filter[data-local-key="${key}"] .local-option.selected`)].map(el=>String(el.dataset.value||'').trim()).filter(Boolean);}
 
+  function captureFilters(){
+    return {
+      years:selectedGlobal('year').map(Number).filter(Boolean),
+      months:selectedGlobal('month').map(Number).filter(n=>n>=1&&n<=12),
+      platforms:selectedLocal('invPlatform'),
+      classes:new Set(selectedLocal('invClass')),
+      categories:new Set(selectedLocal('invCategory')),
+      subcategories:new Set(selectedLocal('invSubcategory')),
+      mode:selectedLocal('investmentValueMode')[0]||'total'
+    };
+  }
+
   function forcePeriodFilters(){if(activeView()!=='inversiones')return;const bar=document.getElementById('filterBar');if(bar?.hidden)bar.hidden=false;document.querySelectorAll('#globalFilters .multi-filter').forEach(el=>{const hide=!['year','month'].includes(el.dataset.filter);if(el.hidden!==hide)el.hidden=hide;});}
 
-  function periodBounds(){const years=selectedGlobal('year').map(Number).filter(Boolean),months=selectedGlobal('month').map(Number).filter(n=>n>=1&&n<=12);if(!years.length&&!months.length)return{start:null,end:null,label:'Todo el histórico'};const ys=years.length?years:[new Date().getFullYear()];let start,end;if(months.length){const dates=[];ys.forEach(y=>months.forEach(m=>dates.push(new Date(y,m-1,1))));dates.sort((a,b)=>a-b);start=dates[0];const last=dates.at(-1);end=new Date(last.getFullYear(),last.getMonth()+1,0,23,59,59,999);}else{start=new Date(Math.min(...ys),0,1);end=new Date(Math.max(...ys),11,31,23,59,59,999);}const label=years.length===1&&months.length===1?`${MONTHS[months[0]-1]} ${years[0]}`:years.length===1&&!months.length?String(years[0]):`${dateLabel(start)} – ${dateLabel(end)}`;return{start,end,label};}
-  function applyLocalFilters(rows){const rules={invPlatform:'Plataforma / Bróker',invClass:'Clase de activo',invCategory:'Categoría',invSubcategory:'Subcategoría'};return rows.filter(row=>Object.entries(rules).every(([key,field])=>{const s=selectedLocal(key);return!s.length||s.includes(String(row[field]||'').trim());}));}
-  function latestPerPlatformAsOf(rows,end){const groups=new Map();rows.forEach(row=>{const d=parseDate(row.Fecha);if(!d||(end&&d>end))return;const p=String(row['Plataforma / Bróker']||'Sin plataforma').trim();if(!groups.has(p))groups.set(p,[]);groups.get(p).push(row);});const out=[];groups.forEach(group=>{const max=Math.max(...group.map(r=>parseDate(r.Fecha)?.getTime()||0));out.push(...group.filter(r=>(parseDate(r.Fecha)?.getTime()||0)===max));});return out;}
-  function latestSummaryAsOf(rows,end){const groups=new Map();rows.forEach(row=>{const d=parseDate(row['Fecha corte']);if(!d||(end&&d>end))return;const p=String(row.Entidad||'Sin plataforma').trim();if(!groups.has(p)||d>(parseDate(groups.get(p)['Fecha corte'])||new Date(0)))groups.set(p,row);});return[...groups.values()];}
+  function periodBounds(state){const years=state.years,months=state.months;if(!years.length&&!months.length)return{start:null,end:null,label:'Todo el histórico'};const ys=years.length?years:[new Date().getFullYear()];let start,end;if(months.length){const dates=[];ys.forEach(y=>months.forEach(m=>dates.push(new Date(y,m-1,1))));dates.sort((a,b)=>a-b);start=dates[0];const last=dates.at(-1);end=new Date(last.getFullYear(),last.getMonth()+1,0,23,59,59,999);}else{start=new Date(Math.min(...ys),0,1);end=new Date(Math.max(...ys),11,31,23,59,59,999);}const label=years.length===1&&months.length===1?`${MONTHS[months[0]-1]} ${years[0]}`:years.length===1&&!months.length?String(years[0]):`${dateLabel(start)} – ${dateLabel(end)}`;return{start,end,label};}
+
+  function applyLocalFilters(rows,state){
+    return rows.filter(row=>{
+      if(state.platforms.length&&!state.platforms.includes(String(row['Plataforma / Bróker']||'').trim()))return false;
+      if(state.classes.size&&!state.classes.has(String(row['Clase de activo']||'').trim()))return false;
+      if(state.categories.size&&!state.categories.has(String(row.Categoría||'').trim()))return false;
+      if(state.subcategories.size&&!state.subcategories.has(String(row.Subcategoría||'').trim()))return false;
+      return true;
+    });
+  }
+
+  function latestPerPlatformAsOf(rows,end){
+    const groups=new Map(),endTime=end?.getTime()??Infinity;
+    rows.forEach(row=>{
+      const d=parseDate(row.Fecha);if(!d)return;
+      const time=d.getTime();if(time>endTime)return;
+      const platform=String(row['Plataforma / Bróker']||'Sin plataforma').trim();
+      const current=groups.get(platform);
+      if(!current||time>current.time)groups.set(platform,{time,rows:[row]});
+      else if(time===current.time)current.rows.push(row);
+    });
+    return [...groups.values()].flatMap(item=>item.rows);
+  }
+
+  function latestSummaryAsOf(rows,end){
+    const groups=new Map(),endTime=end?.getTime()??Infinity;
+    rows.forEach(row=>{
+      const d=parseDate(row['Fecha corte']);if(!d)return;
+      const time=d.getTime();if(time>endTime)return;
+      const platform=String(row.Entidad||'Sin plataforma').trim();
+      const current=groups.get(platform);
+      if(!current||time>current.time)groups.set(platform,{time,row});
+    });
+    return [...groups.values()].map(item=>item.row);
+  }
+
   function aggregate(rows,keyFn,valueFn){const map=new Map();rows.forEach(r=>{const k=keyFn(r);map.set(k,(map.get(k)||0)+(Number(valueFn(r))||0));});return map;}
   function investmentRates(){return{usdCop:Number(cfg?.regularIncome?.usdCopReference)||3150,usdArs:Number(cfg?.regularIncome?.usdArsReference)||1500};}
   function convertBase(value,base,currency,rates){const v=Number(value)||0;if(base===currency)return v;if(base==='USD'&&currency==='COP')return v*rates.usdCop;if(base==='USD'&&currency==='ARS')return v*rates.usdArs;if(base==='COP'&&currency==='USD')return v/rates.usdCop;if(base==='COP'&&currency==='ARS')return v/rates.usdCop*rates.usdArs;if(base==='ARS'&&currency==='USD')return v/rates.usdArs;if(base==='ARS'&&currency==='COP')return v/rates.usdArs*rates.usdCop;return v;}
-  function summaryMatchesPlatform(row){const selected=selectedLocal('invPlatform');if(!selected.length)return true;return selected.some(v=>norm(v).includes(norm(row.Entidad))||norm(row.Entidad).includes(norm(v).split('/')[0].trim()));}
 
-  function buildTimeline(rows,currency,bounds){const items=rows.map(row=>{const d=parseDate(row.Fecha);return d?{date:d.getTime(),platform:String(row['Plataforma / Bróker']||'Sin plataforma').trim(),value:parseNumber(row[`Valor ${currency}`])}:null;}).filter(Boolean);if(!items.length)return{labels:[],datasets:[]};const platforms=[...new Set(items.map(x=>x.platform))].sort((a,b)=>a.localeCompare(b,'es'));const maps=new Map(platforms.map(p=>[p,new Map()]));items.forEach(x=>{const m=maps.get(x.platform);m.set(x.date,(m.get(x.date)||0)+x.value);});const minAll=Math.min(...items.map(x=>x.date)),maxAll=Math.max(...items.map(x=>x.date));const start=bounds.start?.getTime()??minAll,end=bounds.end?.getTime()??maxAll;const dates=[...new Set(items.map(x=>x.date).filter(t=>t>=start&&t<=end))].sort((a,b)=>a-b);if(bounds.start&&items.some(x=>x.date<start)&&!dates.includes(start))dates.unshift(start);const valueAt=(platform,date)=>{let best=-Infinity,value=null;maps.get(platform)?.forEach((v,t)=>{if(t<=date&&t>best){best=t;value=v;}});return value;};const datasets=[];if(platforms.length>1)datasets.push({label:'Portafolio consolidado',data:dates.map(d=>platforms.reduce((s,p)=>s+(valueAt(p,d)||0),0)),borderColor:COLORS[0],backgroundColor:COLORS[0],borderWidth:3,tension:.22,spanGaps:true});platforms.forEach((p,i)=>datasets.push({label:p,data:dates.map(d=>valueAt(p,d)),borderColor:COLORS[(i+1)%COLORS.length],backgroundColor:COLORS[(i+1)%COLORS.length],borderWidth:2,tension:.22,spanGaps:true}));return{labels:dates.map(t=>dateLabel(new Date(t))),datasets};}
+  function summaryMatchesPlatform(row,state){if(!state.platforms.length)return true;const entity=norm(row.Entidad);return state.platforms.some(v=>norm(v).includes(entity)||entity.includes(norm(v).split('/')[0].trim()));}
+
+  function buildTimeline(rows,currency,bounds){
+    const pointMaps=new Map(),platforms=new Set(),allDates=new Set();
+    let minAll=Infinity,maxAll=-Infinity,hasBeforeStart=false;
+    const start=bounds.start?.getTime()??-Infinity,end=bounds.end?.getTime()??Infinity;
+    rows.forEach(row=>{
+      const d=parseDate(row.Fecha);if(!d)return;
+      const time=d.getTime(),platform=String(row['Plataforma / Bróker']||'Sin plataforma').trim(),value=parseNumber(row[`Valor ${currency}`]);
+      minAll=Math.min(minAll,time);maxAll=Math.max(maxAll,time);if(time<start)hasBeforeStart=true;
+      platforms.add(platform);
+      if(!pointMaps.has(platform))pointMaps.set(platform,new Map());
+      const map=pointMaps.get(platform);map.set(time,(map.get(time)||0)+value);
+      if(time>=start&&time<=end)allDates.add(time);
+    });
+    if(!Number.isFinite(minAll))return{labels:[],datasets:[]};
+    const effectiveStart=bounds.start?.getTime()??minAll,effectiveEnd=bounds.end?.getTime()??maxAll;
+    const dates=[...allDates].filter(t=>t>=effectiveStart&&t<=effectiveEnd).sort((a,b)=>a-b);
+    if(bounds.start&&hasBeforeStart&&!dates.includes(effectiveStart))dates.unshift(effectiveStart);
+    if(!dates.length)return{labels:[],datasets:[]};
+    const platformList=[...platforms].sort((a,b)=>a.localeCompare(b,'es'));
+    const platformSeries=new Map();
+    platformList.forEach(platform=>{
+      const points=[...(pointMaps.get(platform)||new Map()).entries()].sort((a,b)=>a[0]-b[0]);
+      let pointer=0,current=null;
+      const data=dates.map(target=>{
+        while(pointer<points.length&&points[pointer][0]<=target){current=points[pointer][1];pointer++;}
+        return current;
+      });
+      platformSeries.set(platform,data);
+    });
+    const datasets=[];
+    if(platformList.length>1){
+      datasets.push({label:'Portafolio consolidado',data:dates.map((_,i)=>platformList.reduce((sum,p)=>sum+(platformSeries.get(p)?.[i]||0),0)),borderColor:COLORS[0],backgroundColor:COLORS[0],borderWidth:3,tension:.22,spanGaps:true});
+    }
+    platformList.forEach((platform,i)=>datasets.push({label:platform,data:platformSeries.get(platform),borderColor:COLORS[(i+1)%COLORS.length],backgroundColor:COLORS[(i+1)%COLORS.length],borderWidth:2,tension:.22,spanGaps:true}));
+    return{labels:dates.map(t=>dateLabel(new Date(t))),datasets};
+  }
 
   async function getPayload(force=false){const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')throw new Error('Backend de datos no disponible');return getData(force);}
   function destroyCharts(){charts.forEach(c=>{try{c.destroy();}catch(_){}});charts=[];}
@@ -49,16 +131,17 @@
     try{
       forcePeriodFilters();
       const root=document.getElementById('viewRoot');if(!root)return;
-      const p=await getPayload(force).catch(e=>{console.error('Inversiones periodo:',e);return null;});
-      if(!p||version!==requestVersion||activeView()!=='inversiones'||!root.isConnected)return;
-      const allPos=parseRows(p?.sources?.[`${financeId}|Posiciones!A:X`]||[]),raw=applyLocalFilters(allPos),summaryAll=parseRows(p?.sources?.[`${financeId}|Resumen_Inversiones!A:N`]||[]);
-      const bounds=periodBounds(),snapshot=latestPerPlatformAsOf(raw,bounds.end),currency=currentCurrency(),rates=investmentRates(),timeline=buildTimeline(raw,currency,bounds);
-      const summary=latestSummaryAsOf(summaryAll.filter(summaryMatchesPlatform),bounds.end);
-      const categoryFilters=selectedLocal('invClass').length||selectedLocal('invCategory').length||selectedLocal('invSubcategory').length;
+      const payload=await getPayload(force).catch(e=>{console.error('Inversiones periodo:',e);return null;});
+      if(!payload||version!==requestVersion||activeView()!=='inversiones'||!root.isConnected)return;
+      const state=captureFilters();
+      const allPos=rowsFromPayload(payload,'Posiciones!A:X'),raw=applyLocalFilters(allPos,state),summaryAll=rowsFromPayload(payload,'Resumen_Inversiones!A:N');
+      const bounds=periodBounds(state),snapshot=latestPerPlatformAsOf(raw,bounds.end),currency=currentCurrency(),rates=investmentRates(),timeline=buildTimeline(raw,currency,bounds);
+      const summary=latestSummaryAsOf(summaryAll.filter(row=>summaryMatchesPlatform(row,state)),bounds.end);
+      const categoryFilters=state.classes.size||state.categories.size||state.subcategories.size;
       const consolidated=summary.reduce((acc,r)=>{const market=parseNumber(r['Valor mercado']),capital=parseNumber(r['Aportes/Incrementos']),result=String(r.Resultado||'').trim()?parseNumber(r.Resultado):market-capital,base=String(r['Moneda base']||'COP').toUpperCase();acc.capital+=convertBase(capital,base,currency,rates);acc.result+=convertBase(result,base,currency,rates);acc.total+=convertBase(market,base,currency,rates);return acc;},{capital:0,result:0,total:0});
       const resultClass=consolidated.result>0?'result-positive':consolidated.result<0?'result-negative':'';
       const summaryHtml=`<div class="investment-consolidated-overview"><div class="investment-summary-title"><strong>Resumen consolidado de inversiones</strong><span>${summary.length} plataforma${summary.length===1?'':'s'} · último corte disponible</span></div><div class="investment-summary-grid"><div class="investment-summary-card"><span>Capital aportado</span><strong>${esc(money(consolidated.capital,currency))}</strong><small>Aportes / incrementos acumulados</small></div><div class="investment-summary-card ${resultClass}"><span>Ganancia / pérdida</span><strong>${esc(money(consolidated.result,currency))}</strong><small>Resultado acumulado frente al capital</small></div><div class="investment-summary-card"><span>Capital + ganancia/pérdida</span><strong>${esc(money(consolidated.total,currency))}</strong><small>Valor actual consolidado de las inversiones</small></div></div></div>`;
-      const effectiveMode=selectedLocal('investmentValueMode')[0]||'total';
+      const effectiveMode=state.mode;
       const modeLabel=effectiveMode==='capital'?'Capital aportado':effectiveMode==='result'?'Ganancia / pérdida':'Capital + ganancia/pérdida';
       let byPlatform,total,rowsHtml,tableTitle,tableSub;
       if(effectiveMode==='total'){
