@@ -8,9 +8,10 @@
   let frame=0,version=0,cache=null;
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
-  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
 
   function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const h=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(r=>r?.some(v=>String(v??'').trim()!=='')).map(r=>Object.fromEntries(h.map((k,i)=>[k||`Col ${i+1}`,r?.[i]??''])));}
+  function rowsFromPayload(payload,range){const cached=window.__PANEL_GET_CACHED_ROWS__;if(typeof cached==='function')return cached(payload,FINANCE_ID,range);return parseRows(payload?.sources?.[`${FINANCE_ID}|${range}`]||[]);}
   function date(value){const s=String(value||'').trim();let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);return null;}
   function startToday(){const n=new Date();return new Date(n.getFullYear(),n.getMonth(),n.getDate());}
   function age(d){return d?Math.max(0,Math.floor((startToday()-d)/86400000)):null;}
@@ -18,8 +19,10 @@
 
   async function load(force=false){
     if(cache&&!force)return cache;
-    const get=window.__PANEL_GET_SOURCE_VALUES__;if(typeof get!=='function')return[];
-    cache=parseRows(await get(FINANCE_ID,'Resumen_Inversiones!A:N',force));return cache;
+    const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return[];
+    const payload=await getData(force);
+    cache=rowsFromPayload(payload,'Resumen_Inversiones!A:N');
+    return cache;
   }
 
   function style(){
@@ -34,8 +37,8 @@
     const root=document.getElementById('viewRoot');if(!root)return;
     const overview=root.querySelector('.investment-consolidated-overview');if(!overview)return;
     let host=overview.querySelector('.investment-freshness');if(!host){host=document.createElement('div');host.className='investment-freshness';overview.appendChild(host);}
-    const items=rows.filter(r=>r.Entidad).map(r=>{const d=date(r['Fecha corte']),days=age(d),state=norm(r.Estado);let text='Al día',tone='';if(days===null){text='Sin fecha';tone='bad';}else if(days>60){text='Desactualizado';tone='bad';}else if(days>45){text='Revisar';tone='warn';}const meta=days===null?'No se pudo validar el corte':`${label(d)} · hace ${days} día${days===1?'':'s'}${state?` · ${r.Estado}`:''}`;return `<div class="investment-freshness-item"><div><strong>${esc(r.Entidad)}</strong><small>${esc(meta)}</small></div><span class="investment-freshness-badge ${tone}">${esc(text)}</span></div>`;});
-    const latest=rows.map(r=>date(r['Fecha corte'])).filter(Boolean).sort((a,b)=>b-a)[0];
+    let latest=null;
+    const items=rows.filter(r=>r.Entidad).map(r=>{const d=date(r['Fecha corte']),days=age(d),state=norm(r.Estado);if(d&&(!latest||d>latest))latest=d;let text='Al día',tone='';if(days===null){text='Sin fecha';tone='bad';}else if(days>60){text='Desactualizado';tone='bad';}else if(days>45){text='Revisar';tone='warn';}const meta=days===null?'No se pudo validar el corte':`${label(d)} · hace ${days} día${days===1?'':'s'}${state?` · ${r.Estado}`:''}`;return `<div class="investment-freshness-item"><div><strong>${esc(r.Entidad)}</strong><small>${esc(meta)}</small></div><span class="investment-freshness-badge ${tone}">${esc(text)}</span></div>`;});
     host.innerHTML=`<div class="investment-freshness-head"><strong>Actualización de datos</strong><span>Último corte disponible: ${esc(label(latest))}</span></div><div class="investment-freshness-grid">${items.join('')}</div>`;
   }
 
