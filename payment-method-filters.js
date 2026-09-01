@@ -9,19 +9,21 @@
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const state={gastos:{account:[],method:[]},flujo:{account:[],method:[]}};
   let reconcileFrame=0,reconcileVersion=0,lastPayload=null,cachedRows=[];
+  const rowDateCache=new WeakMap();
 
   function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const headers=(values[0]||[]).map(v=>String(v||'').trim());return values.slice(1).filter(r=>r?.some(v=>String(v??'').trim()!=='')).map(r=>Object.fromEntries(headers.map((h,i)=>[h||`Col ${i+1}`,r?.[i]??''])));}
   function account(row){const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);if(n.includes('efectivo'))return'Efectivo';if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';if(n.includes('arq'))return'ARQ Edu';if(n.includes('nu')){if(n.includes(' ro')||n.endsWith('ro')||holder.includes('rocio')||holder==='ro')return'Nu Ro';if(n.includes('edu')||holder.includes('edu'))return'Nu Edu';return'Nu';}if(n.includes('transferencia'))return'Transferencia sin cuenta';if(n.includes('debito'))return'Débito sin cuenta';return raw||'Sin especificar';}
-  function method(row){const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;const raw=norm(row['Cuenta / Tarjeta']);if(raw.includes('credito'))return'Crédito';if(raw.includes('transferencia'))return'Transferencia';if(raw.includes('debito'))return'Débito';if(raw.includes('efectivo'))return'Efectivo';const q=Number(String(row.Cuotas||'').replace(/[^\d]/g,''));if(q>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';return'Sin especificar';}
+  function method(row){const policy=window.FinancePurchasePolicy;if(typeof policy?.method==='function')return policy.method(row);const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;const raw=norm(row['Cuenta / Tarjeta']);if(raw.includes('credito'))return'Crédito';if(raw.includes('transferencia'))return'Transferencia';if(raw.includes('debito'))return'Débito';if(raw.includes('efectivo'))return'Efectivo';const q=Number(String(row.Cuotas||'').replace(/[^\d]/g,''));if(q>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';return'Sin especificar';}
   const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
   const supported=(view=activeView())=>view==='gastos'||view==='flujo';
   const globalSelected=key=>[...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)].map(x=>String(x.dataset.value||'').trim()).filter(Boolean);
   function parseDate(s){const v=String(s||'').trim();let m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);return null;}
+  function movementDate(row){if(rowDateCache.has(row))return rowDateCache.get(row);const d=parseDate(row['Fecha real']||row['Fecha registrada']);rowDateCache.set(row,d);return d;}
 
   function buildPeriodContext(){return{years:new Set(globalSelected('year')),months:new Set(globalSelected('month')),categories:new Set(globalSelected('category'))};}
   function periodMatch(row,ctx){
     if(!(window.MovementStatusCore?.isActual(row.Estado)??!/proyecc|proyect|programad/.test(norm(row.Estado))))return false;
-    const d=parseDate(row['Fecha real']||row['Fecha registrada']);if(!d)return false;
+    const d=movementDate(row);if(!d)return false;
     if(ctx.years.size&&!ctx.years.has(String(d.getFullYear())))return false;
     if(ctx.months.size&&!ctx.months.has(String(d.getMonth()+1)))return false;
     if(ctx.categories.size&&!ctx.categories.has(String(row['Categoría']||'')))return false;
@@ -32,7 +34,11 @@
     const getData=window.__PANEL_GET_BACKEND_DATA__;
     if(typeof getData!=='function')return[];
     const data=await getData(false);
-    if(data!==lastPayload){lastPayload=data;cachedRows=parseRows(data?.sources?.[`${FINANCE_ID}|Movimientos!A:Z`]||[]);}
+    if(data!==lastPayload){
+      lastPayload=data;
+      const cached=window.__PANEL_GET_CACHED_ROWS__;
+      cachedRows=typeof cached==='function'?cached(data,FINANCE_ID,'Movimientos!A:Z'):parseRows(data?.sources?.[`${FINANCE_ID}|Movimientos!A:Z`]||[]);
+    }
     return cachedRows;
   }
 
