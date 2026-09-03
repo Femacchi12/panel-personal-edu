@@ -3,11 +3,13 @@
 
   const cfg=window.PANEL_CONFIG||{};
   const financeId=String(cfg.financeSpreadsheetId||'');
+  const ALERT_VIEWS=new Set(['general','gastos','flujo']);
   let frame=0,requestVersion=0,lastPayload=null;
   const DISPLAY_TOLERANCE_COP=5;
   const money=value=>new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(Number(value)||0);
   const norm=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const monthLabel=value=>{const m=String(value||'').match(/^(20\d{2})-(\d{2})$/);if(!m)return value||'—';const names=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];return `${names[Number(m[2])-1]} ${m[1]}`;};
+  const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'general';
 
   function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const headers=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(row=>row?.some(v=>String(v??'').trim()!=='')).map(row=>Object.fromEntries(headers.map((name,index)=>[name||`Col ${index+1}`,row?.[index]??''])));}
   function rowsFromPayload(payload,range){const cached=window.__PANEL_GET_CACHED_ROWS__;return typeof cached==='function'?cached(payload,financeId,range):parseRows(payload?.sources?.[`${financeId}|${range}`]||[]);}
@@ -20,7 +22,6 @@
     const now=new Date(),current=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
     const start=String(policy?.reconciliationStart||'2026-01');
     const canonical=new Map(),summary=new Map(),labels=new Map();
-
     movementRows.forEach(row=>{
       if(typeof policy?.isExpenseRow==='function'&&!policy.isExpenseRow(row))return;
       const month=policy?.monthKey?.(row['Mes consumo']||row['Fecha real']||row['Fecha registrada'])||'';
@@ -30,7 +31,6 @@
       canonical.set(key,(canonical.get(key)||0)+parseNumber(row['Monto COP']));
       labels.set(key,label);
     });
-
     summaryRows.forEach(row=>{
       if(norm(row.Tipo)!=='categoria')return;
       const month=policy?.monthKey?.(row.Mes)||'';
@@ -40,32 +40,15 @@
       summary.set(key,parseNumber(row['Total COP']));
       labels.set(key,label);
     });
-
     const keys=new Set([...canonical.keys(),...summary.keys()]);
-    return [...keys].map(key=>{
-      const [month]=key.split('|'),canonicalCop=canonical.get(key)||0,summaryCop=summary.get(key)||0;
-      return {kind:'category',month,category:labels.get(key)||'Sin categoría',canonicalCop,summaryCop,differenceCop:summaryCop-canonicalCop,source:'Flujo_Mensual'};
-    }).filter(item=>Math.abs(item.differenceCop)>DISPLAY_TOLERANCE_COP).sort((a,b)=>b.month.localeCompare(a.month)||Math.abs(b.differenceCop)-Math.abs(a.differenceCop));
+    return [...keys].map(key=>{const[month]=key.split('|'),canonicalCop=canonical.get(key)||0,summaryCop=summary.get(key)||0;return{kind:'category',month,category:labels.get(key)||'Sin categoría',canonicalCop,summaryCop,differenceCop:summaryCop-canonicalCop,source:'Flujo_Mensual'};}).filter(item=>Math.abs(item.differenceCop)>DISPLAY_TOLERANCE_COP).sort((a,b)=>b.month.localeCompare(a.month)||Math.abs(b.differenceCop)-Math.abs(a.differenceCop));
   }
 
   function ensureStyles(){
     if(document.getElementById('expenseReconciliationStyles'))return;
     const style=document.createElement('style');
     style.id='expenseReconciliationStyles';
-    style.textContent=`
-      .expense-reconciliation-alert{margin:0 0 12px;padding:11px 13px;border:1px solid rgba(246,200,68,.28);border-radius:11px;background:rgba(246,200,68,.07);color:#dce6f3;font-size:10px;line-height:1.45}
-      .expense-reconciliation-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-      .expense-reconciliation-head strong{display:block;color:#f6c844;font-size:11px;margin-bottom:3px}
-      .expense-reconciliation-head span{color:#8fa0b6}
-      .expense-reconciliation-note{display:block;margin-top:4px;color:#aebbd0!important;font-weight:600}
-      .expense-reconciliation-toggle{border:1px solid #5f5125;background:#17160f;color:#f6c844;border-radius:8px;padding:6px 8px;font-size:9px;font-weight:700;cursor:pointer;white-space:nowrap}
-      .expense-reconciliation-detail{display:grid;gap:5px;margin-top:9px;padding-top:8px;border-top:1px solid rgba(246,200,68,.16)}
-      .expense-reconciliation-detail[hidden]{display:none!important}
-      .expense-reconciliation-row{display:grid;grid-template-columns:minmax(120px,1.25fr) 1fr 1fr 1fr;gap:8px;align-items:center;color:#91a1b5}
-      .expense-reconciliation-row strong{color:#e6edf7;font-size:10px}
-      .expense-reconciliation-row span b{color:#b9c6d6;font-weight:700}
-      @media(max-width:720px){.expense-reconciliation-row{grid-template-columns:1fr 1fr}.expense-reconciliation-head{flex-direction:column}}
-    `;
+    style.textContent=`.expense-reconciliation-alert{margin:0 0 12px;padding:11px 13px;border:1px solid rgba(246,200,68,.28);border-radius:11px;background:rgba(246,200,68,.07);color:#dce6f3;font-size:10px;line-height:1.45}.expense-reconciliation-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.expense-reconciliation-head strong{display:block;color:#f6c844;font-size:11px;margin-bottom:3px}.expense-reconciliation-head span{color:#8fa0b6}.expense-reconciliation-note{display:block;margin-top:4px;color:#aebbd0!important;font-weight:600}.expense-reconciliation-toggle{border:1px solid #5f5125;background:#17160f;color:#f6c844;border-radius:8px;padding:6px 8px;font-size:9px;font-weight:700;cursor:pointer;white-space:nowrap}.expense-reconciliation-detail{display:grid;gap:5px;margin-top:9px;padding-top:8px;border-top:1px solid rgba(246,200,68,.16)}.expense-reconciliation-detail[hidden]{display:none!important}.expense-reconciliation-row{display:grid;grid-template-columns:minmax(120px,1.25fr) 1fr 1fr 1fr;gap:8px;align-items:center;color:#91a1b5}.expense-reconciliation-row strong{color:#e6edf7;font-size:10px}.expense-reconciliation-row span b{color:#b9c6d6;font-weight:700}@media(max-width:720px){.expense-reconciliation-row{grid-template-columns:1fr 1fr}.expense-reconciliation-head{flex-direction:column}}`;
     document.head.appendChild(style);
   }
 
@@ -73,14 +56,14 @@
     const root=document.getElementById('viewRoot');
     if(!root?.parentElement)return null;
     let host=document.getElementById('expenseReconciliationAlert');
-    if(!host){
-      host=document.createElement('section');
-      host.id='expenseReconciliationAlert';
-      host.className='expense-reconciliation-alert';
-      host.hidden=true;
-      root.parentElement.insertBefore(host,root);
-    }
+    if(!host){host=document.createElement('section');host.id='expenseReconciliationAlert';host.className='expense-reconciliation-alert';host.dataset.hasIssues='0';host.hidden=true;root.parentElement.insertBefore(host,root);}
     return host;
+  }
+
+  function applyVisibility(){
+    const host=document.getElementById('expenseReconciliationAlert');
+    if(!host)return;
+    host.hidden=host.dataset.hasIssues!=='1'||!ALERT_VIEWS.has(activeView());
   }
 
   function paint(result,categoryIssues=[]){
@@ -90,35 +73,30 @@
     const normalized={...result,ok:issues.length===0,mismatches:monthly,categoryMismatches:categoryIssues,issues,displayToleranceCop:DISPLAY_TOLERANCE_COP};
     window.__PANEL_EXPENSE_RECONCILIATION__=normalized;
     const host=ensureHost();if(!host)return;
-    if(!issues.length){host.hidden=true;host.innerHTML='';return;}
+    if(!issues.length){host.dataset.hasIssues='0';host.hidden=true;host.innerHTML='';return;}
     const latest=issues.slice().sort((a,b)=>b.month.localeCompare(a.month)||Math.abs(b.differenceCop)-Math.abs(a.differenceCop))[0];
     const monthlyCount=monthly.length,categoryCount=categoryIssues.length;
     const summary=[monthlyCount?`${monthlyCount} total${monthlyCount===1?'':'es'} mensual${monthlyCount===1?'':'es'}`:'',categoryCount?`${categoryCount} categoría${categoryCount===1?'':'s'}`:''].filter(Boolean).join(' y ');
     const latestLabel=latest.kind==='category'?`${monthLabel(latest.month)} · ${latest.category}`:monthLabel(latest.month);
-    host.hidden=false;
+    host.dataset.hasIssues='1';
     host.innerHTML=`<div class="expense-reconciliation-head"><div><strong>Conciliación de gastos pendiente</strong><span>Es un control de consistencia: compara Movimientos (fuente oficial) contra resúmenes derivados. Detecté diferencias en ${summary}. Última: ${latestLabel} · diferencia del resumen ${money(latest.differenceCop)}.</span><span class="expense-reconciliation-note">No es un gasto nuevo y no se agregó nada automáticamente. Si hay diferencia, se conserva Movimientos y revisamos el resumen.</span></div><button type="button" class="expense-reconciliation-toggle">Ver detalle</button></div><div class="expense-reconciliation-detail" hidden>${issues.slice().sort((a,b)=>b.month.localeCompare(a.month)||String(a.category||'').localeCompare(String(b.category||''),'es')).slice(0,20).map(item=>`<div class="expense-reconciliation-row"><strong>${item.kind==='category'?'Categoría':'Total mensual'} · ${monthLabel(item.month)}${item.kind==='category'?` · ${item.category}`:''}</strong><span><b>Oficial · Movimientos:</b> ${money(item.canonicalCop)}</span><span><b>Resumen · ${item.source}:</b> ${money(item.summaryCop)}</span><span><b>Resumen − oficial:</b> ${money(item.differenceCop)}</span></div>`).join('')}</div>`;
     const button=host.querySelector('.expense-reconciliation-toggle'),detail=host.querySelector('.expense-reconciliation-detail');
     button?.addEventListener('click',()=>{const open=detail?.hidden!==false;if(detail)detail.hidden=!open;if(button)button.textContent=open?'Ocultar detalle':'Ver detalle';});
+    applyVisibility();
   }
 
   async function run(){
     const version=++requestVersion;
     const policy=window.__PANEL_EXPENSE_SOURCE_POLICY__,getData=window.__PANEL_GET_BACKEND_DATA__;
     if(!policy||typeof policy.reconcile!=='function'||typeof getData!=='function')return;
-    try{
-      const payload=await getData(false);
-      if(version!==requestVersion||payload===lastPayload)return;
-      lastPayload=payload;
-      paint(policy.reconcile(payload),categoryReconciliation(payload,policy));
-    }catch(error){console.error('Conciliación de gastos:',error);}
+    try{const payload=await getData(false);if(version!==requestVersion||payload===lastPayload)return;lastPayload=payload;paint(policy.reconcile(payload),categoryReconciliation(payload,policy));}catch(error){console.error('Conciliación de gastos:',error);}
   }
 
-  function schedule(){
-    if(frame)return;
-    frame=requestAnimationFrame(()=>{frame=0;run();});
-  }
+  function schedule(){if(frame)return;frame=requestAnimationFrame(()=>{frame=0;run();});}
 
   ensureStyles();
   document.addEventListener('panel:backend-data-loaded',schedule);
-  queueMicrotask(schedule);
+  document.addEventListener('panel:view-root-changed',()=>queueMicrotask(applyVisibility));
+  document.addEventListener('click',event=>{if(event.target.closest('.nav-item[data-view]'))setTimeout(applyVisibility,0);},true);
+  queueMicrotask(()=>{schedule();applyVisibility();});
 })();
