@@ -1,3 +1,4 @@
+#viewRoot .patrimonio-dashboard{display:grid;gap:0;min-width:0}
 #viewRoot .patrimonio-heading{margin-bottom:12px}
 #viewRoot .patrimonio-heading p{max-width:980px}
 #viewRoot .patrimonio-status-row{display:flex;flex-wrap:wrap;gap:8px;margin:-2px 0 14px}
