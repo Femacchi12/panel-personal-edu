@@ -135,7 +135,7 @@
 
   function investmentCard(row){
     const cur=String(row['Moneda base']||'').trim()||'USD';
-    const cap=String(row['Capital aportado']??'').trim();
+    const cap=String(row['Capital sin ganancia']??row['Capital aportado']??'').trim();
     const market=String(row['Valor mercado']??'').trim();
     const gain=String(row['Ganancia / pérdida']??'').trim();
     const rateRaw=String(row['Rentabilidad %']??'').trim();
