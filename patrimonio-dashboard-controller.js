@@ -3,11 +3,10 @@
 
   const cfg=window.PANEL_CONFIG||{};
   const financeId=String(cfg.financeSpreadsheetId||'');
-  const MONTHLY_RANGE='Patrimonio_Mensual!A:X';
+  const MONTHLY_RANGE='Patrimonio_Mensual!A:Y';
   const DETAIL_RANGE='Patrimonio_Detalle!A:N';
   const INVESTMENT_RANGE='Patrimonio_Inversiones!A:U';
   let active=false;
-  let payload=null;
   let data={monthly:[],detail:[],investments:[]};
   let charts=[];
   let currency='COP';
@@ -42,7 +41,7 @@
     const token=++loadToken;
     const getBackend=window.__PANEL_GET_BACKEND_DATA__;
     if(typeof getBackend==='function'){
-      try{payload=await getBackend(false);}catch(error){console.warn('Patrimonio: backend no disponible',error);}
+      try{await getBackend(false);}catch(error){console.warn('Patrimonio: backend no disponible',error);}
     }
     const [monthly,detail,investments]=await Promise.all([sourceRows(MONTHLY_RANGE),sourceRows(DETAIL_RANGE),sourceRows(INVESTMENT_RANGE)]);
     if(token!==loadToken)return;
@@ -59,7 +58,16 @@
   function valueFor(row,prefix,cur=currency){return row?.[`${prefix} ${cur}`];}
   function currentCurrency(){return document.querySelector('.currency-btn.active')?.dataset.currency||currency||'COP';}
   function destroyCharts(){charts.forEach(chart=>{try{chart.destroy();}catch{}});charts=[];}
-  function latestMonthly(){return data.monthly.slice().sort((a,b)=>monthKey(a).localeCompare(monthKey(b))).at(-1)||{};}
+  function hasValue(value){return String(value??'').trim()!=='';}
+  function latestConfirmedByEntity(rows){
+    const latest=new Map();
+    (rows||[]).filter(row=>norm(row.Estado).includes('confirmado')).forEach(row=>{
+      const entity=String(row.Entidad||'').trim();if(!entity)return;
+      const previous=latest.get(entity);
+      if(!previous||String(row['Fecha corte']||'').localeCompare(String(previous['Fecha corte']||''))>0)latest.set(entity,row);
+    });
+    return [...latest.values()].sort((a,b)=>String(a.Entidad||'').localeCompare(String(b.Entidad||''),'es'));
+  }
 
   function kpi(label,value,caption,tone=''){
     return `<div class="kpi-card patrimonio-kpi ${tone}"><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(caption)}</small></div>`;
@@ -81,23 +89,25 @@
     const monthly=data.monthly.slice().sort((a,b)=>monthKey(a).localeCompare(monthKey(b)));
     const latest=monthly.at(-1)||{};
     const latestMonth=monthKey(latest);
+    const base=valueFor(latest,'Patrimonio sin ganancia');
     const manual=valueFor(latest,'Patrimonio manual');
-    const without=valueFor(latest,'Patrimonio sin ganancia');
     const gain=valueFor(latest,'Ganancia inversiones');
     const withGain=valueFor(latest,'Patrimonio con ganancias');
-    const hasAdjusted=String(without??'').trim()!==''&&String(withGain??'').trim()!=='';
+    const variation=valueFor(latest,'Var patrimonio');
+    const hasAdjusted=hasValue(base)&&hasValue(withGain);
+    const baseValue=hasAdjusted?base:manual;
     const detailRows=data.detail.filter(row=>monthKey(row)===latestMonth);
-    const confirmed=data.investments.filter(row=>norm(row.Estado).includes('confirmado')).sort((a,b)=>String(a['Fecha corte']||'').localeCompare(String(b['Fecha corte']||'')));
-    const status=latest['Estado inversión']||'Sin ajuste de inversión';
+    const latestInvestments=latestConfirmedByEntity(data.investments);
+    const status=latest['Estado inversión']||'Sin conciliación de inversiones';
 
     root.innerHTML=`
-      ${sectionTitle('FINANZAS','Patrimonio','Foto mensual neta · cuentas, efectivo, deudas e inversiones, sin relación con gastos o ingresos del resto del dashboard')}
+      ${sectionTitle('FINANZAS','Patrimonio','Foto mensual independiente: el corte manual es la base sin ganancias; ARQ y Cocos solo aportan su valorización o pérdida confirmada')}
       <div class="patrimonio-status-row">${badge('Datos duros independientes','good')}${badge(`Último corte ${latest['Fecha corte']||latestMonth}`)}${badge(status,hasAdjusted?'good':'pending')}</div>
       <div class="kpi-grid patrimonio-kpis">
-        ${kpi('Patrimonio manual',money(manual),'Foto original consolidada del corte')}
-        ${kpi('Sin ganancias',hasAdjusted?money(without):'—','Capital ajustado a extractos disponibles','blue')}
-        ${kpi('Ganancia inversiones',hasAdjusted?signedMoney(gain):'—','Resultado ARQ + Cocos confirmado','gold')}
-        ${kpi('Con ganancias',hasAdjusted?money(withGain):'—','Capital + ganancia/pérdida confirmada','green')}
+        ${kpi('Patrimonio base',money(baseValue),'Corte manual · sin ganancias de inversión','blue')}
+        ${kpi('Ganancia inversiones',hasAdjusted?signedMoney(gain):'—','Valorización neta ARQ + Cocos confirmada',num(gain)>=0?'green':'red')}
+        ${kpi('Patrimonio con ganancias',hasAdjusted?money(withGain):money(baseValue),'Base + ganancia/pérdida confirmada','green')}
+        ${kpi('Variación mensual',signedMoney(variation),'Variación del patrimonio base vs corte anterior',num(variation)>=0?'green':'red')}
       </div>
       <div class="patrimonio-currency-strip">
         <div><span>Saldo neto COP</span><strong>${money(latest['Saldo neto COP'],'COP')}</strong></div>
@@ -105,19 +115,19 @@
         <div><span>Saldo neto USD</span><strong>${money(latest['Saldo neto USD'],'USD')}</strong></div>
       </div>
       <div class="panel-grid equal patrimonio-chart-grid">
-        <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Evolución patrimonial</strong><span>Foto mensual en ${esc(currency)} · histórico manual y ajustes confirmados</span></div></div><div class="patrimonio-chart"><canvas id="patrimonioHistoryChart"></canvas></div></div>
-        <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Composición del último corte</strong><span>Principales cuentas, efectivo, inversiones y deudas · ${esc(currency)}</span></div></div><div class="patrimonio-chart"><canvas id="patrimonioCompositionChart"></canvas></div></div>
+        <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Evolución patrimonial</strong><span>Base sin ganancias vs patrimonio con valorización · ${esc(currency)}</span></div></div><div class="patrimonio-chart"><canvas id="patrimonioHistoryChart"></canvas></div></div>
+        <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Composición del último corte</strong><span>Cuentas, efectivo, inversiones y deudas cargadas manualmente · ${esc(currency)}</span></div></div><div class="patrimonio-chart"><canvas id="patrimonioCompositionChart"></canvas></div></div>
       </div>
       <div class="panel patrimonio-investment-panel">
-        <div class="panel-header"><div class="panel-title"><strong>Inversiones conciliadas</strong><span>Capital, ganancia/pérdida y valor actual tomados únicamente de registros duros de Patrimonio</span></div></div>
-        ${confirmed.length?`<div class="patrimonio-investment-cards">${confirmed.map(investmentCard).join('')}</div>`:'<div class="empty-state"><strong>Sin inversiones conciliadas</strong><span>Se mostrarán cuando exista capital y valor de mercado respaldados.</span></div>'}
+        <div class="panel-header"><div class="panel-title"><strong>Última conciliación de inversiones</strong><span>Capital sin valorización, resultado y valor de mercado del último extracto disponible de cada plataforma</span></div></div>
+        ${latestInvestments.length?`<div class="patrimonio-investment-cards">${latestInvestments.map(investmentCard).join('')}</div>`:'<div class="empty-state"><strong>Sin inversiones conciliadas</strong><span>Se mostrarán cuando exista capital y valor de mercado respaldados.</span></div>'}
       </div>
       <div class="panel table-panel patrimonio-table-panel">
         <div class="panel-header"><div class="panel-title"><strong>Detalle del último corte</strong><span>${esc(latestMonth)} · ${detailRows.length?`${detailRows.length} posiciones cargadas`:'detalle pendiente de migrar'}</span></div></div>
         ${detailRows.length?detailTable(detailRows):'<div class="empty-state"><strong>Sin detalle para este corte</strong><span>El histórico mensual se conserva igualmente en Patrimonio_Mensual.</span></div>'}
       </div>
       <div class="panel table-panel patrimonio-table-panel">
-        <div class="panel-header"><div class="panel-title"><strong>Histórico mensual</strong><span>Los cortes originales no se recalculan retroactivamente</span></div></div>
+        <div class="panel-header"><div class="panel-title"><strong>Histórico mensual</strong><span>Los cortes manuales permanecen fijos; la ganancia se toma del último extracto cerrado disponible a cada fecha de corte</span></div></div>
         ${monthlyTable(monthly)}
       </div>`;
     requestAnimationFrame(()=>drawCharts(monthly,detailRows));
@@ -128,7 +138,8 @@
     const cap=String(row['Capital aportado']??'').trim();
     const market=String(row['Valor mercado']??'').trim();
     const gain=String(row['Ganancia / pérdida']??'').trim();
-    return `<article class="patrimonio-investment-card"><div class="patrimonio-investment-head"><div><span>${esc(row.Entidad||'Inversión')}</span><strong>${esc(row['Fecha corte']||row.Periodo||'')}</strong></div>${badge(row.Estado||'','good')}</div><div class="patrimonio-investment-values"><div><span>Capital</span><strong>${cap?money(cap,cur):'—'}</strong></div><div><span>Ganancia / pérdida</span><strong class="${num(gain)>=0?'positive':'negative'}">${gain?signedMoney(gain,cur):'—'}</strong></div><div><span>Valor actual</span><strong>${market?money(market,cur):'—'}</strong></div></div></article>`;
+    const rate=hasValue(row['Rentabilidad %'])?num(row['Rentabilidad %'])*100:null;
+    return `<article class="patrimonio-investment-card"><div class="patrimonio-investment-head"><div><span>${esc(row.Entidad||'Inversión')}</span><strong>Corte ${esc(row['Fecha corte']||row.Periodo||'')}</strong></div>${badge(row.Estado||'','good')}</div><div class="patrimonio-investment-values"><div><span>Capital sin ganancia</span><strong>${cap?money(cap,cur):'—'}</strong></div><div><span>Ganancia / pérdida</span><strong class="${num(gain)>=0?'positive':'negative'}">${gain?signedMoney(gain,cur):'—'}${rate!==null?` · ${rate.toLocaleString('es-CO',{minimumFractionDigits:2,maximumFractionDigits:2})}%`:''}</strong></div><div><span>Valor de mercado</span><strong>${market?money(market,cur):'—'}</strong></div></div></article>`;
   }
 
   function detailTable(rows){
@@ -136,7 +147,7 @@
     return `<div class="table-scroll patrimonio-table-scroll"><table class="data-table patrimonio-table"><thead><tr><th>Tipo</th><th>Cuenta / billetera</th><th>Grupo</th><th>Moneda ref.</th><th class="num">Valor ${esc(currency)}</th></tr></thead><tbody>${sorted.map(row=>`<tr><td>${badge(row.Tipo||'',norm(row.Tipo)==='deuda'?'negative':'neutral')}</td><td>${esc(row['Cuenta / billetera']||'')}</td><td>${esc(row.Grupo||'')}</td><td>${esc(row['Moneda referencia']||'')}</td><td class="num ${num(valueFor(row,'Valor'))<0?'negative':'positive'}">${money(valueFor(row,'Valor'))}</td></tr>`).join('')}</tbody></table></div>`;
   }
   function monthlyTable(rows){
-    return `<div class="table-scroll patrimonio-table-scroll"><table class="data-table patrimonio-table"><thead><tr><th>Mes</th><th class="num">Manual ${esc(currency)}</th><th class="num">Variación</th><th class="num">Sin ganancias</th><th class="num">Ganancia inversiones</th><th class="num">Con ganancias</th><th>Estado</th></tr></thead><tbody>${rows.slice().reverse().map(row=>{const adjusted=String(valueFor(row,'Patrimonio sin ganancia')??'').trim()!=='';return `<tr><td>${esc(monthKey(row))}</td><td class="num">${money(valueFor(row,'Patrimonio manual'))}</td><td class="num ${num(valueFor(row,'Var patrimonio'))>=0?'positive':'negative'}">${signedMoney(valueFor(row,'Var patrimonio'))}</td><td class="num">${adjusted?money(valueFor(row,'Patrimonio sin ganancia')):'—'}</td><td class="num">${adjusted?signedMoney(valueFor(row,'Ganancia inversiones')):'—'}</td><td class="num">${adjusted?money(valueFor(row,'Patrimonio con ganancias')):'—'}</td><td>${badge(row['Estado inversión']||'',adjusted?'good':'pending')}</td></tr>`;}).join('')}</tbody></table></div>`;
+    return `<div class="table-scroll patrimonio-table-scroll"><table class="data-table patrimonio-table"><thead><tr><th>Mes</th><th class="num">Base sin ganancias</th><th class="num">Variación base</th><th class="num">Ganancia inversiones</th><th class="num">Con ganancias</th><th>Extractos usados</th></tr></thead><tbody>${rows.slice().reverse().map(row=>{const adjusted=hasValue(valueFor(row,'Patrimonio sin ganancia'));const base=adjusted?valueFor(row,'Patrimonio sin ganancia'):valueFor(row,'Patrimonio manual');return `<tr><td>${esc(monthKey(row))}</td><td class="num">${money(base)}</td><td class="num ${num(valueFor(row,'Var patrimonio'))>=0?'positive':'negative'}">${signedMoney(valueFor(row,'Var patrimonio'))}</td><td class="num ${adjusted&&num(valueFor(row,'Ganancia inversiones'))<0?'negative':adjusted?'positive':''}">${adjusted?signedMoney(valueFor(row,'Ganancia inversiones')):'—'}</td><td class="num">${adjusted?money(valueFor(row,'Patrimonio con ganancias')):'—'}</td><td>${badge(row['Estado inversión']||'',adjusted?'good':'pending')}</td></tr>`;}).join('')}</tbody></table></div>`;
   }
 
   function drawCharts(monthly,detailRows){
@@ -144,10 +155,9 @@
     const history=document.getElementById('patrimonioHistoryChart');
     if(history){
       const labels=monthly.map(row=>monthKey(row));
-      const manual=monthly.map(row=>num(valueFor(row,'Patrimonio manual')));
-      const without=monthly.map(row=>String(valueFor(row,'Patrimonio sin ganancia')??'').trim()===''?null:num(valueFor(row,'Patrimonio sin ganancia')));
-      const withGain=monthly.map(row=>String(valueFor(row,'Patrimonio con ganancias')??'').trim()===''?null:num(valueFor(row,'Patrimonio con ganancias')));
-      charts.push(new Chart(history,{type:'line',data:{labels,datasets:[{label:'Patrimonio manual',data:manual,borderColor:'#73b9ff',backgroundColor:'rgba(115,185,255,.08)',pointRadius:2,tension:.25},{label:'Sin ganancias confirmado',data:without,borderColor:'#f5d547',backgroundColor:'rgba(245,213,71,.08)',pointRadius:4,spanGaps:false},{label:'Con ganancias confirmado',data:withGain,borderColor:'#00f29a',backgroundColor:'rgba(0,242,154,.08)',pointRadius:4,spanGaps:false}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:true}},scales:{y:{ticks:{callback:value=>compactMoney(value,currency)}}}}}));
+      const base=monthly.map(row=>{const adjusted=hasValue(valueFor(row,'Patrimonio sin ganancia'));return num(adjusted?valueFor(row,'Patrimonio sin ganancia'):valueFor(row,'Patrimonio manual'));});
+      const withGain=monthly.map(row=>hasValue(valueFor(row,'Patrimonio con ganancias'))?num(valueFor(row,'Patrimonio con ganancias')):null);
+      charts.push(new Chart(history,{type:'line',data:{labels,datasets:[{label:'Patrimonio base · sin ganancias',data:base,borderColor:'#73b9ff',backgroundColor:'rgba(115,185,255,.08)',pointRadius:2,tension:.25},{label:'Patrimonio con ganancias',data:withGain,borderColor:'#00f29a',backgroundColor:'rgba(0,242,154,.08)',pointRadius:3,tension:.25,spanGaps:false}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:true}},scales:{y:{ticks:{callback:value=>compactMoney(value,currency)}}}}}));
     }
     const composition=document.getElementById('patrimonioCompositionChart');
     if(composition&&detailRows.length){
