@@ -22,7 +22,6 @@ const SOURCES = [
   { book: 'finance', range: 'Tarjetas!A:T' },
   { book: 'finance', range: 'Cuotas!A:T' },
   { book: 'finance', range: 'Pagos_Tarjetas!A:T' },
-  { book: 'finance', range: 'Resumen_Inversiones!A:N' },
   { book: 'finance', range: 'Posiciones!A:X' },
   { book: 'finance', range: 'Pensiones_Cesantias!A:T' },
   { book: 'finance', range: 'Resumen_Ingresos!A:H' },
@@ -37,7 +36,7 @@ const SOURCES = [
   { book: 'finance', range: 'Cuentas!A:T' },
   { book: 'finance', range: 'Patrimonio_Mensual!A:Y' },
   { book: 'finance', range: 'Patrimonio_Detalle!A:N' },
-  { book: 'finance', range: 'Patrimonio_Inversiones!A:U' },
+  { book: 'finance', range: 'Patrimonio_Inversiones!A:K' },
   { book: 'finance', range: 'Vacaciones_Viajes!A:T' },
   { book: 'finance', range: 'Beneficios_Laborales!A:O' },
   { book: 'documents', range: 'Documentos_Master!A:R' },
@@ -192,7 +191,7 @@ async function buildPayload(force = false) {
 }
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'panel-personal-edu-backend', sourceCount: SOURCES.length, revision: 'patrimonio-v1-2026-09-03' });
+  res.json({ ok: true, service: 'panel-personal-edu-backend', sourceCount: SOURCES.length, revision: 'investment-canonical-2026-09-03' });
 });
 
 app.get('/api/data', requireAuthorizedUser, async (req, res) => {
