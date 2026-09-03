@@ -109,6 +109,7 @@ async function loadDashboard() {
   try {
     if (BACKEND_MODE) {
       await loadScript("data-backend-adapter.js");
+      await loadScript("data-range-compat.js");
       const getData = window.__PANEL_GET_BACKEND_DATA__;
       if (typeof getData === 'function') await getData(false);
     }
