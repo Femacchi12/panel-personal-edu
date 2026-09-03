@@ -34,7 +34,7 @@ const SOURCES = [
   { book: 'finance', range: 'Simulador_TC!A:J' },
   { book: 'finance', range: 'Servicios!A:O' },
   { book: 'finance', range: 'Cuentas!A:T' },
-  { book: 'finance', range: 'Patrimonio_Mensual!A:Y' },
+  { book: 'finance', range: 'Patrimonio_Mensual!A:AF' },
   { book: 'finance', range: 'Patrimonio_Detalle!A:N' },
   { book: 'finance', range: 'Patrimonio_Inversiones!A:K' },
   { book: 'finance', range: 'Vacaciones_Viajes!A:T' },
@@ -191,7 +191,7 @@ async function buildPayload(force = false) {
 }
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'panel-personal-edu-backend', sourceCount: SOURCES.length, revision: 'investment-canonical-2026-09-03' });
+  res.json({ ok: true, service: 'panel-personal-edu-backend', sourceCount: SOURCES.length, revision: 'patrimonio-debt-toggle-2026-09-03' });
 });
 
 app.get('/api/data', requireAuthorizedUser, async (req, res) => {
