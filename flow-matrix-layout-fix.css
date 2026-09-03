@@ -1,0 +1,10 @@
+/* Matriz mensual: mostrar todas las filas y conservar solo desplazamiento horizontal. */
+#viewRoot #flowMatrixV3 .flow-matrix-scroll{
+  max-height:none!important;
+  overflow-x:auto!important;
+  overflow-y:visible!important;
+}
+
+#viewRoot #flowMatrixV3{
+  overflow:visible!important;
+}
