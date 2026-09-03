@@ -92,16 +92,18 @@
   }
   function cachedRows(payload,range,spreadsheetId=financeId){
     const key=payloadSourceKey(spreadsheetId,range),cache=payloadRowCache(payload);
-    if(!cache)return parseRows(payload?.sources?.[key]||[]);
+    const resolved=resolveSource(payload,spreadsheetId,range);
+    if(!cache)return parseRows(resolved?.values||[]);
     const cacheKey=`rows|${key}`;
-    if(!cache.has(cacheKey))cache.set(cacheKey,parseRows(payload?.sources?.[key]||[]));
+    if(!cache.has(cacheKey))cache.set(cacheKey,parseRows(resolved?.values||[]));
     return cache.get(cacheKey);
   }
   function cachedSmartRows(payload,range,spreadsheetId=financeId){
     const key=payloadSourceKey(spreadsheetId,range),cache=payloadRowCache(payload);
-    if(!cache)return parseRowsSmart(payload?.sources?.[key]||[]);
+    const resolved=resolveSource(payload,spreadsheetId,range);
+    if(!cache)return parseRowsSmart(resolved?.values||[]);
     const cacheKey=`smart|${key}`;
-    if(!cache.has(cacheKey))cache.set(cacheKey,parseRowsSmart(payload?.sources?.[key]||[]));
+    if(!cache.has(cacheKey))cache.set(cacheKey,parseRowsSmart(resolved?.values||[]));
     return cache.get(cacheKey);
   }
   window.__PANEL_GET_CACHED_ROWS__=(payload,spreadsheetId,range)=>cachedRows(payload,range,spreadsheetId);
