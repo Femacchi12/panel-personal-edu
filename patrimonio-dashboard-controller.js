@@ -138,7 +138,8 @@
     const cap=String(row['Capital aportado']??'').trim();
     const market=String(row['Valor mercado']??'').trim();
     const gain=String(row['Ganancia / pérdida']??'').trim();
-    const rate=hasValue(row['Rentabilidad %'])?num(row['Rentabilidad %'])*100:null;
+    const rateRaw=String(row['Rentabilidad %']??'').trim();
+    const rate=rateRaw?(rateRaw.includes('%')?num(rateRaw):num(rateRaw)*100):null;
     return `<article class="patrimonio-investment-card"><div class="patrimonio-investment-head"><div><span>${esc(row.Entidad||'Inversión')}</span><strong>Corte ${esc(row['Fecha corte']||row.Periodo||'')}</strong></div>${badge(row.Estado||'','good')}</div><div class="patrimonio-investment-values"><div><span>Capital sin ganancia</span><strong>${cap?money(cap,cur):'—'}</strong></div><div><span>Ganancia / pérdida</span><strong class="${num(gain)>=0?'positive':'negative'}">${gain?signedMoney(gain,cur):'—'}${rate!==null?` · ${rate.toLocaleString('es-CO',{minimumFractionDigits:2,maximumFractionDigits:2})}%`:''}</strong></div><div><span>Valor de mercado</span><strong>${market?money(market,cur):'—'}</strong></div></div></article>`;
   }
 
