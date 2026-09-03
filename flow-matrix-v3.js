@@ -15,7 +15,7 @@
   let sortState = { type: 'id', dir: 'asc', month: null };
 
   const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-  const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
   const activeView = () => document.querySelector('.nav-item.active')?.dataset.view || '';
   const money = v => new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(Number(v)||0);
   const pct = v => `${new Intl.NumberFormat('es-CO',{minimumFractionDigits:1,maximumFractionDigits:1}).format((Number(v)||0)*100)}%`;
@@ -43,8 +43,35 @@
   function monthLabel(key){ const m=String(key).match(/^(20\d{2})-(\d{2})$/); return m?`${MONTH_NAMES[+m[2]-1]} ${m[1]}`:key; }
   function currentMonthKey(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
   function selectedGlobal(key){ return [...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)].map(x=>String(x.dataset.value||'').trim()).filter(Boolean); }
-  function selectedYear(){ const y=selectedGlobal('year'); return y.length===1?y[0]:String(new Date().getFullYear()); }
   function monthList(year){ return Array.from({length:12},(_,i)=>`${year}-${String(i+1).padStart(2,'0')}`); }
+  function selectedMonthNumbers(){ return new Set(selectedGlobal('month').map(v=>String(Number(v)).padStart(2,'0'))); }
+  function matrixMonths(flowRows,movements,regularIncome){
+    const current=currentMonthKey(),keys=new Set();
+    flowRows.forEach(r=>{const k=monthKey(r.Mes);if(k&&k<=current)keys.add(k);});
+    movements.forEach(r=>{if(!isReal(r))return;const k=monthKey(r['Mes consumo']||r['Fecha real']||r['Fecha registrada']);if(k&&k<=current)keys.add(k);});
+    if(regularIncome?.months instanceof Map)regularIncome.months.forEach((_,k)=>{const key=monthKey(k);if(key&&key<=current)keys.add(key);});
+    const years=selectedGlobal('year'),monthsFilter=selectedMonthNumbers();
+    let months=[...keys].sort();
+    if(years.length)months=months.filter(k=>years.includes(k.slice(0,4)));
+    if(monthsFilter.size)months=months.filter(k=>monthsFilter.has(k.slice(5,7)));
+    if(!months.length&&years.length){
+      months=years.flatMap(monthList).filter(k=>k<=current);
+      if(monthsFilter.size)months=months.filter(k=>monthsFilter.has(k.slice(5,7)));
+    }
+    if(!months.length){
+      months=monthList(String(new Date().getFullYear())).filter(k=>k<=current);
+      if(monthsFilter.size)months=months.filter(k=>monthsFilter.has(k.slice(5,7)));
+    }
+    return months;
+  }
+  function periodScopeLabel(months){
+    const years=[...new Set(months.map(m=>m.slice(0,4)))];
+    const selected=selectedGlobal('year');
+    if(!months.length)return'Sin períodos';
+    if(!selected.length&&years.length>1)return`Todo el histórico · ${years[0]}–${years.at(-1)}`;
+    if(years.length===1)return years[0];
+    return years.join(' / ');
+  }
   function currentFilterState(){
     const payment=window.__PAYMENT_FILTER_STATE__?.view==='flujo'?window.__PAYMENT_FILTER_STATE__:{account:[],method:[]};
     return {
@@ -110,16 +137,17 @@
   };
 
   function historicalMap(flowRows){ const map=new Map(); flowRows.forEach(r=>{const k=monthKey(r.Mes); if(k)map.set(`${k}|${norm(r.Concepto)}`,num(r['Total COP']));}); return map; }
-  function categoryList(flowRows,movements,year,state){
-    const set=new Set(flowRows.filter(r=>norm(r.Tipo)==='categoria'&&monthKey(r.Mes).startsWith(year+'-')).map(r=>String(r.Concepto||'').trim()).filter(Boolean));
-    movements.forEach(r=>{if(isReal(r)&&monthKey(r['Mes consumo']).startsWith(year+'-')&&r['Categoría'])set.add(String(r['Categoría']).trim());});
+  function categoryList(flowRows,movements,months,state){
+    const active=new Set(months),set=new Set();
+    flowRows.forEach(r=>{const k=monthKey(r.Mes);if(norm(r.Tipo)==='categoria'&&active.has(k)&&r.Concepto)set.add(String(r.Concepto).trim());});
+    movements.forEach(r=>{const k=monthKey(r['Mes consumo']||r['Fecha real']||r['Fecha registrada']);if(isReal(r)&&active.has(k)&&r['Categoría'])set.add(String(r['Categoría']).trim());});
     if(state.categories.size)return [...set].filter(x=>state.categories.has(x));
     const known=ORIGINAL_ORDER.filter(x=>[...set].some(y=>norm(y)===norm(x)));
     const extra=[...set].filter(x=>!known.some(y=>norm(y)===norm(x))).sort((a,b)=>a.localeCompare(b,'es',{sensitivity:'base'}));
     return [...known,...extra];
   }
 
-  function salaryMap(concepts,regularIncome){
+  function salaryMap(concepts,regularIncome,months){
     if(regularIncome?.months instanceof Map){
       const map=new Map(),source=new Map();
       regularIncome.months.forEach((base,key)=>{
@@ -144,7 +172,7 @@
       history.forEach(item=>{if(item.month<=month)value=item.cop;});
       return value||history[0]?.cop||0;
     };
-    monthList(selectedYear()).forEach(k=>{
+    months.forEach(k=>{
       const row=rowsByMonth.get(k)||{cop:0,usd:0};
       if(row.cop>0)return;
       const regularCop=fallbackCop(k);
@@ -193,26 +221,28 @@
 
   function injectStyles(){
     if(document.getElementById('flowMatrixV3Styles'))return;
-    const style=document.createElement('style');style.id='flowMatrixV3Styles';style.textContent=`#flowMatrixV3{margin-top:0}.flow-matrix-scroll{overflow:auto;max-width:100%;border:1px solid var(--line,#172335);border-radius:12px}.flow-matrix-advanced{border-collapse:separate;border-spacing:0;min-width:max-content;width:100%;font-size:11px}.flow-matrix-advanced th,.flow-matrix-advanced td{white-space:nowrap;padding:9px 10px;border-bottom:1px solid #142031;border-right:1px solid #101b29;text-align:right}.flow-matrix-advanced th{background:#0d1520;color:#76a9ff;font-size:9px;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;position:sticky;top:0;z-index:4}.flow-matrix-advanced thead tr:nth-child(2) th{top:32px}.flow-matrix-advanced thead tr:first-child th[colspan="2"]{text-align:center}.flow-matrix-advanced .sticky-id{position:sticky;left:0;z-index:7!important;background:#0b131e!important;text-align:center;min-width:42px}.flow-matrix-advanced .sticky-cat{position:sticky;left:42px;z-index:6!important;background:#0b131e!important;text-align:left;min-width:150px;box-shadow:8px 0 14px rgba(0,0,0,.16)}.matrix-amount-btn{border:0;background:transparent;color:#e6edf7;font:inherit;font-weight:600;cursor:pointer;padding:0}.matrix-amount-btn:hover{color:#4f91ff;text-decoration:underline}.matrix-pct{font-weight:800;padding:2px 5px;border-radius:5px}.matrix-pct.pct-white{color:#f4f7fb}.matrix-pct.pct-green{color:#26d07c}.matrix-pct.pct-yellow{color:#f6c844}.matrix-pct.pct-red{color:#ff667a}.matrix-total-row td{font-weight:800;background:#0d1a2b}.matrix-summary-row td{font-weight:700;background:#0a121c}.salary-reference{margin-top:16px;border:1px solid var(--line,#172335);border-radius:12px;padding:14px}.salary-reference-grid{display:flex;gap:8px;overflow-x:auto;margin-top:10px}.salary-reference-grid>div{min-width:145px;padding:9px 10px;border-radius:9px;background:#0a121c;display:flex;flex-direction:column;gap:3px}.salary-reference-grid span,.salary-reference-grid small{font-size:10px;color:#7f8ea3}.matrix-color-legend{display:flex;gap:15px;flex-wrap:wrap;margin-top:10px;color:#8998ac;font-size:10px}#flowMatrixDetailV3 tfoot[data-auto-total] td{font-weight:800;color:#f4f7fb;border-top:2px solid #2a3a50;background:#0d1622;white-space:nowrap}#flowMatrixDetailV3 tfoot[data-auto-total] td:first-child{color:#26d07c;letter-spacing:.06em}`;document.head.appendChild(style);
+    const style=document.createElement('style');style.id='flowMatrixV3Styles';style.textContent=`#flowMatrixV3{margin-top:0}.flow-matrix-scroll{overflow-x:auto;overflow-y:visible;max-width:100%;border:1px solid var(--line,#172335);border-radius:12px}.flow-matrix-advanced{border-collapse:separate;border-spacing:0;min-width:max-content;width:100%;font-size:11px}.flow-matrix-advanced th,.flow-matrix-advanced td{white-space:nowrap;padding:9px 10px;border-bottom:1px solid #142031;border-right:1px solid #101b29;text-align:right}.flow-matrix-advanced th{background:#0d1520;color:#76a9ff;font-size:9px;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;position:sticky;top:0;z-index:4}.flow-matrix-advanced thead tr:nth-child(2) th{top:32px}.flow-matrix-advanced thead tr:first-child th[colspan="2"]{text-align:center}.flow-matrix-advanced .sticky-id{position:sticky;left:0;z-index:7!important;background:#0b131e!important;text-align:center;min-width:42px}.flow-matrix-advanced .sticky-cat{position:sticky;left:42px;z-index:6!important;background:#0b131e!important;text-align:left;min-width:150px;box-shadow:8px 0 14px rgba(0,0,0,.16)}.matrix-amount-btn{border:0;background:transparent;color:#e6edf7;font:inherit;font-weight:600;cursor:pointer;padding:0}.matrix-amount-btn:hover{color:#4f91ff;text-decoration:underline}.matrix-pct{font-weight:800;padding:2px 5px;border-radius:5px}.matrix-pct.pct-white{color:#f4f7fb}.matrix-pct.pct-green{color:#26d07c}.matrix-pct.pct-yellow{color:#f6c844}.matrix-pct.pct-red{color:#ff667a}.matrix-total-row td{font-weight:800;background:#0d1a2b}.matrix-summary-row td{font-weight:700;background:#0a121c}.salary-reference{margin-top:16px;border:1px solid var(--line,#172335);border-radius:12px;padding:14px}.salary-reference-grid{display:flex;gap:8px;overflow-x:auto;margin-top:10px}.salary-reference-grid>div{min-width:145px;padding:9px 10px;border-radius:9px;background:#0a121c;display:flex;flex-direction:column;gap:3px}.salary-reference-grid span,.salary-reference-grid small{font-size:10px;color:#7f8ea3}.matrix-color-legend{display:flex;gap:15px;flex-wrap:wrap;margin-top:10px;color:#8998ac;font-size:10px}#flowMatrixDetailV3 tfoot[data-auto-total] td{font-weight:800;color:#f4f7fb;border-top:2px solid #2a3a50;background:#0d1622;white-space:nowrap}#flowMatrixDetailV3 tfoot[data-auto-total] td:first-child{color:#26d07c;letter-spacing:.06em}`;document.head.appendChild(style);
   }
 
   function sortedCategories(categories,values){const rows=categories.map((cat,index)=>({cat,id:index+1}));const dir=sortState.dir==='desc'?-1:1;if(sortState.type==='category')rows.sort((a,b)=>a.cat.localeCompare(b.cat,'es',{numeric:true,sensitivity:'base'})*dir);else if(sortState.type==='month'&&sortState.month)rows.sort((a,b)=>((values.get(`${sortState.month}|${norm(a.cat)}`)||0)-(values.get(`${sortState.month}|${norm(b.cat)}`)||0))*dir||a.id-b.id);else rows.sort((a,b)=>(a.id-b.id)*dir);return rows;}
 
   function render(host,detail,data){
     const state=currentFilterState();
-    const year=selectedYear(),months=monthList(year),current=currentMonthKey(),historical=historicalMap(data.flowRows),salary=salaryMap(data.concepts,data.regularIncome),categories=categoryList(data.flowRows,data.movements,year,state);
+    const current=currentMonthKey(),historical=historicalMap(data.flowRows),months=matrixMonths(data.flowRows,data.movements,data.regularIncome),salary=salaryMap(data.concepts,data.regularIncome,months),categories=categoryList(data.flowRows,data.movements,months,state);
     const movementCache=movementMonthMap(data.movements,state),emptyMovement={byCat:new Map(),summary:new Map(),total:0};
     const mdata=m=>movementCache.get(m)||emptyMovement;
     const values=new Map(historical);
     months.forEach(m=>{if(shouldUseMovements(m,current))categories.forEach(cat=>values.set(`${m}|${norm(cat)}`,mdata(m).byCat.get(norm(cat))||0));});
     const ordered=sortedCategories(categories,values),arrow=(type,month=null)=>sortState.type===type&&(type!=='month'||sortState.month===month)?(sortState.dir==='asc'?' ↑':' ↓'):'';
-    host.innerHTML=`<div class="panel-header"><div class="panel-title"><strong>Matriz mensual por categoría</strong><span>${esc(year)} desde Movimientos · histórico anterior como respaldo · monto + % sobre ingreso regular</span></div><button type="button" class="text-btn" id="flowOriginalOrderV3">Orden original</button></div><div class="flow-matrix-scroll"><table class="flow-matrix-advanced"><thead><tr><th class="sticky-id" rowspan="2" data-sort="id">ID${arrow('id')}</th><th class="sticky-cat" rowspan="2" data-sort="category">Categoría${arrow('category')}</th>${months.map(m=>`<th colspan="2" data-sort-month="${m}">${esc(monthLabel(m))}${arrow('month',m)}</th>`).join('')}</tr><tr>${months.map(()=>'<th>Monto</th><th>% ingreso</th>').join('')}</tr></thead><tbody>${ordered.map(({cat,id})=>`<tr><td class="sticky-id">${id}</td><td class="sticky-cat">${esc(cat)}</td>${months.map(m=>{const amount=values.get(`${m}|${norm(cat)}`)||0,base=salary.map.get(m)||0,share=base?amount/base:0;return`<td><button type="button" class="matrix-amount-btn" data-detail data-category="${esc(cat)}" data-month="${m}">${esc(money(amount))}</button></td><td><span class="matrix-pct ${pctClass(share)}">${base?esc(pct(share)):'—'}</span></td>`;}).join('')}</tr>`).join('')}<tr class="matrix-total-row"><td class="sticky-id"></td><td class="sticky-cat">Total gastado por categorías</td>${months.map(m=>{const total=shouldUseMovements(m,current)?mdata(m).total:categories.reduce((s,c)=>s+(values.get(`${m}|${norm(c)}`)||0),0),base=salary.map.get(m)||0,share=base?total/base:0;return`<td>${esc(money(total))}</td><td><span class="matrix-pct ${pctClass(share)}">${base?esc(pct(share)):'—'}</span></td>`;}).join('')}</tr>${SUMMARY_ORDER.map(label=>`<tr class="matrix-summary-row"><td class="sticky-id"></td><td class="sticky-cat">${esc(label)}</td>${months.map(m=>{const amount=shouldUseMovements(m,current)?(mdata(m).summary.get(norm(label))||0):(historical.get(`${m}|${norm(label)}`)||0),base=salary.map.get(m)||0,share=base?amount/base:0;return`<td>${esc(money(amount))}</td><td><span class="matrix-pct ${pctClass(share)}">${base?esc(pct(share)):'—'}</span></td>`;}).join('')}</tr>`).join('')}</tbody></table></div><div class="salary-reference"><strong>Salario / ingreso regular usado para los porcentajes</strong><div class="salary-reference-grid">${months.map(m=>`<div><span>${esc(monthLabel(m))}</span><strong>${salary.map.has(m)?esc(money(salary.map.get(m))):'—'}</strong><small>${esc(salary.source.get(m)||'Sin base disponible')}</small></div>`).join('')}</div></div><div class="matrix-color-legend"><span>0–5% blanco</span><span>6–10% verde</span><span>11–15% amarillo</span><span>&gt;15% rojo</span></div>`;
+    const scope=periodScopeLabel(months);
+    host.innerHTML=`<div class="panel-header"><div class="panel-title"><strong>Matriz mensual por categoría</strong><span>${esc(scope)} · 2026 desde Movimientos · histórico anterior como respaldo · monto + % sobre ingreso regular</span></div><button type="button" class="text-btn" id="flowOriginalOrderV3">Orden original</button></div><div class="flow-matrix-scroll"><table class="flow-matrix-advanced"><thead><tr><th class="sticky-id" rowspan="2" data-sort="id">ID${arrow('id')}</th><th class="sticky-cat" rowspan="2" data-sort="category">Categoría${arrow('category')}</th>${months.map(m=>`<th colspan="2" data-sort-month="${m}">${esc(monthLabel(m))}${arrow('month',m)}</th>`).join('')}</tr><tr>${months.map(()=>'<th>Monto</th><th>% ingreso</th>').join('')}</tr></thead><tbody>${ordered.map(({cat,id})=>`<tr><td class="sticky-id">${id}</td><td class="sticky-cat">${esc(cat)}</td>${months.map(m=>{const amount=values.get(`${m}|${norm(cat)}`)||0,base=salary.map.get(m)||0,share=base?amount/base:0;return`<td><button type="button" class="matrix-amount-btn" data-detail data-category="${esc(cat)}" data-month="${m}">${esc(money(amount))}</button></td><td><span class="matrix-pct ${pctClass(share)}">${base?esc(pct(share)):'—'}</span></td>`;}).join('')}</tr>`).join('')}<tr class="matrix-total-row"><td class="sticky-id"></td><td class="sticky-cat">Total gastado por categorías</td>${months.map(m=>{const total=shouldUseMovements(m,current)?mdata(m).total:categories.reduce((s,c)=>s+(values.get(`${m}|${norm(c)}`)||0),0),base=salary.map.get(m)||0,share=base?total/base:0;return`<td>${esc(money(total))}</td><td><span class="matrix-pct ${pctClass(share)}">${base?esc(pct(share)):'—'}</span></td>`;}).join('')}</tr>${SUMMARY_ORDER.map(label=>`<tr class="matrix-summary-row"><td class="sticky-id"></td><td class="sticky-cat">${esc(label)}</td>${months.map(m=>{const amount=shouldUseMovements(m,current)?(mdata(m).summary.get(norm(label))||0):(historical.get(`${m}|${norm(label)}`)||0),base=salary.map.get(m)||0,share=base?amount/base:0;return`<td>${esc(money(amount))}</td><td><span class="matrix-pct ${pctClass(share)}">${base?esc(pct(share)):'—'}</span></td>`;}).join('')}</tr>`).join('')}</tbody></table></div><div class="salary-reference"><strong>Salario / ingreso regular usado para los porcentajes</strong><div class="salary-reference-grid">${months.map(m=>`<div><span>${esc(monthLabel(m))}</span><strong>${salary.map.has(m)?esc(money(salary.map.get(m))):'—'}</strong><small>${esc(salary.source.get(m)||'Sin base disponible')}</small></div>`).join('')}</div></div><div class="matrix-color-legend"><span>0–5% blanco</span><span>6–10% verde</span><span>11–15% amarillo</span><span>&gt;15% rojo</span></div>`;
     host.querySelector('#flowOriginalOrderV3')?.addEventListener('click',()=>{sortState={type:'id',dir:'asc',month:null};render(host,detail,data);});
     host.querySelector('[data-sort="id"]')?.addEventListener('click',()=>{sortState={type:'id',dir:sortState.type==='id'&&sortState.dir==='asc'?'desc':'asc',month:null};render(host,detail,data);});
     host.querySelector('[data-sort="category"]')?.addEventListener('click',()=>{sortState={type:'category',dir:sortState.type==='category'&&sortState.dir==='asc'?'desc':'asc',month:null};render(host,detail,data);});
     host.querySelectorAll('[data-sort-month]').forEach(th=>th.addEventListener('click',()=>{const m=th.dataset.sortMonth;sortState={type:'month',month:m,dir:sortState.type==='month'&&sortState.month===m&&sortState.dir==='asc'?'desc':'asc'};render(host,detail,data);}));
     host.querySelectorAll('[data-detail]').forEach(btn=>btn.addEventListener('click',()=>{selectedDetail={cat:btn.dataset.category,month:btn.dataset.month};renderDetail(detail,data.movements,selectedDetail.cat,selectedDetail.month,state);}));
-    if(selectedDetail)renderDetail(detail,data.movements,selectedDetail.cat,selectedDetail.month,state);
+    if(selectedDetail&&months.includes(selectedDetail.month))renderDetail(detail,data.movements,selectedDetail.cat,selectedDetail.month,state);
+    else if(selectedDetail){selectedDetail=null;detail.hidden=true;detail.innerHTML='';}
   }
 
   function ensureHosts(root){
