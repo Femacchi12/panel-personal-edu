@@ -37,10 +37,10 @@
       filter('debtStatus','Estado',[src('Cuotas!A:T',['Estado'])])
     ]},
     inversiones: { global:['year','month'], local:[
-      filter('invPlatform','Plataforma / Bróker',[src('Posiciones!A:X',['Plataforma / Bróker'])]),
-      filter('invClass','Clase de activo',[src('Posiciones!A:X',['Clase de activo'])]),
-      filter('invCategory','Categoría',[src('Posiciones!A:X',['Categoría'])]),
-      filter('invSubcategory','Subcategoría',[src('Posiciones!A:X',['Subcategoría'])]),
+      filter('invPlatform','Plataforma / Bróker',[src('Posiciones!A:O',['Plataforma / Bróker'])]),
+      filter('invClass','Clase de activo',[src('Posiciones!A:O',['Clase de activo'])]),
+      filter('invCategory','Categoría',[src('Posiciones!A:O',['Categoría'])]),
+      filter('invSubcategory','Subcategoría',[src('Posiciones!A:O',['Subcategoría'])]),
       filter('investmentValueMode','Valor a mostrar',[],{
         options: INVESTMENT_VALUE_OPTIONS,
         single: true,
