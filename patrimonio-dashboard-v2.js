@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 const cfg=window.PANEL_CONFIG||{},financeId=String(cfg.financeSpreadsheetId||'');if(!financeId)return;
-const MONTHLY='Patrimonio_Mensual!A:Y',DETAIL='Patrimonio_Detalle!A:N',INV='Patrimonio_Inversiones!A:K';
+const MONTHLY='Patrimonio_Mensual!A:AF',DETAIL='Patrimonio_Detalle!A:N',INV='Patrimonio_Inversiones!A:K';
 let active=false,data={monthly:[],detail:[],investments:[]},charts=[],currency='COP',loadToken=0,restoreFrame=0;
 const filters={year:'all',month:'all',component:'total',platform:'all'};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
