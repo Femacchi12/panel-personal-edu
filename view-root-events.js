@@ -15,7 +15,9 @@
     // recursivas y lecturas innecesarias del payload central.
     if (view === 'viajes' && (root.querySelector('.travel-dashboard') || root.querySelector('.travel-loading'))) return;
     if (view === 'general' && (root.querySelector('[data-general-dashboard]') || root.querySelector('.general-loading'))) return;
-    if (view === 'patrimonio' && root.querySelector('.patrimonio-dashboard')) return;
+    if (view === 'patrimonio' && (root.querySelector('.patrimonio-v2') || root.querySelector('.patrimonio-dashboard'))) return;
+    if (view === 'inversiones' && root.querySelector('.investment-dashboard')) return;
+    if (view === 'pension' && root.querySelector('.pension-v2')) return;
 
     document.dispatchEvent(new CustomEvent('panel:view-root-changed', {
       detail: { view, root }
