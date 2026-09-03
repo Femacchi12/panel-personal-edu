@@ -76,7 +76,10 @@
   }
 
   function pct(value) {
-    return `${(parseNumber(value) * 100).toLocaleString('es-CO', {minimumFractionDigits:2, maximumFractionDigits:2})}%`;
+    const raw = String(value ?? '').trim();
+    const rate = parseNumber(raw);
+    const percent = raw.includes('%') ? rate : rate * 100;
+    return `${percent.toLocaleString('es-CO', {minimumFractionDigits:2, maximumFractionDigits:2})}%`;
   }
 
   function selectedGlobal(key) {
