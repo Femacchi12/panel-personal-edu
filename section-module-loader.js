@@ -26,8 +26,7 @@
       ['finance-secondary-context-controller.js']
     ],
     inversiones: [
-      ['investment-period-enhancement.js'],
-      ['investment-freshness-controller.js']
+      ['investment-dashboard-controller.js']
     ],
     pension: [
       ['finance-secondary-context-controller.js']
