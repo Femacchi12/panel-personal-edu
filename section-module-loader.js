@@ -29,7 +29,7 @@
       ['investment-dashboard-v2.js']
     ],
     pension: [
-      ['finance-secondary-context-controller.js']
+      ['pension-dashboard-controller.js']
     ],
     ingresos: [
       ['income-doc-enhancements.js','income-regular-controller.js','income-type-filter.js','income-savings-context-controller.js']
