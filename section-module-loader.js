@@ -26,7 +26,7 @@
       ['finance-secondary-context-controller.js']
     ],
     inversiones: [
-      ['investment-dashboard-controller.js']
+      ['investment-dashboard-v2.js']
     ],
     pension: [
       ['finance-secondary-context-controller.js']
