@@ -37,6 +37,7 @@ const SOURCES = [
   { book: 'finance', range: 'Tipos_Cambio!A:F' },
   { book: 'finance', range: 'Simulador_TC!A:J' },
   { book: 'finance', range: 'Servicios!A:O' },
+  { book: 'finance', range: 'Referencias_Personales!A:N' },
   { book: 'finance', range: 'Cuentas!A:T' },
   { book: 'finance', range: 'Patrimonio_Mensual!A:AF' },
   { book: 'finance', range: 'Patrimonio_Detalle!A:N' },
