@@ -46,7 +46,7 @@
     {key:'cuotas', book:'finance', range:'Cuotas!A:T', parser:'smart'},
     {key:'pension', book:'finance', range:'Pensiones_Cesantias!A:T', parser:'smart'},
     {key:'ingresos', book:'finance', range:'Resumen_Ingresos!A:H', parser:'smart'},
-    {key:'ahorro', book:'finance', range:'Flujo_Ahorro!A:V', parser:'smart'},
+    {key:'ahorro', book:'finance', range:'Flujo_Ahorro!A:W', parser:'smart'},
     {key:'servicios', book:'finance', range:'Servicios!A:O', parser:'smart'},
     {key:'cuentas', book:'finance', range:'Cuentas!A:T', parser:'smart'},
     {key:'documentos', book:'documents', range:'Documentos_Master!A:R', parser:'smart'},
