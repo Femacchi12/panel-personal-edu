@@ -38,13 +38,18 @@
 
   function ensureFilter(root) {
     const complete = root.querySelector('[data-income-complete]');
-    if (!complete || complete.querySelector('#incomeTypeFilter')) return;
-    const kpis = complete.querySelector('.kpi-grid');
-    if (!kpis) return;
+    if (!complete) return;
+    let filter = document.getElementById('incomeTypeFilter');
+    if (filter) {
+      filter.hidden = false;
+      return;
+    }
+    const host = document.getElementById('filterBar');
+    if (!host) return;
 
-    const filter = document.createElement('div');
+    filter = document.createElement('div');
     filter.id = 'incomeTypeFilter';
-    filter.className = 'income-type-filter panel';
+    filter.className = 'income-type-filter';
     filter.innerHTML = `
       <div class="income-type-filter-head">
         <div>
@@ -59,7 +64,7 @@
         <button type="button" class="income-type-option" data-income-type="usd"><span class="income-type-check">✓</span><span><strong>Fibrazo LLC · USD</strong><small>Pagos recibidos en dólares</small></span></button>
         <button type="button" class="income-type-option" data-income-type="extras"><span class="income-type-check">✓</span><span><strong>Extras</strong><small>Prima, devoluciones y otros ingresos</small></span></button>
       </div>`;
-    complete.insertBefore(filter,kpis);
+    host.appendChild(filter);
 
     filter.addEventListener('click',event => {
       if (event.target.closest('[data-income-all]')) {
@@ -80,14 +85,16 @@
   }
 
   function updateButtons(root) {
-    root.querySelectorAll('[data-income-type]').forEach(button => {
+    const filter = document.getElementById('incomeTypeFilter');
+    if (!filter) return;
+    filter.querySelectorAll('[data-income-type]').forEach(button => {
       const active = selected.has(button.dataset.incomeType);
       button.classList.toggle('active',active);
       button.setAttribute('aria-pressed',String(active));
       const check = button.querySelector('.income-type-check');
       if (check) check.textContent = active ? '✓' : '';
     });
-    root.querySelector('[data-income-all]')?.classList.toggle('active',allSelected());
+    filter.querySelector('[data-income-all]')?.classList.toggle('active',allSelected());
   }
 
   function updateKpis(root) {
@@ -188,12 +195,17 @@
     const style = document.createElement('style');
     style.id = 'incomeTypeFilterStyles';
     style.textContent = `
-      .income-type-filter{padding:14px 16px!important}.income-type-filter-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:11px}.income-type-filter-head>div{display:flex;flex-direction:column;gap:4px}.income-type-filter-head strong{font-size:12px;color:#e5edf7}.income-type-filter-head small{font-size:10px;color:#718098}.income-type-all{border:1px solid var(--border);background:#0e1621;color:#91a1b5;border-radius:9px;padding:7px 10px;font-size:10px;font-weight:700;cursor:pointer}.income-type-all.active{border-color:#285ca9;background:rgba(23,105,255,.14);color:#9abaff}.income-type-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.income-type-option{min-width:0;border:1px solid var(--border);background:#0e1520;border-radius:11px;padding:10px 11px;color:#9aa8ba;cursor:pointer;display:flex;align-items:center;gap:9px;text-align:left}.income-type-option.active{border-color:#285ca9;background:rgba(23,105,255,.11);color:#e4edfa;box-shadow:inset 2px 0 0 var(--blue)}.income-type-option>span:last-child{min-width:0;display:flex;flex-direction:column;gap:3px}.income-type-option strong{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.income-type-option small{font-size:9px;color:#6f8199;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.income-type-check{width:17px;min-width:17px;height:17px;border:1px solid #28415f;border-radius:5px;display:grid;place-items:center;color:#8eb5ff;font-size:11px;font-weight:800}.income-type-option.active .income-type-check{background:rgba(23,105,255,.16);border-color:#3567ad}@media(max-width:900px){.income-type-options{grid-template-columns:1fr}}@media(max-width:520px){.income-type-filter-head{align-items:flex-start;flex-direction:column}.income-type-all{width:100%}}`;
+      .income-type-filter{margin-top:10px;padding-top:10px;border-top:1px solid var(--border-soft)}.income-type-filter[hidden]{display:none!important}.income-type-filter-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:11px}.income-type-filter-head>div{display:flex;flex-direction:column;gap:4px}.income-type-filter-head strong{font-size:12px;color:#e5edf7}.income-type-filter-head small{font-size:10px;color:#718098}.income-type-all{border:1px solid var(--border);background:#0e1621;color:#91a1b5;border-radius:9px;padding:7px 10px;font-size:10px;font-weight:700;cursor:pointer}.income-type-all.active{border-color:#285ca9;background:rgba(23,105,255,.14);color:#9abaff}.income-type-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.income-type-option{min-width:0;border:1px solid var(--border);background:#0e1520;border-radius:11px;padding:10px 11px;color:#9aa8ba;cursor:pointer;display:flex;align-items:center;gap:9px;text-align:left}.income-type-option.active{border-color:#285ca9;background:rgba(23,105,255,.11);color:#e4edfa;box-shadow:inset 2px 0 0 var(--blue)}.income-type-option>span:last-child{min-width:0;display:flex;flex-direction:column;gap:3px}.income-type-option strong{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.income-type-option small{font-size:9px;color:#6f8199;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.income-type-check{width:17px;min-width:17px;height:17px;border:1px solid #28415f;border-radius:5px;display:grid;place-items:center;color:#8eb5ff;font-size:11px;font-weight:800}.income-type-option.active .income-type-check{background:rgba(23,105,255,.16);border-color:#3567ad}@media(max-width:900px){.income-type-options{grid-template-columns:1fr}}@media(max-width:520px){.income-type-filter-head{align-items:flex-start;flex-direction:column}.income-type-all{width:100%}}`;
     document.head.appendChild(style);
   }
 
   injectStyles();
   document.addEventListener('panel:income-doc-rendered', () => apply());
   document.addEventListener('panel:income-regular-controller-applied', () => apply());
+  document.addEventListener('panel:view-root-changed', () => {
+    const filter = document.getElementById('incomeTypeFilter');
+    if (filter) filter.hidden = !isIncomeView();
+    if (isIncomeView()) queueMicrotask(() => apply());
+  });
   queueMicrotask(() => apply());
 })();
