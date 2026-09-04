@@ -57,12 +57,22 @@
     if(activeView()!=='servicios'||!root)return;
     const table=findServicesTable(root);if(!table)return;
     const headers=[...table.querySelectorAll('thead th')],names=headers.map(th=>norm(th.textContent));
-    const serviceIndex=names.indexOf('servicio'),observationsIndex=names.indexOf('observaciones');if(serviceIndex<0||observationsIndex<0)return;
+    const serviceIndex=names.indexOf('servicio'),observationsIndex=names.indexOf('observaciones'),statusIndex=names.indexOf('estado mes');if(serviceIndex<0||observationsIndex<0)return;
     const copyIndexes=['numero de referencia','banco','tipo de cuenta','numero de cuenta'].map(name=>names.indexOf(name)).filter(index=>index>=0);
     headers[observationsIndex]?.classList.add('services-table-observations-header');
+    headers[statusIndex]?.classList.add('services-status-header');
     table.querySelectorAll('tbody tr').forEach(row=>{
-      const cells=[...row.children],serviceCell=cells[serviceIndex],observationsCell=cells[observationsIndex];if(!serviceCell||!observationsCell)return;
+      const cells=[...row.children],serviceCell=cells[serviceIndex],observationsCell=cells[observationsIndex],statusCell=statusIndex>=0?cells[statusIndex]:null;if(!serviceCell||!observationsCell)return;
       copyIndexes.forEach(index=>makeCellCopyable(cells[index]));
+      if(statusCell&&statusCell.dataset.statusEnhanced!=='1'){
+        const raw=String(statusCell.textContent||'').trim(),key=norm(raw);
+        statusCell.textContent='';
+        const badge=document.createElement('span');
+        badge.className='services-month-status '+(key.includes('pagad')?'paid':key.includes('pend')?'pending':'neutral');
+        badge.textContent=raw||'—';
+        statusCell.appendChild(badge);
+        statusCell.dataset.statusEnhanced='1';
+      }
       observationsCell.classList.add('services-table-observations-cell');observationsCell.removeAttribute('title');
       if(norm(serviceCell.textContent)!=='arriendo'||observationsCell.dataset.rentFormatted==='1')return;
       const split=splitRentObservation(observationsCell.textContent);if(!split)return;
