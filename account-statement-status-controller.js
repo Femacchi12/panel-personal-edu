@@ -132,7 +132,10 @@
   function render(items){
     const root=document.getElementById('viewRoot');if(!root||activeView()!=='servicios')return;
     const sig=signature(items);let host=document.getElementById('accountStatementStatusPanel');
-    if(host&&host.dataset.signature===sig)return;
+    if(host&&host.dataset.signature===sig){
+      placeHostBeforeAccounts(root,host);
+      return;
+    }
     if(!host){
       host=document.createElement('div');host.id='accountStatementStatusPanel';host.className='panel table-panel statement-status-panel';
       if(!placeHostBeforeAccounts(root,host)) root.appendChild(host);
