@@ -275,3 +275,40 @@ button{color:inherit}.hidden{display:none!important}
   color:#79e1ab;
   box-shadow:0 0 0 1px rgba(56,203,126,.22);
 }
+
+
+/* Servicios: estado mensual destacado como primera columna */
+#viewRoot .services-status-header{
+  min-width:92px;
+  width:92px;
+}
+.services-month-status{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:68px;
+  min-height:24px;
+  padding:0 9px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  font-size:8px;
+  font-weight:800;
+  letter-spacing:.025em;
+  white-space:nowrap;
+}
+.services-month-status.paid{
+  color:#71e3aa;
+  background:rgba(42,199,120,.09);
+  border-color:rgba(42,199,120,.34);
+  box-shadow:inset 0 0 0 1px rgba(42,199,120,.04);
+}
+.services-month-status.pending{
+  color:#ff8790;
+  background:rgba(239,78,91,.09);
+  border-color:rgba(239,78,91,.34);
+  box-shadow:inset 0 0 0 1px rgba(239,78,91,.04);
+}
+.services-month-status.neutral{
+  color:#9aacc0;
+  background:rgba(255,255,255,.025);
+}
