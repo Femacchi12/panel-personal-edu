@@ -20,14 +20,49 @@
   function findServicesTable(root){return[...root.querySelectorAll('table')].find(table=>{const headers=[...table.querySelectorAll('thead th')].map(th=>norm(th.textContent));return headers.includes('servicio')&&headers.includes('observaciones');})||null;}
   function splitRentObservation(text){const parts=String(text||'').trim().split('·').map(x=>x.trim()).filter(Boolean);if(parts.length<2)return null;return{first:parts.slice(0,2).join(' · '),second:parts.slice(2).join(' · ')};}
 
+  async function copyText(value,element){
+    const text=String(value||'').trim();if(!text)return;
+    try{
+      if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(text);
+      else{
+        const area=document.createElement('textarea');area.value=text;area.style.position='fixed';area.style.opacity='0';
+        document.body.appendChild(area);area.select();document.execCommand('copy');area.remove();
+      }
+      element?.classList.add('copied');
+      element?.setAttribute('title','Copiado');
+      setTimeout(()=>{element?.classList.remove('copied');element?.setAttribute('title','Presiona para copiar');},1100);
+    }catch(error){console.warn('No se pudo copiar el dato del servicio:',error);}
+  }
+
+  function makeCellCopyable(cell){
+    if(!cell||cell.dataset.copyEnhanced==='1')return;
+    const value=String(cell.textContent||'').trim();
+    if(!value||value==='—')return;
+    cell.textContent='';
+    const control=document.createElement('span');
+    control.className='service-table-copy-value';
+    control.textContent=value;
+    control.tabIndex=0;
+    control.setAttribute('role','button');
+    control.setAttribute('title','Presiona para copiar');
+    control.addEventListener('click',()=>copyText(value,control));
+    control.addEventListener('keydown',event=>{
+      if(event.key==='Enter'||event.key===' '){event.preventDefault();copyText(value,control);}
+    });
+    cell.appendChild(control);
+    cell.dataset.copyEnhanced='1';
+  }
+
   function enhanceServicesTable(root=document.getElementById('viewRoot')){
     if(activeView()!=='servicios'||!root)return;
     const table=findServicesTable(root);if(!table)return;
     const headers=[...table.querySelectorAll('thead th')],names=headers.map(th=>norm(th.textContent));
     const serviceIndex=names.indexOf('servicio'),observationsIndex=names.indexOf('observaciones');if(serviceIndex<0||observationsIndex<0)return;
+    const copyIndexes=['numero de referencia','banco','tipo de cuenta','numero de cuenta'].map(name=>names.indexOf(name)).filter(index=>index>=0);
     headers[observationsIndex]?.classList.add('services-table-observations-header');
     table.querySelectorAll('tbody tr').forEach(row=>{
       const cells=[...row.children],serviceCell=cells[serviceIndex],observationsCell=cells[observationsIndex];if(!serviceCell||!observationsCell)return;
+      copyIndexes.forEach(index=>makeCellCopyable(cells[index]));
       observationsCell.classList.add('services-table-observations-cell');observationsCell.removeAttribute('title');
       if(norm(serviceCell.textContent)!=='arriendo'||observationsCell.dataset.rentFormatted==='1')return;
       const split=splitRentObservation(observationsCell.textContent);if(!split)return;
