@@ -3,6 +3,7 @@
 
   const cfg=window.PANEL_CONFIG||{};
   const FINANCE_ID=String(cfg.financeSpreadsheetId||'');
+  const API_BASE=String(cfg.apiBaseUrl||'').replace(/\/$/,'');
   if(!FINANCE_ID)return;
 
   const RANGES={
@@ -71,6 +72,32 @@
   function targetRate(data){
     const raw=localStorage.getItem(TARGET_KEY),stored=raw===null?NaN:Number(raw);
     return Number.isFinite(stored)&&stored>=0&&stored<=.9?stored:targetDefault(data);
+  }
+
+  async function persistTarget(value){
+    const status=document.getElementById('savingsTargetStatus');
+    if(status)status.textContent='Guardando…';
+    if(!API_BASE||typeof window.__PANEL_GET_ID_TOKEN__!=='function'){
+      if(status)status.textContent='Guardado en este navegador';
+      return false;
+    }
+    try{
+      const token=await window.__PANEL_GET_ID_TOKEN__(false);
+      const response=await fetch(`${API_BASE}/api/settings/savings-target`,{
+        method:'POST',
+        headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+        body:JSON.stringify({value})
+      });
+      if(!response.ok)throw new Error(await response.text());
+      window.__PANEL_RESET_BACKEND_DATA__?.();
+      cache=null;
+      if(status)status.textContent='Guardado como meta general';
+      return true;
+    }catch(error){
+      console.warn('La meta se conserva localmente; no se pudo persistir en Config:',error);
+      if(status)status.textContent='Guardado en este navegador';
+      return false;
+    }
   }
   function destroyCharts(){charts.forEach(c=>{try{c.destroy()}catch{}});charts=[];}
 
@@ -239,7 +266,7 @@
 
       <div class="income-target-panel">
         <div class="income-target-copy"><span>META DE AHORRO</span><strong>${pct(target)} mensual</strong><small>La meta se calcula sobre el ingreso regular base. El ahorro real usa ingresos líquidos menos gastos.</small></div>
-        <label class="income-target-control"><span>Objetivo</span><div><input id="savingsTargetInput" type="number" min="0" max="90" step="1" value="${Math.round(target*100)}"><b>%</b></div><small>Editable; se guarda en este navegador.</small></label>
+        <label class="income-target-control"><span>Objetivo</span><div><input id="savingsTargetInput" type="number" min="0" max="90" step="1" value="${Math.round(target*100)}"><b>%</b></div><small id="savingsTargetStatus">Editable · meta general en Config</small></label>
         <div class="income-target-stats">
           ${card('Meta del período',money(targetAmount,cur,r),`Base regular × ${pct(target)}`)}
           ${card('Brecha vs meta',money(gap,cur,r),gap>=0?'Meta superada':'Falta para llegar a la meta',gap>=0?'green':'bad')}
@@ -264,7 +291,9 @@
 
     root.querySelector('#savingsTargetInput')?.addEventListener('change',e=>{
       const n=Math.max(0,Math.min(90,Number(e.target.value)||0))/100;
-      localStorage.setItem(TARGET_KEY,String(n));render(data);
+      localStorage.setItem(TARGET_KEY,String(n));
+      render(data);
+      persistTarget(n);
     });
     requestAnimationFrame(()=>drawCharts(state.yearRows,target,cur,r));
   }
