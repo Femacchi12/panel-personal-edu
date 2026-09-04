@@ -6,7 +6,7 @@
   if(!FINANCE_ID)return;
 
   const RANGES={
-    flow:'Flujo_Ahorro!A:V',
+    flow:'Flujo_Ahorro!A:W',
     flowLegacy:'Flujo_Ahorro!A:P',
     summary:'Resumen_Conceptos_Ingresos!A:L',
     detail:'Detalle_Ingresos!A:L',
