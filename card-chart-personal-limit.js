@@ -87,7 +87,7 @@
     if(now.getDate()<=cutDay) end=safeDate(now.getFullYear(),now.getMonth(),cutDay);
     else end=safeDate(now.getFullYear(),now.getMonth()+1,cutDay);
     const previous=safeDate(end.getFullYear(),end.getMonth()-1,cutDay);
-    const start=new Date(previous.getFullYear(),previous.getMonth(),previous.getDate()+1);
+    const start=new Date(previous.getFullYear(),previous.getMonth(),previous.getDate());
     return {start,end};
   }
 
