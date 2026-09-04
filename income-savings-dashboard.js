@@ -10,6 +10,7 @@
     flowLegacy:'Flujo_Ahorro!A:P',
     summary:'Resumen_Conceptos_Ingresos!A:L',
     detail:'Detalle_Ingresos!A:L',
+    incomes:'Ingresos!A:T',
     investments:'Flujo_Inversiones!A:M',
     patrimonio:'Patrimonio_Inversiones!A:K',
     config:'Config!A:C'
@@ -84,6 +85,7 @@
       payload,flow,
       summary:rowsFrom(payload,RANGES.summary),
       detail:rowsFrom(payload,RANGES.detail),
+      incomes:rowsFrom(payload,RANGES.incomes),
       investments:rowsFrom(payload,RANGES.investments),
       patrimonio:rowsFrom(payload,RANGES.patrimonio),
       config:rowsFrom(payload,RANGES.config)
@@ -91,21 +93,98 @@
     return cache;
   }
 
+  function adjustmentMaps(data,ratesNow){
+    const nonLiquid=new Map(),fees=new Map();
+    (data.detail||[]).forEach(row=>{
+      const key=monthKey(row.Mes);if(!key)return;
+      if(norm(row.Tipo)==='cesantias') nonLiquid.set(key,(nonLiquid.get(key)||0)+num(row['Equivalente COP']));
+    });
+    (data.incomes||[]).forEach(row=>{
+      const key=monthKey(row['Fecha pago']||row['Fecha devengo']);if(!key)return;
+      const deduction=num(row.Deducciones);if(!(deduction>0))return;
+      const cur=norm(row.Moneda);
+      let cop=deduction;
+      if(cur==='usd')cop=deduction*ratesNow.usdCop;
+      else if(cur==='ars')cop=deduction/ratesNow.usdArs*ratesNow.usdCop;
+      fees.set(key,(fees.get(key)||0)+cop);
+    });
+    return{nonLiquid,fees};
+  }
+
+  function investmentMap(data,ratesNow){
+    const direct=new Map();
+    (data.investments||[]).forEach(row=>{
+      const key=monthKey(row.Mes);if(!key)return;
+      const value=num(row['Aportes netos COP']);
+      if(value||String(row['Aportes netos COP']||'').trim())direct.set(key,value);
+    });
+    if(direct.size)return direct;
+
+    const grouped=new Map();
+    (data.patrimonio||[]).forEach(row=>{
+      const key=monthKey(row.Periodo),entity=String(row.Entidad||'').trim();
+      if(!key||!entity||!norm(row.Estado).includes('confirmado'))return;
+      if(!grouped.has(entity))grouped.set(entity,[]);
+      grouped.get(entity).push({key,row});
+    });
+    const result=new Map();
+    grouped.forEach(list=>{
+      list.sort((a,b)=>a.key.localeCompare(b.key));
+      let previous=null;
+      list.forEach(({key,row})=>{
+        const capital=num(row['Capital sin ganancia']);
+        if(previous!==null&&previous>0&&capital>0){
+          const delta=capital-previous,base=norm(row['Moneda base']);
+          let cop=delta;
+          if(base==='usd')cop=delta*ratesNow.usdCop;
+          else if(base==='ars')cop=delta/ratesNow.usdArs*ratesNow.usdCop;
+          result.set(key,(result.get(key)||0)+cop);
+        }
+        if(capital>0)previous=capital;
+      });
+    });
+    return result;
+  }
+
   function normalized(data){
-    const summaryMap=new Map((data.summary||[]).map(r=>[monthKey(r.Mes),r]).filter(x=>x[0]));
-    return (data.flow||[]).map(r=>{
-      const key=monthKey(r.Mes);if(!key)return null;
+    const summaryMap=new Map((data.summary||[]).map(row=>[monthKey(row.Mes),row]).filter(x=>x[0]));
+    const ratesNow=rates(data),adjust=adjustmentMaps(data,ratesNow),investments=investmentMap(data,ratesNow);
+    const salaryHistory=[...summaryMap].map(([key,row])=>({key,value:num(row['Sueldo COP'])})).filter(x=>x.value>0).sort((a,b)=>a.key.localeCompare(b.key));
+    const salaryReference=key=>{
+      let value=0;
+      salaryHistory.forEach(item=>{if(item.key<=key)value=item.value;});
+      return value||salaryHistory.at(-1)?.value||0;
+    };
+    const llcReference=(Number(cfg.regularIncome?.fibrazoLlcUsdBase)||1300)*ratesNow.usdCop;
+    const current=new Date(),currentKey=`${current.getFullYear()}-${String(current.getMonth()+1).padStart(2,'0')}`;
+
+    return (data.flow||[]).map(row=>{
+      const key=monthKey(row.Mes);if(!key)return null;
       const s=summaryMap.get(key)||{};
-      const total=num(r['Ingresos totales consolidados COP'])||num(s['Total consolidado']);
-      const liquid=num(r['Ingresos reales COP']);
-      const expenses=num(r['Egresos reales COP']);
-      const saving=liquid-expenses;
-      const regular=num(r['Ingreso regular base COP'])||num(s['Sueldo COP'])+num(s['Sueldo USD (equiv. COP)']);
-      const invested=num(r['Aportes netos inversiones COP']);
-      const post=saving-invested;
       const salaryCop=num(s['Sueldo COP']),salaryUsd=num(s['Sueldo USD (equiv. COP)']);
+      const total=num(s['Total consolidado'])||num(row['Ingresos totales consolidados COP'])||num(row['Ingresos reales COP']);
+      const deduction=(adjust.nonLiquid.get(key)||0)+(adjust.fees.get(key)||0);
+      const liquid=total>0?Math.max(0,total-deduction):0;
+      const expenses=num(row['Egresos reales COP']);
+      const saving=liquid-expenses;
+      const regularComplete=salaryCop>0&&salaryUsd>0;
+      const regular=regularComplete?salaryCop+salaryUsd:(salaryReference(key)+llcReference);
+      const invested=investments.has(key)?investments.get(key):num(row['Aportes netos inversiones COP']);
+      const post=saving-invested;
+      let state=String(row.Estado||'');
+      if(key>currentKey)state='Proyección';
+      else if(key===currentKey)state='En curso';
+      else if(!regularComplete)state='Pendiente soporte';
+      else state='Cerrado';
+      let quality=String(row['Estado ingreso / soporte']||'');
+      if(key>currentKey)quality='Proyección';
+      else if(total<=0)quality='Sin ingresos confirmados';
+      else if(!regularComplete)quality='Parcial · falta ingreso regular';
+      else if(deduction>0)quality='Ajustado · no líquido/comisiones';
+      else quality='Consolidado';
+
       return{
-        key,year:key.slice(0,4),month:+key.slice(5,7),state:String(r.Estado||''),quality:String(r['Estado ingreso / soporte']||''),
+        key,year:key.slice(0,4),month:+key.slice(5,7),state,quality,
         total,liquid,expenses,saving,regular,invested,post,
         salaryCop,salaryUsd,extras:Math.max(0,total-salaryCop-salaryUsd)
       };
