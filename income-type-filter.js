@@ -70,7 +70,7 @@
       if (event.target.closest('[data-income-all]')) {
         selected.clear();
         ['payroll','usd','extras'].forEach(type => selected.add(type));
-        apply(root);
+        apply();
         return;
       }
       const button = event.target.closest('[data-income-type]');
@@ -80,7 +80,7 @@
         if (selected.size === 1) return;
         selected.delete(type);
       } else selected.add(type);
-      apply(root);
+      apply();
     });
   }
 
