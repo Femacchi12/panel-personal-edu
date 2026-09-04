@@ -56,9 +56,17 @@
   function searchText(row) {
     return [
       row['Área'], row['Categoría'], row['Tipo'], row['Documento'], row['Titular'], row['País / Entidad'],
-      row['N.º / Identificación'], row['Dato copiable 2'], row['Fecha documento'], row['Fecha expedición'],
-      row['Fecha vencimiento'], row['Período'], row['Estado'], row['Prioridad'], row['Observaciones']
+      row['N.º / Identificación'], row['Dato copiable 2'], row['Período']
     ].join(' ');
+  }
+
+  function matchesSearch(row, rawQuery) {
+    const q = norm(rawQuery);
+    if (!q) return true;
+    const searchable = derived(row).searchable;
+    if (searchable.includes(q)) return true;
+    const terms = q.split(/\s+/).filter(Boolean);
+    return terms.length > 1 && terms.every(term => searchable.includes(term));
   }
 
   function areaRank(value) {
@@ -239,7 +247,7 @@
   function applyLocalFilters(sourceRows) {
     const q = norm(query);
     const rows = sourceRows.filter(row => {
-      if (q && !derived(row).searchable.includes(q)) return false;
+      if (q && !matchesSearch(row, q)) return false;
       if (periodFilter !== 'all' && String(row['Período'] || '').trim() !== periodFilter) return false;
       if (expiryMode === 'dated' && !String(row['Fecha vencimiento'] || '').trim()) return false;
       if (expiryMode === 'attention' && !isAttention(row)) return false;
@@ -273,7 +281,7 @@
     const periods = periodOptions(sectionRows);
     if (!searching && periodFilter !== 'all' && !periods.includes(periodFilter)) periodFilter = 'all';
     const rows = searching
-      ? sortRows(sourceRows.filter(row => derived(row).searchable.includes(norm(query))))
+      ? sortRows(sourceRows.filter(row => matchesSearch(row, query)))
       : applyLocalFilters(sectionRows);
     const visible = expanded ? rows : rows.slice(0, 30);
     const totalSuffix = sectionRows.length === sourceRows.length ? '' : ` · ${sourceRows.length} total`;
