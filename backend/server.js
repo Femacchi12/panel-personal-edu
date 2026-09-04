@@ -5,6 +5,7 @@ const { google } = require('googleapis');
 admin.initializeApp();
 
 const app = express();
+app.use(express.json({ limit: '16kb' }));
 const PORT = Number(process.env.PORT || 8080);
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'https://femacchi12.github.io';
 const FINANCE_SPREADSHEET_ID = process.env.FINANCE_SPREADSHEET_ID || '1ff_dT8kHhiy1THTq1hRHGx2z2VElUQjyq_A4AL_nm4g';
@@ -52,7 +53,7 @@ const SOURCES = [
   { book: 'health', range: 'Documentos!A:X' }
 ];
 
-const googleAuth = new google.auth.GoogleAuth({ scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'] });
+const googleAuth = new google.auth.GoogleAuth({ scopes: ['https://www.googleapis.com/auth/spreadsheets'] });
 const sheets = google.sheets({ version: 'v4', auth: googleAuth });
 
 let cache = { expiresAt: 0, payload: null };
@@ -67,7 +68,7 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   }
   if (req.method === 'OPTIONS') return res.status(204).end();
   next();
@@ -206,6 +207,27 @@ app.get('/api/data', requireAuthorizedUser, async (req, res) => {
     console.error('Sheets error:', error);
     const status = error?.code === 403 ? 403 : 500;
     res.status(status).json({ error: 'sheets_read_failed', message: errorMessage(error) });
+  }
+});
+
+app.post('/api/settings/savings-target', requireAuthorizedUser, async (req, res) => {
+  const value = Number(req.body?.value);
+  if (!Number.isFinite(value) || value < 0 || value > 0.9) {
+    return res.status(400).json({ error: 'invalid_savings_target', message: 'La meta debe estar entre 0 y 0,9.' });
+  }
+  try {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: FINANCE_SPREADSHEET_ID,
+      range: 'Config!B17',
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[value]] }
+    });
+    cache = { expiresAt: 0, payload: null };
+    return res.json({ ok: true, value });
+  } catch (error) {
+    console.error('Savings target update error:', error);
+    const status = error?.code === 403 ? 403 : 500;
+    return res.status(status).json({ error: 'savings_target_write_failed', message: errorMessage(error) });
   }
 });
 
