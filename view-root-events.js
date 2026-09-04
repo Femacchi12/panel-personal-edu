@@ -19,6 +19,13 @@
     if (view === 'inversiones' && root.querySelector('.investment-dashboard')) return;
     if (view === 'pension' && root.querySelector('.pension-v2')) return;
 
+    // Salud agrega bloques derivados como hijos directos de viewRoot. Esas
+    // inserciones/remociones son parte de su propio render y no deben
+    // volver a emitir view-root-changed, porque eso crea un ciclo:
+    // Salud renderiza -> MutationObserver -> view-root-changed -> Salud renderiza.
+    if (view === 'salud' && root.querySelector('.health-enhancement')) return;
+    if ((view === 'citas' || view === 'tratamientos') && root.querySelector('.health-derived-notice')) return;
+
     document.dispatchEvent(new CustomEvent('panel:view-root-changed', {
       detail: { view, root }
     }));
