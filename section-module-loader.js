@@ -35,7 +35,7 @@
       ['income-doc-enhancements.js','income-regular-controller.js','income-type-filter.js','income-savings-context-controller.js']
     ],
     servicios: [
-      ['services-table-enhancement.js','finance-secondary-context-controller.js']
+      ['services-table-enhancement.js','finance-secondary-context-controller.js','account-statement-status-controller.js']
     ],
     cambio: [
       ['exchange-simulator.js'],
