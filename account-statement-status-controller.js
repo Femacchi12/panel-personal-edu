@@ -116,18 +116,28 @@
   }
   function signature(items){return items.map(x=>[x.key,x.last,x.expected,x.status,x.next,x.document].join(':')).join('|')}
 
+  function panelByTitle(root,title){
+    return [...root.querySelectorAll(':scope > .panel')].find(panel=>norm(panel.querySelector('.panel-title strong')?.textContent)===norm(title))||null;
+  }
+
+  function placeHostBeforeAccounts(root,host){
+    const accounts=panelByTitle(root,'Cuentas y plataformas');
+    if(accounts){
+      if(host.nextElementSibling!==accounts) root.insertBefore(host,accounts);
+      return true;
+    }
+    return false;
+  }
+
   function render(items){
     const root=document.getElementById('viewRoot');if(!root||activeView()!=='servicios')return;
     const sig=signature(items);let host=document.getElementById('accountStatementStatusPanel');
     if(host&&host.dataset.signature===sig)return;
     if(!host){
       host=document.createElement('div');host.id='accountStatementStatusPanel';host.className='panel table-panel statement-status-panel';
-      const context=root.querySelector(':scope > .secondary-context');
-      if(context)context.insertAdjacentElement('afterend',host);
-      else{
-        const kpi=root.querySelector(':scope > .kpi-grid');
-        kpi?root.insertBefore(host,kpi):root.prepend(host);
-      }
+      if(!placeHostBeforeAccounts(root,host)) root.appendChild(host);
+    }else{
+      placeHostBeforeAccounts(root,host);
     }
     host.dataset.signature=sig;
     const pending=items.filter(x=>x.status==='Pendiente').length,good=items.filter(x=>x.status==='Al día').length,upcoming=items.filter(x=>x.status==='Próximo').length;
