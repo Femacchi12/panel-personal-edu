@@ -88,3 +88,25 @@ button{color:inherit}.hidden{display:none!important}
 .debt-active-meta{display:block;margin-top:6px;font-size:9px;line-height:1.35;color:#718098}
 @media(max-width:1050px){.debt-overview-grid{grid-template-columns:1fr}.debt-chart-panel .chart-inner{height:220px!important}}
 @media(max-width:560px){.debt-active-values{grid-template-columns:1fr}.debt-chart-panel .chart-inner{height:210px!important}}
+
+
+/* Servicios y referencias · domicilio actual */
+.service-reference-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+.service-reference-card{border:1px solid var(--border-soft);background:linear-gradient(180deg,#0d1623,#09111a);border-radius:13px;padding:13px;display:grid;gap:11px}
+.service-reference-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.service-reference-head>div{min-width:0}
+.service-reference-head span:first-child{display:block;font-size:8px;text-transform:uppercase;letter-spacing:.07em;font-weight:800;color:#66a0ff}
+.service-reference-head strong{display:block;margin-top:4px;font-size:15px;color:#edf4ff}
+.service-reference-location{display:grid;gap:4px}
+.service-reference-location strong{font-size:12px;color:#dce8f7}
+.service-reference-location span{font-size:11px;color:#9eb0c6;line-height:1.45}
+.service-reference-facts{display:grid;grid-template-columns:minmax(130px,.35fr) minmax(240px,1fr);gap:8px}
+.service-reference-facts>div,.service-reference-note{border:1px solid var(--border-soft);background:rgba(255,255,255,.02);border-radius:10px;padding:9px 10px;min-width:0}
+.service-reference-facts span,.service-reference-note>span{display:block;font-size:8px;text-transform:uppercase;letter-spacing:.05em;font-weight:800;color:#657891}
+.service-reference-facts strong{display:block;margin-top:4px;font-size:10px;color:#cbd8e8;word-break:break-word}
+.service-reference-note p{margin:4px 0 0;font-size:10px;line-height:1.45;color:#b8c7d9}
+.service-reference-actions{display:flex;flex-wrap:wrap;gap:8px}
+.service-reference-actions a{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:0 12px;border:1px solid #2a4d78;border-radius:8px;background:#0d1b2b;color:#8fc0ff;text-decoration:none;font-size:10px;font-weight:700}
+.service-reference-actions a:hover{background:#11243a;border-color:#376ea9;color:#d8e9ff}
+@media(max-width:720px){.service-reference-facts{grid-template-columns:1fr}.service-reference-actions{display:grid;grid-template-columns:1fr 1fr}}
+@media(max-width:430px){.service-reference-actions{grid-template-columns:1fr}}
