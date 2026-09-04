@@ -22,9 +22,7 @@
       ['card-specific-filter.js'],
       ['card-payment-control.js','card-chart-personal-limit.js','card-payments-installments.js','finance-context-controller.js']
     ],
-    deudas: [
-      ['finance-secondary-context-controller.js']
-    ],
+    deudas: [],
     inversiones: [
       ['investment-dashboard-v2.js']
     ],
