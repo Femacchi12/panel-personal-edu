@@ -174,3 +174,55 @@ button{color:inherit}.hidden{display:none!important}
   .service-reference-fields{grid-template-columns:1fr}
   .service-reference-field.wide{grid-column:auto}
 }
+
+
+/* Referencias: copiar directamente desde el texto, sin botón dedicado */
+.service-reference-field{justify-content:flex-start}
+.service-reference-field>div{width:100%}
+.service-copy-value{
+  display:inline-flex!important;
+  align-items:center;
+  gap:6px;
+  width:auto;
+  max-width:100%;
+  cursor:pointer;
+  border-radius:6px;
+  padding:2px 4px;
+  margin-left:-4px;
+  transition:background .15s ease,color .15s ease,box-shadow .15s ease;
+}
+.service-copy-value:hover,
+.service-copy-value:focus-visible{
+  background:rgba(79,145,255,.09);
+  color:#e9f3ff!important;
+  outline:none;
+  box-shadow:0 0 0 1px rgba(91,156,255,.18);
+}
+.service-copy-value::after{
+  content:'Copiar';
+  opacity:0;
+  transform:translateX(-2px);
+  color:#76adf8;
+  font-size:8px;
+  font-weight:700;
+  white-space:nowrap;
+  transition:opacity .15s ease,transform .15s ease;
+}
+.service-copy-value:hover::after,
+.service-copy-value:focus-visible::after{
+  opacity:1;
+  transform:translateX(0);
+}
+.service-copy-value.copied{
+  background:rgba(56,203,126,.09);
+  color:#7ee5b2!important;
+  box-shadow:0 0 0 1px rgba(56,203,126,.22);
+}
+.service-copy-value.copied::after{
+  content:'Copiado';
+  opacity:1;
+  transform:none;
+  color:#73dfa9;
+}
+/* El botón anterior ya no se usa. */
+.service-copy-btn{display:none!important}
