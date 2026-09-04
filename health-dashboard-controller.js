@@ -22,6 +22,8 @@
 
   let frame = 0;
   let version = 0;
+  let running = false;
+  let rerun = false;
 
   const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -229,6 +231,17 @@
   }
 
   async function loadData(force=false){
+    const appData=window.__PANEL_APP_DATA__;
+    if(appData&&typeof appData==='object'&&Array.isArray(appData.pacientes)){
+      return {
+        patients:appData.pacientes||[],
+        docs:appData.docsSalud||[],
+        appointments:appData.citas||[],
+        treatments:appData.tratamientos||[],
+        studies:appData.estudios||[],
+        events:appData.eventosSalud||[]
+      };
+    }
     const getData=window.__PANEL_GET_BACKEND_DATA__; if(typeof getData!=='function')return null;
     const payload=await getData(force);
     return {
@@ -244,6 +257,8 @@
   async function run(){
     const view=activeView(); if(!['salud','citas','tratamientos'].includes(view))return;
     const root=document.getElementById('viewRoot'); if(!root)return;
+    if(running){rerun=true;return;}
+    running=true;
     const v=++version;
     try{
       const data=await loadData(false); if(!data||v!==version||activeView()!==view||!root.isConnected)return;
@@ -260,12 +275,17 @@
         if(rows.length){const wrap=document.createElement('div');wrap.innerHTML=viewNoticeMarkup(view,rows,map);const node=wrap.firstElementChild;const head=root.querySelector('.section-head');if(head)head.insertAdjacentElement('afterend',node);else root.prepend(node);}
       }
     }catch(error){console.error('Health dashboard enhancement:',error);}
+    finally{
+      running=false;
+      if(rerun){rerun=false;schedule();}
+    }
   }
 
   function schedule(){if(frame)return;frame=requestAnimationFrame(()=>{frame=0;run();});}
   document.addEventListener('panel:view-root-changed',schedule);
   document.addEventListener('panel:section-filters-changed',e=>{if(['salud','citas','tratamientos'].includes(e.detail?.view))schedule();});
-  document.addEventListener('panel:backend-data-loaded',schedule);
+  document.addEventListener('panel:app-data-ready',schedule);
+  document.addEventListener('panel:manual-refresh-complete',schedule);
   document.addEventListener('panel:modules-ready',schedule);
   queueMicrotask(schedule);
 })();
