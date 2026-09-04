@@ -141,6 +141,17 @@
     return `${dateLabel(period.start)} – ${dateLabel(end)}`;
   }
 
+  function dueDateFor(cardRow,closed,open,current) {
+    const explicit = parseDate(closed?.['Fecha vencimiento']) || parseDate(open?.['Fecha vencimiento']);
+    if (explicit) return explicit;
+    const dueDay = Number(cardRow?.['Día vencimiento'] || 0);
+    const cut = current?.cut || parseDate(closed?.['Fecha corte']);
+    if (!dueDay || !cut) return null;
+    let due = new Date(cut.getFullYear(),cut.getMonth(),dueDay);
+    if (due < cut) due = new Date(cut.getFullYear(),cut.getMonth()+1,dueDay);
+    return due;
+  }
+
   function paymentState(cycle) {
     if (!cycle) return {key:'open',label:'Sin corte cerrado'};
     const paid = norm(cycle.Pagado);
@@ -182,6 +193,7 @@
     const closed = indexed.closed||null;
     const open = indexed.open||null;
     const current = deriveCurrentPeriod(cardRow,closed,open,now);
+    const dueDate = dueDateFor(cardRow,closed,open,current);
     const state = paymentState(closed);
     const stats = [...card.querySelectorAll('.credit-stat')];
 
@@ -193,7 +205,7 @@
       const label = stats[2].querySelector('span');
       const value = stats[2].querySelector('strong');
       if (label) label.textContent = 'Vencimiento';
-      if (value) value.textContent = closed?.['Fecha vencimiento'] ? dateLabel(closed['Fecha vencimiento']) : 'Por confirmar';
+      if (value) value.textContent = dueDate ? dateLabel(dueDate) : 'Por confirmar';
     }
 
     card.querySelector('.card-payment-control')?.remove();
@@ -209,7 +221,7 @@
         <div class="card-cycle-item wide"><span>Período actual</span><strong>${esc(currentPeriodLabel(current,id))}</strong></div>
         <div class="card-cycle-item wide"><span>Último período facturado</span><strong>${esc(billedPeriod(closed,id))}</strong></div>
         <div class="card-cycle-item"><span>Fecha de corte</span><strong>${esc(closed ? dateLabel(closed['Fecha corte']) : (current?.cut ? dateLabel(current.cut) : '—'))}</strong></div>
-        <div class="card-cycle-item"><span>Fecha límite de pago</span><strong>${esc(closed?.['Fecha vencimiento'] ? dateLabel(closed['Fecha vencimiento']) : 'Pendiente de confirmar')}</strong></div>
+        <div class="card-cycle-item"><span>Fecha límite de pago</span><strong>${esc(dueDate ? dateLabel(dueDate) : 'Pendiente de confirmar')}</strong></div>
         <div class="card-cycle-item"><span>Pago mínimo</span><strong>${closed ? esc(money(minDue)) : '—'}</strong></div>
         <div class="card-cycle-item"><span>Pago total corte</span><strong>${closed ? esc(money(totalDue)) : '—'}</strong></div>
         ${state.key==='paid' ? `<div class="card-cycle-item wide"><span>Fecha de pago</span><strong>${esc(paymentDate)}</strong></div>` : ''}
