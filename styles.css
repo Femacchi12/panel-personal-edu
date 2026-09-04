@@ -110,3 +110,67 @@ button{color:inherit}.hidden{display:none!important}
 .service-reference-actions a:hover{background:#11243a;border-color:#376ea9;color:#d8e9ff}
 @media(max-width:720px){.service-reference-facts{grid-template-columns:1fr}.service-reference-actions{display:grid;grid-template-columns:1fr 1fr}}
 @media(max-width:430px){.service-reference-actions{grid-template-columns:1fr}}
+
+
+/* Servicios y referencias · copiado rápido por dato */
+.service-reference-fields{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+}
+.service-reference-field{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  min-width:0;
+  border:1px solid var(--border-soft);
+  background:rgba(255,255,255,.02);
+  border-radius:10px;
+  padding:9px 10px;
+}
+.service-reference-field.wide{grid-column:1/-1}
+.service-reference-field>div{min-width:0}
+.service-reference-field span{
+  display:block;
+  font-size:8px;
+  text-transform:uppercase;
+  letter-spacing:.05em;
+  font-weight:800;
+  color:#657891;
+}
+.service-reference-field strong{
+  display:block;
+  margin-top:4px;
+  font-size:10px;
+  line-height:1.45;
+  color:#cbd8e8;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+.service-copy-btn{
+  flex:0 0 auto;
+  min-width:58px;
+  height:29px;
+  padding:0 9px;
+  border:1px solid #2b4e79;
+  border-radius:8px;
+  background:#0d1b2b;
+  color:#8fc0ff;
+  font:700 9px Inter,sans-serif;
+  cursor:pointer;
+}
+.service-copy-btn:hover{
+  background:#11243a;
+  border-color:#376ea9;
+  color:#d8e9ff;
+}
+.service-copy-btn.copied{
+  border-color:rgba(56,203,126,.45);
+  background:rgba(56,203,126,.09);
+  color:#77e4ad;
+}
+@media(max-width:720px){
+  .service-reference-fields{grid-template-columns:1fr}
+  .service-reference-field.wide{grid-column:auto}
+}
