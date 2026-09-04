@@ -286,8 +286,8 @@
           <div class="panel-title"><strong>Índice de documentos</strong><span id="documentsMasterCount">${rows.length} visibles de ${sectionRows.length}${totalSuffix}</span></div>
           <div class="documents-actions">
             <label class="documents-search"><span>Buscar en toda la biblioteca</span><input id="documentsMasterSearch" class="search-input" type="search" placeholder="Nombre, documento, número, titular, entidad, período…" value="${esc(query)}"></label>
-            <label class="documents-scope"><span>Período</span><select id="documentsPeriodFilter"><option value="all" ${periodFilter === 'all' ? 'selected' : ''}>Todos</option>${periods.map(period => `<option value="${esc(period)}" ${periodFilter === period ? 'selected' : ''}>${esc(period)}</option>`).join('')}</select></label>
-            <label class="documents-scope"><span>Vigencia / atención</span><select id="documentsExpiryMode"><option value="all" ${expiryMode === 'all' ? 'selected' : ''}>Todos</option><option value="dated" ${expiryMode === 'dated' ? 'selected' : ''}>Con vencimiento</option><option value="attention" ${expiryMode === 'attention' ? 'selected' : ''}>Por revisar</option></select></label>
+            <label class="documents-scope"><span>Período</span><select id="documentsPeriodFilter" ${searching?'disabled':''}><option value="all" ${periodFilter === 'all' ? 'selected' : ''}>Todos</option>${periods.map(period => `<option value="${esc(period)}" ${periodFilter === period ? 'selected' : ''}>${esc(period)}</option>`).join('')}</select></label>
+            <label class="documents-scope"><span>Vigencia / atención</span><select id="documentsExpiryMode" ${searching?'disabled':''}><option value="all" ${expiryMode === 'all' ? 'selected' : ''}>Todos</option><option value="dated" ${expiryMode === 'dated' ? 'selected' : ''}>Con vencimiento</option><option value="attention" ${expiryMode === 'attention' ? 'selected' : ''}>Por revisar</option></select></label>
           </div>
         </div>
         <div class="table-scroll expanded documents-table-scroll">
