@@ -14,3 +14,22 @@
 @media(max-width:900px){.rental-info-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.section-filter-grid,.rental-info-grid{grid-template-columns:1fr}.investment-kpis{grid-template-columns:1fr}.main>#filterBar:not([hidden])+.section-filter-bar:not([hidden])::before{margin-bottom:8px}}
 .multi-filter-option[hidden]{display:none!important}
+
+
+/* Tarjetas: filtros globales + filtro de tarjeta se perciben como un único bloque. */
+.main>#filterBar:not([hidden]):has(+ #sectionFilterBar:not([hidden]) [data-card-specific-filter]){
+  padding-bottom:0!important;
+  border-bottom:0!important;
+  border-bottom-left-radius:0!important;
+  border-bottom-right-radius:0!important;
+}
+.main>#sectionFilterBar:not([hidden]):has([data-card-specific-filter]){
+  margin-top:0!important;
+  padding-top:8px!important;
+  border-top:0!important;
+  border-top-left-radius:0!important;
+  border-top-right-radius:0!important;
+}
+.main>#sectionFilterBar:not([hidden]):has([data-card-specific-filter])::before{
+  display:none!important;
+}
