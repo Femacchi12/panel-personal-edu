@@ -30,7 +30,7 @@
       ['pension-dashboard-controller.js']
     ],
     ingresos: [
-      ['income-doc-enhancements.js','income-regular-controller.js','income-type-filter.js','income-savings-context-controller.js']
+      ['income-savings-dashboard.js']
     ],
     servicios: [
       ['services-table-enhancement.js','finance-secondary-context-controller.js','account-statement-status-controller.js']
