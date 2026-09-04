@@ -13,7 +13,7 @@
 
   const EXPENSE_POLICY=Object.freeze({
     authoritativeRange:'Movimientos!A:Z',
-    summaryRanges:Object.freeze(['Flujo_Ahorro!A:P','Flujo_Mensual!A:J']),
+    summaryRanges:Object.freeze(['Flujo_Ahorro!A:W','Flujo_Mensual!A:J']),
     reconciliationStart:'2026-01',
     toleranceCop:1,
     autoImport:false,
