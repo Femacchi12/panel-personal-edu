@@ -362,7 +362,7 @@
   function serviceReferenceField(label,value,wide=false){
     const text=String(value??'').trim();
     if(!text)return'';
-    return `<div class="service-reference-field ${wide?'wide':''}"><div><span>${esc(label)}</span><strong>${esc(text)}</strong></div><button type="button" class="service-copy-btn" data-copy-value="${esc(text)}" aria-label="Copiar ${esc(label)}">Copiar</button></div>`;
+    return `<div class="service-reference-field ${wide?'wide':''}"><div><span>${esc(label)}</span><strong class="service-copy-value" data-copy-value="${esc(text)}" role="button" tabindex="0" title="Presiona para copiar" aria-label="Copiar ${esc(label)}: ${esc(text)}">${esc(text)}</strong></div></div>`;
   }
 
   function serviceReferenceCards(rows){
@@ -434,8 +434,8 @@
       state.sorts[id]={col,dir:prev?.col===col&&prev.dir==='asc'?'desc':'asc'};
       render();
     }));
-    document.querySelectorAll('[data-copy-value]').forEach(btn=>btn.addEventListener('click',async()=>{
-      const value=String(btn.dataset.copyValue||'');
+    const copyValue=async el=>{
+      const value=String(el.dataset.copyValue||'');
       if(!value)return;
       try{
         if(navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
@@ -444,14 +444,22 @@
           area.value=value;area.style.position='fixed';area.style.opacity='0';
           document.body.appendChild(area);area.select();document.execCommand('copy');area.remove();
         }
-        const previous=btn.textContent;
-        btn.textContent='Copiado';
-        btn.classList.add('copied');
-        setTimeout(()=>{btn.textContent=previous;btn.classList.remove('copied');},1200);
+        el.classList.add('copied');
+        el.setAttribute('title','Copiado');
+        setTimeout(()=>{el.classList.remove('copied');el.setAttribute('title','Presiona para copiar');},1200);
       }catch(error){
         console.warn('No se pudo copiar el dato:',error);
       }
-    }));
+    };
+    document.querySelectorAll('[data-copy-value]').forEach(el=>{
+      el.addEventListener('click',()=>copyValue(el));
+      el.addEventListener('keydown',event=>{
+        if(event.key==='Enter'||event.key===' '){
+          event.preventDefault();
+          copyValue(el);
+        }
+      });
+    });
   }
   function filteredMovements(){return(state.data.movimientos||[]).filter(row=>{const d=movementDate(row);if(state.filters.year.length&&(!d||!state.filters.year.includes(String(d.getFullYear()))))return false;if(state.filters.month.length&&(!d||!state.filters.month.includes(String(d.getMonth()+1))))return false;const c=pick(row,['Categoría','Categoria']);const s=pick(row,['Subcategoría','Subcategoria']);const cur=String(pick(row,['Moneda original','Moneda'])).toUpperCase();if(state.filters.category.length&&!state.filters.category.includes(c))return false;if(state.filters.subcategory.length&&!state.filters.subcategory.includes(s))return false;if(state.filters.currency.length&&!state.filters.currency.includes(cur))return false;return true;});}
   function filterByPeriod(rows){return(rows||[]).filter(row=>{const d=rowDate(row);if(state.filters.year.length&&(!d||!state.filters.year.includes(String(d.getFullYear()))))return false;if(state.filters.month.length&&(!d||!state.filters.month.includes(String(d.getMonth()+1))))return false;return true;});}
