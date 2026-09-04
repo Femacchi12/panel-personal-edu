@@ -67,3 +67,24 @@ button{color:inherit}.hidden{display:none!important}
 .investment-consolidated-overview .investment-summary-card.result-positive strong{color:#26d07c}
 .investment-consolidated-overview .investment-summary-card.result-negative strong{color:#ff667a}
 @media(max-width:760px){.investment-consolidated-overview .investment-summary-grid{grid-template-columns:1fr}}
+
+
+/* Deudas: resumen compacto y legible */
+.debt-overview-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(300px,.75fr);gap:12px;align-items:start}
+.debt-chart-panel .chart-inner{height:230px!important}
+.debt-active-panel{min-width:0}
+.debt-active-list{display:grid;gap:8px}
+.debt-active-card{border:1px solid var(--border-soft);background:rgba(255,255,255,.02);border-radius:11px;padding:10px 11px;min-width:0}
+.debt-active-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.debt-active-head>div{min-width:0}
+.debt-active-head strong{display:block;font-size:11px;line-height:1.35;color:#e7edf6;white-space:normal}
+.debt-active-head small{display:block;margin-top:3px;font-size:9px;color:#718098}
+.debt-active-values{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.debt-active-values>div{min-width:0}
+.debt-active-values span{display:block;font-size:8px;text-transform:uppercase;letter-spacing:.05em;color:#65758b;font-weight:700}
+.debt-active-values strong{display:block;margin-top:3px;font-size:12px;color:#dce6f3}
+.debt-progress{height:6px;background:#131d2a;border-radius:99px;overflow:hidden;margin-top:9px}
+.debt-progress>span{display:block;height:100%;background:linear-gradient(90deg,var(--blue),#4a8aff);border-radius:99px}
+.debt-active-meta{display:block;margin-top:6px;font-size:9px;line-height:1.35;color:#718098}
+@media(max-width:1050px){.debt-overview-grid{grid-template-columns:1fr}.debt-chart-panel .chart-inner{height:220px!important}}
+@media(max-width:560px){.debt-active-values{grid-template-columns:1fr}.debt-chart-panel .chart-inner{height:210px!important}}
