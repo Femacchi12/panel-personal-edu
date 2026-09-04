@@ -18,6 +18,7 @@
     if (view === 'patrimonio' && (root.querySelector('.patrimonio-v2') || root.querySelector('.patrimonio-dashboard'))) return;
     if (view === 'inversiones' && root.querySelector('.investment-dashboard')) return;
     if (view === 'pension' && root.querySelector('.pension-v2')) return;
+    if (view === 'ingresos' && root.querySelector('.income-savings-dashboard')) return;
 
     // Salud agrega bloques derivados como hijos directos de viewRoot. Esas
     // inserciones/remociones son parte de su propio render y no deben
