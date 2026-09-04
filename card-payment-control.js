@@ -144,7 +144,10 @@
   function paymentState(cycle) {
     if (!cycle) return {key:'open',label:'Sin corte cerrado'};
     const paid = norm(cycle.Pagado);
-    if (['si','sí','pagado','pago','yes','true'].includes(paid)) return {key:'paid',label:'Pagado'};
+    const amount = parseNumber(cycle['Monto pagado real']);
+    const total = parseNumber(cycle['Pago total']);
+    if (paid.includes('parcial') || (amount > 0 && total > 0 && amount < total - 0.01)) return {key:'partial',label:'Pago parcial'};
+    if (['si','sí','pagado','pago','yes','true'].includes(paid) || (amount > 0 && total > 0 && amount >= total - 0.01)) return {key:'paid',label:'Pagado'};
     return {key:'pending',label:'Pendiente'};
   }
 
@@ -161,6 +164,7 @@
       .payment-state:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
       .payment-state.pending{color:#ffcb68;background:rgba(246,200,68,.08);border-color:rgba(246,200,68,.22)}
       .payment-state.paid{color:#7ee6af;background:rgba(38,208,124,.08);border-color:rgba(38,208,124,.22)}
+      .payment-state.partial{color:#8ab2ff;background:rgba(23,105,255,.08);border-color:rgba(23,105,255,.22)}
       .payment-state.open{color:#8ab2ff;background:rgba(23,105,255,.08);border-color:rgba(23,105,255,.22)}
       .card-cycle-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
       .card-cycle-item{background:rgba(255,255,255,.025);border:1px solid var(--border-soft);border-radius:9px;padding:8px 9px;min-width:0}
