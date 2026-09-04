@@ -30,7 +30,10 @@ const SOURCES = [
   { book: 'finance', range: 'Resumen_Conceptos_Ingresos!A:L' },
   { book: 'finance', range: 'Nomina_Colombia!A:AI' },
   { book: 'finance', range: 'Facturas_USD!A:L' },
-  { book: 'finance', range: 'Flujo_Ahorro!A:P' },
+  { book: 'finance', range: 'Flujo_Ahorro!A:V' },
+  { book: 'finance', range: 'Flujo_Inversiones!A:M' },
+  { book: 'finance', range: 'Config!A:C' },
+  { book: 'finance', range: 'Tipos_Cambio!A:F' },
   { book: 'finance', range: 'Simulador_TC!A:J' },
   { book: 'finance', range: 'Servicios!A:O' },
   { book: 'finance', range: 'Cuentas!A:T' },
@@ -191,7 +194,7 @@ async function buildPayload(force = false) {
 }
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'panel-personal-edu-backend', sourceCount: SOURCES.length, revision: 'investment-render-stability-2026-09-03' });
+  res.json({ ok: true, service: 'panel-personal-edu-backend', sourceCount: SOURCES.length, revision: 'income-savings-consolidation-2026-09-04' });
 });
 
 app.get('/api/data', requireAuthorizedUser, async (req, res) => {
