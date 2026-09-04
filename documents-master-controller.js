@@ -9,6 +9,7 @@
   let query = '';
   let expiryMode = 'all';
   let periodFilter = 'all';
+  let macroScope = 'all';
   let expanded = false;
   let frame = 0;
   let renderVersion = 0;
@@ -69,6 +70,40 @@
     if (key.includes('pension')) return 4;
     if (key === 'financiero') return 5;
     return 6;
+  }
+
+  function macroForArea(value) {
+    const key = norm(value);
+    if (key === 'financiero' || key === 'tributario' || key.includes('pension')) return 'financial';
+    if (key === 'laboral') return 'work';
+    if (key === 'identidad' || key === 'personal') return 'personal';
+    return 'other';
+  }
+
+  function matchesMacro(row) {
+    return macroScope === 'all' || macroForArea(row['Área']) === macroScope;
+  }
+
+  function macroCounts(rows) {
+    const counts={all:rows.length,financial:0,work:0,personal:0,other:0};
+    rows.forEach(row=>{const key=macroForArea(row['Área']);counts[key]=(counts[key]||0)+1;});
+    return counts;
+  }
+
+  function macroTabsMarkup(rows, searching=false) {
+    const counts=macroCounts(rows);
+    const tabs=[
+      ['all','Todos',counts.all],
+      ['financial','Financieros',counts.financial],
+      ['work','Laborales',counts.work],
+      ['personal','Personales',counts.personal]
+    ];
+    return `<div class="documents-macro-bar">
+      <div><span class="documents-macro-eyebrow">BIBLIOTECA DOCUMENTAL</span><strong>Explorar por tipo</strong><small>${searching?'La búsqueda global está revisando toda la biblioteca, sin limitarse a una categoría.':'Las categorías organizan la vista; el buscador siempre puede encontrar cualquier documento.'}</small></div>
+      <div class="documents-macro-tabs" role="tablist" aria-label="Tipo general de documento">
+        ${tabs.map(([key,label,count])=>`<button type="button" class="documents-macro-tab ${!searching&&macroScope===key?'active':''}" data-document-scope="${key}" aria-pressed="${String(!searching&&macroScope===key)}"><span>${label}</span><b>${count}</b></button>`).join('')}
+      </div>
+    </div>`;
   }
 
   function computeExpiry(row) {
@@ -231,20 +266,26 @@
 
   function renderHost(host, sourceRows) {
     const state = sectionFilterState();
-    const sectionRows = sourceRows.filter(row => matchesSectionFilters(row, state));
+    const searching = Boolean(norm(query));
+    const sectionRows = searching
+      ? sourceRows
+      : sourceRows.filter(row => matchesSectionFilters(row, state) && matchesMacro(row));
     const periods = periodOptions(sectionRows);
-    if (periodFilter !== 'all' && !periods.includes(periodFilter)) periodFilter = 'all';
-    const rows = applyLocalFilters(sectionRows);
+    if (!searching && periodFilter !== 'all' && !periods.includes(periodFilter)) periodFilter = 'all';
+    const rows = searching
+      ? sortRows(sourceRows.filter(row => derived(row).searchable.includes(norm(query))))
+      : applyLocalFilters(sectionRows);
     const visible = expanded ? rows : rows.slice(0, 30);
     const totalSuffix = sectionRows.length === sourceRows.length ? '' : ` · ${sourceRows.length} total`;
 
     host.innerHTML = `
-      ${summaryMarkup(sectionRows, sourceRows.length)}
+      ${macroTabsMarkup(sourceRows, searching)}
+      ${summaryMarkup(searching ? rows : sectionRows, sourceRows.length)}
       <div class="panel table-panel documents-master-panel">
         <div class="panel-header documents-toolbar">
           <div class="panel-title"><strong>Índice de documentos</strong><span id="documentsMasterCount">${rows.length} visibles de ${sectionRows.length}${totalSuffix}</span></div>
           <div class="documents-actions">
-            <label class="documents-search"><span>Buscar</span><input id="documentsMasterSearch" class="search-input" type="search" placeholder="Documento, número, titular, entidad…" value="${esc(query)}"></label>
+            <label class="documents-search"><span>Buscar en toda la biblioteca</span><input id="documentsMasterSearch" class="search-input" type="search" placeholder="Nombre, documento, número, titular, entidad, período…" value="${esc(query)}"></label>
             <label class="documents-scope"><span>Período</span><select id="documentsPeriodFilter"><option value="all" ${periodFilter === 'all' ? 'selected' : ''}>Todos</option>${periods.map(period => `<option value="${esc(period)}" ${periodFilter === period ? 'selected' : ''}>${esc(period)}</option>`).join('')}</select></label>
             <label class="documents-scope"><span>Vigencia / atención</span><select id="documentsExpiryMode"><option value="all" ${expiryMode === 'all' ? 'selected' : ''}>Todos</option><option value="dated" ${expiryMode === 'dated' ? 'selected' : ''}>Con vencimiento</option><option value="attention" ${expiryMode === 'attention' ? 'selected' : ''}>Por revisar</option></select></label>
           </div>
@@ -257,6 +298,13 @@
         </div>
         ${rows.length > 30 ? `<button type="button" class="show-more" id="documentsMasterMore">${expanded ? 'Ver menos' : `Ver más (${rows.length - 30})`}</button>` : ''}
       </div>`;
+
+    host.querySelectorAll('[data-document-scope]').forEach(button=>button.addEventListener('click',()=>{
+      macroScope=String(button.dataset.documentScope||'all');
+      query='';
+      expanded=false;
+      renderHost(host,sourceRows);
+    }));
 
     host.querySelector('#documentsMasterSearch')?.addEventListener('input', event => {
       query = event.target.value;
