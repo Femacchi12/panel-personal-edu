@@ -49,6 +49,7 @@
     {key:'ingresos', book:'finance', range:'Resumen_Ingresos!A:H', parser:'smart'},
     {key:'ingresosConceptos', book:'finance', range:'Resumen_Conceptos_Ingresos!A:L', parser:'smart'},
     {key:'ahorro', book:'finance', range:'Flujo_Ahorro!A:W', parser:'smart'},
+    {key:'flujoInversiones', book:'finance', range:'Flujo_Inversiones!A:M', parser:'smart'},
     {key:'resumenFinanciero', book:'finance', range:'Resumen_Financiero!A:V', parser:'smart'},
     {key:'creditoMensual', book:'finance', range:'Credito_Mensual!A:J', parser:'smart'},
     {key:'configFinanzas', book:'finance', range:'Config!A:C', parser:'smart'},
@@ -400,8 +401,56 @@
     return`<div class="summary-breakdown-list">${sorted.map(([label,value])=>`<div><span>${esc(label||'Sin categoría')}</span><strong>${money(value)}</strong><small>${total?formatNumber(value/total*100,1):'0,0'}%</small></div>`).join('')}</div>`;
   }
 
+  function fallbackFinancialRows(){
+    const map=new Map();
+    const ensure=(key,label='')=>{
+      if(!map.has(key))map.set(key,{
+        Mes:label||key,'Estado':'Cerrado','Nómina COP':0,'Fibrazo LLC COP':0,'Otros ingresos consolidados':0,
+        'Ingresos consolidados COP':0,'Ajustes no líquidos / comisiones COP':0,'Ingresos líquidos COP':0,
+        'Gastos reales COP':0,'Gasto crédito COP':0,'Aportes netos inversiones COP':0,'ARQ Edu crédito COP':0,
+        'Nu Edu crédito COP':0,'Nu Ro crédito COP':0,'Calidad / soporte':'Fallback local'
+      });
+      return map.get(key);
+    };
+    (state.data.ingresosConceptos||[]).forEach(row=>{
+      const d=rowDate(row);if(!d)return;const key=periodKey(d),out=ensure(key,pick(row,['Mes'])||key);
+      out['Nómina COP']=num(pick(row,['Sueldo COP']));
+      out['Fibrazo LLC COP']=num(pick(row,['Sueldo USD (equiv. COP)']));
+      out['Ingresos consolidados COP']=num(pick(row,['Total consolidado']));
+      out['Otros ingresos consolidados']=Math.max(0,out['Ingresos consolidados COP']-out['Nómina COP']-out['Fibrazo LLC COP']);
+      out['Ingresos líquidos COP']=out['Ingresos consolidados COP'];
+    });
+    (state.data.ahorro||[]).forEach(row=>{
+      const d=rowDate(row);if(!d)return;const key=periodKey(d),out=ensure(key,pick(row,['Mes'])||key);
+      const liquid=num(pick(row,['Ingresos reales COP']));
+      if(liquid||out['Ingresos consolidados COP']===0)out['Ingresos líquidos COP']=liquid;
+      out['Ajustes no líquidos / comisiones COP']=Math.max(0,out['Ingresos consolidados COP']-out['Ingresos líquidos COP']);
+      out['Aportes netos inversiones COP']=num(pick(row,['Aportes netos inversiones COP']));
+      out.Estado=pick(row,['Estado'])||out.Estado;
+      out['Calidad / soporte']=pick(row,['Estado ingreso / soporte'])||out['Calidad / soporte'];
+    });
+    (state.data.flujoInversiones||[]).forEach(row=>{
+      const d=rowDate(row);if(!d)return;const key=periodKey(d),out=ensure(key,pick(row,['Mes'])||key);
+      out['Aportes netos inversiones COP']=num(pick(row,['Aportes netos COP']));
+    });
+    const actual=(state.data.movimientos||[]).filter(registeredExpense);
+    actual.forEach(row=>{
+      const d=movementDate(row);if(!d)return;const key=periodKey(d),out=ensure(key,key);
+      out['Gastos reales COP']+=num(pick(row,['Monto COP']));
+      if(isCreditPurchase(row)){
+        const amount=num(pick(row,['Monto COP'])),account=pick(row,['Cuenta / Tarjeta'])||'';
+        out['Gasto crédito COP']+=amount;
+        if(norm(account).includes('arq'))out['ARQ Edu crédito COP']+=amount;
+        else if(norm(account).includes('nu ro'))out['Nu Ro crédito COP']+=amount;
+        else if(norm(account).includes('nu edu'))out['Nu Edu crédito COP']+=amount;
+      }
+    });
+    return[...map.values()].sort((a,b)=>rowDateValue(a)-rowDateValue(b));
+  }
+
   function summaryCanonicalRows(){
-    const rows=filterByPeriod(state.data.resumenFinanciero||[]);
+    const base=(state.data.resumenFinanciero||[]).length?state.data.resumenFinanciero:fallbackFinancialRows();
+    const rows=filterByPeriod(base);
     return state.filters.month.length
       ? rows
       : rows.filter(row=>!norm(pick(row,['Estado'])).includes('proyecc'));
@@ -687,6 +736,6 @@
   function validDate(y,m,d){if(m<0||m>11)return null;const x=new Date(y,m,d);return Number.isNaN(x.getTime())?null:x}function startOfToday(){const d=new Date();d.setHours(0,0,0,0);return d}
   function money(value){const digits=state.currency==='USD'?2:0;try{return new Intl.NumberFormat('es-CO',{style:'currency',currency:state.currency,minimumFractionDigits:digits,maximumFractionDigits:digits}).format(Number(value)||0)}catch(_){return`${state.currency} ${formatNumber(value,digits)}`}}function shortMoney(value){const n=Number(value)||0,a=Math.abs(n);if(a>=1e9)return`${(n/1e9).toFixed(1)}B`;if(a>=1e6)return`${(n/1e6).toFixed(1)}M`;if(a>=1e3)return`${(n/1e3).toFixed(0)}K`;return String(Math.round(n))}function hash(v){let h=0;v=String(v);for(let i=0;i<v.length;i++)h=((h<<5)-h)+v.charCodeAt(i)|0;return Math.abs(h).toString(36)}function shortError(v){const s=String(v||'');return s.length>420?s.slice(0,420)+'…':s}
   function setSync(kind,text){const dot=byId('syncDot');if(dot)dot.className=`sync-dot${kind==='ok'?' ok':kind==='loading'?' loading':''}`;if(byId('syncText'))byId('syncText').textContent=text;}function destroyCharts(){state.charts.forEach(c=>{try{c.destroy()}catch(_){}});state.charts=[]}
-  function emptyData(){return{movimientos:[],flujo:[],tarjetas:[],cuotas:[],inversiones:[],posiciones:[],pension:[],ingresos:[],ingresosConceptos:[],ahorro:[],resumenFinanciero:[],creditoMensual:[],configFinanzas:[],servicios:[],referenciasPersonales:[],cuentas:[],plan:[],patrimonio:[],docsFinancieros:[],docsIdentidad:[],docsLaborales:[],docsTributarios:[],docsPensionCesantias:[],docsPersonales:[],viajes:[],pacientes:[],citas:[],tratamientos:[],estudios:[],eventosSalud:[],mediciones:[],docsSalud:[],documentos:[]};}
+  function emptyData(){return{movimientos:[],flujo:[],tarjetas:[],cuotas:[],inversiones:[],posiciones:[],pension:[],ingresos:[],ingresosConceptos:[],ahorro:[],flujoInversiones:[],resumenFinanciero:[],creditoMensual:[],configFinanzas:[],servicios:[],referenciasPersonales:[],cuentas:[],plan:[],patrimonio:[],docsFinancieros:[],docsIdentidad:[],docsLaborales:[],docsTributarios:[],docsPensionCesantias:[],docsPersonales:[],viajes:[],pacientes:[],citas:[],tratamientos:[],estudios:[],eventosSalud:[],mediciones:[],docsSalud:[],documentos:[]};}
   function showFatal(error){console.error('Panel Personal Edu: error de inicio',error);setSync('demo','Error de inicio');const root=byId('viewRoot');if(root)root.innerHTML=`<div class="panel"><div class="empty-state"><div><strong>No se pudo iniciar el dashboard</strong><span>${esc(error?.message||String(error))}</span></div></div></div>`;}
 })();
