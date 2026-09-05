@@ -213,18 +213,33 @@
       return{
         key,year:key.slice(0,4),month:+key.slice(5,7),state,quality,
         total,liquid,expenses,saving,regular,invested,post,
-        salaryCop,salaryUsd,extras:Math.max(0,total-salaryCop-salaryUsd)
+        salaryCop,salaryUsd,extras:Math.max(0,total-salaryCop-salaryUsd),
+        otherParts:[
+          ['Intereses / auxilios',num(s['Intereses y auxilios'])],
+          ['Devoluciones',num(s.Devoluciones)],
+          ['Transferencias familiares',num(s['Transferencias familiares'])],
+          ['Entrevistas / extras USD',num(s['Entrevistas / extras USD'])],
+          ['Prima COP',num(s['Prima COP'])],
+          ['Pago a Ro',num(s['Pago a Ro'])],
+          ['Prima USD',num(s['Prima USD (equiv. COP)'])],
+          ['Otros ingresos',num(s['Otros ingresos'])]
+        ].filter(x=>x[1]>0)
       };
     }).filter(Boolean).sort((a,b)=>a.key.localeCompare(b.key));
   }
 
   function viewState(rows){
     const ys=selected('year'),ms=selected('month').map(Number).filter(Boolean);
-    const currentYear=String(new Date().getFullYear());
-    const year=ys.length===1?ys[0]:(rows.some(r=>r.year===currentYear)?currentYear:(rows.at(-1)?.year||''));
-    const yearRows=rows.filter(r=>!year||r.year===year);
-    const focus=ms.length?yearRows.filter(r=>ms.includes(r.month)):yearRows.filter(r=>!norm(r.state).includes('proyecc')).slice(-1);
-    return{year,months:ms,yearRows,focus:focus.length?focus:yearRows.slice(-1)};
+    const allYears=[...new Set(rows.map(r=>r.year).filter(Boolean))].sort();
+    const years=ys.length?ys:allYears;
+    const yearRows=rows.filter(r=>!years.length||years.includes(r.year));
+    const displayRows=ms.length?yearRows.filter(r=>ms.includes(r.month)):yearRows;
+    const actual=displayRows.filter(r=>!norm(r.state).includes('proyecc'));
+    return{
+      years,months:ms,yearRows,displayRows,
+      focus:actual.length?actual:displayRows,
+      yearLabel:years.length===1?years[0]:(years.length?years.join(' · '):'Todos')
+    };
   }
 
   function card(label,value,meta,tone=''){
@@ -243,19 +258,27 @@
     const rows=normalized(data),state=viewState(rows),cur=activeCurrency(),r=rates(data),target=targetRate(data);
     const focus=state.focus.filter(x=>!norm(x.state).includes('proyecc'));
     const allActual=state.yearRows.filter(x=>!norm(x.state).includes('proyecc'));
-    const total=sum(focus,'total'),liquid=sum(focus,'liquid'),expenses=sum(focus,'expenses'),saving=liquid-expenses,invested=sum(focus,'invested'),totalOut=expenses+invested,post=liquid-totalOut;
+    const total=sum(focus,'total'),salaryCop=sum(focus,'salaryCop'),salaryUsd=sum(focus,'salaryUsd'),extras=sum(focus,'extras'),liquid=sum(focus,'liquid'),expenses=sum(focus,'expenses'),saving=liquid-expenses,invested=sum(focus,'invested'),totalOut=expenses+invested,post=liquid-totalOut;
     const savingRate=liquid?saving/liquid:null,postRate=liquid?post/liquid:null;
     const targetAmount=focus.reduce((s,x)=>s+x.regular*target,0);
     const gap=saving-targetAmount;
     const closed=allActual.filter(x=>norm(x.state).includes('cerrado'));
     const met=closed.filter(x=>x.liquid>0&&x.saving>=x.regular*target).length;
-    const focusLabel=state.months.length?state.focus.map(x=>monthLabel(x.key)).join(', '):`Último período con datos · ${monthLabel(state.focus.at(-1)?.key)}`;
+    const focusLabel=state.months.length
+      ? state.displayRows.map(x=>monthLabel(x.key)).join(', ')
+      : (state.years.length===1?`${state.yearLabel} · período seleccionado`:`${state.yearLabel} · período seleccionado`);
 
     root.innerHTML=`<section class="income-savings-dashboard">
       <div class="section-head"><div><span class="eyebrow">FINANZAS</span><h2>Ingresos y ahorro</h2><p>Composición de ingresos, gastos, inversiones y cumplimiento de la meta de ahorro.</p></div><div class="income-focus-label">${esc(focusLabel)}</div></div>
 
+      <div class="income-source-grid">
+        ${card('Ingreso total',money(total,cur,r),'Suma de todos los ingresos del período','blue')}
+        ${card('Nómina COP',money(salaryCop,cur,r),'Componente salarial Colombia','green')}
+        ${card('Fibrazo LLC',money(salaryUsd,cur,r),'Ingreso USD convertido a la moneda visible','blue')}
+        ${card('Otros ingresos',money(extras,cur,r),'Primas, devoluciones, extras y otros','gold')}
+      </div>
+
       <div class="income-flow-grid">
-        ${card('Ingresos totales',money(total,cur,r),'Incluye componentes líquidos y no líquidos','blue')}
         ${card('Ingresos líquidos',money(liquid,cur,r),'Base usada para flujo de caja','green')}
         ${card('Gastos',money(expenses,cur,r),'Consumos y gastos reales registrados')}
         ${card('Aportes netos a inversiones',money(invested,cur,r),'Capital colocado neto; sin valorización','gold')}
@@ -280,10 +303,17 @@
       </div>
       <div class="panel income-target-chart-panel"><div class="panel-header"><div class="panel-title"><strong>Meta de ahorro mes a mes</strong><span>Tasa real sobre ingreso líquido vs objetivo configurable</span></div></div><div class="income-chart-box target"><canvas id="incomeTargetChart"></canvas></div></div>
 
+      <div class="panel table-panel income-detail-panel">
+        <div class="panel-header"><div class="panel-title"><strong>Detalle de ingresos por mes</strong><span>Cómo se compone el ingreso total en cada período seleccionado.</span></div></div>
+        <div class="table-scroll expanded"><table class="income-monthly-table"><thead><tr><th>Mes</th><th class="num">Nómina COP</th><th class="num">Fibrazo LLC</th><th class="num">Otros ingresos</th><th class="num">Ingreso total</th><th>Detalle de otros</th></tr></thead><tbody>
+          ${state.displayRows.map(x=>`<tr class="${norm(x.state).includes('proyecc')?'projection':''}"><td><strong>${esc(monthLabel(x.key))}</strong></td><td class="num">${esc(money(x.salaryCop,cur,r))}</td><td class="num">${esc(money(x.salaryUsd,cur,r))}</td><td class="num">${esc(money(x.extras,cur,r))}</td><td class="num"><strong>${esc(money(x.total,cur,r))}</strong></td><td>${x.otherParts.length?x.otherParts.map(([label,value])=>`${esc(label)}: ${esc(money(value,cur,r))}`).join(' · '):'—'}</td></tr>`).join('')}
+        </tbody></table></div>
+      </div>
+
       <div class="panel table-panel income-monthly-panel">
-        <div class="panel-header"><div class="panel-title"><strong>Consolidado mensual · ${esc(state.year)}</strong><span>Los documentos de soporte se consultan desde la sección Documentos.</span></div></div>
+        <div class="panel-header"><div class="panel-title"><strong>Consolidado mensual · ${esc(state.yearLabel)}</strong><span>Los documentos de soporte se consultan desde la sección Documentos.</span></div></div>
         <div class="table-scroll expanded"><table class="income-monthly-table"><thead><tr><th>Mes</th><th>Estado</th><th class="num">Ingreso total</th><th class="num">Ingreso líquido</th><th class="num">Gastos</th><th class="num">Ahorro pre inversión</th><th class="num">% ahorro</th><th class="num">Meta</th><th class="num">Brecha</th><th class="num">Inversiones</th><th class="num">Egresos totales</th><th class="num">Post inversión</th><th class="num">% post inv.</th><th>Calidad</th></tr></thead><tbody>
-          ${state.yearRows.map(x=>{const targetMonth=x.regular*target,g=x.saving-targetMonth,rate=x.liquid?x.saving/x.liquid:null;return`<tr class="${norm(x.state).includes('proyecc')?'projection':''}"><td><strong>${esc(monthLabel(x.key))}</strong></td><td>${esc(x.state)}</td><td class="num">${esc(money(x.total,cur,r))}</td><td class="num">${esc(money(x.liquid,cur,r))}</td><td class="num">${esc(money(x.expenses,cur,r))}</td><td class="num ${x.saving>=0?'positive':'negative'}">${esc(money(x.saving,cur,r))}</td><td class="num ${rate!=null&&rate>=target?'positive':rate!=null?'negative':''}">${rate==null?'—':esc(pct(rate))}</td><td class="num">${esc(money(targetMonth,cur,r))} · ${esc(pct(target))}</td><td class="num ${g>=0?'positive':'negative'}">${esc(money(g,cur,r))}</td><td class="num">${esc(money(x.invested,cur,r))}</td><td class="num">${esc(money(x.expenses+x.invested,cur,r))}</td><td class="num ${x.post>=0?'positive':'negative'}">${esc(money(x.post,cur,r))}</td><td class="num ${x.post>=0?'positive':'negative'}">${x.liquid?esc(pct(x.post/x.liquid)):'—'}</td><td>${qualityBadge(x)}</td></tr>`;}).join('')}
+          ${state.displayRows.map(x=>{const targetMonth=x.regular*target,g=x.saving-targetMonth,rate=x.liquid?x.saving/x.liquid:null;return`<tr class="${norm(x.state).includes('proyecc')?'projection':''}"><td><strong>${esc(monthLabel(x.key))}</strong></td><td>${esc(x.state)}</td><td class="num">${esc(money(x.total,cur,r))}</td><td class="num">${esc(money(x.liquid,cur,r))}</td><td class="num">${esc(money(x.expenses,cur,r))}</td><td class="num ${x.saving>=0?'positive':'negative'}">${esc(money(x.saving,cur,r))}</td><td class="num ${rate!=null&&rate>=target?'positive':rate!=null?'negative':''}">${rate==null?'—':esc(pct(rate))}</td><td class="num">${esc(money(targetMonth,cur,r))} · ${esc(pct(target))}</td><td class="num ${g>=0?'positive':'negative'}">${esc(money(g,cur,r))}</td><td class="num">${esc(money(x.invested,cur,r))}</td><td class="num">${esc(money(x.expenses+x.invested,cur,r))}</td><td class="num ${x.post>=0?'positive':'negative'}">${esc(money(x.post,cur,r))}</td><td class="num ${x.post>=0?'positive':'negative'}">${x.liquid?esc(pct(x.post/x.liquid)):'—'}</td><td>${qualityBadge(x)}</td></tr>`;}).join('')}
         </tbody></table></div>
       </div>
       <div class="income-method-note"><strong>Criterio consolidado:</strong> ingreso total = todos los conceptos registrados; ingreso líquido excluye cesantías no líquidas y descuenta comisiones bancarias USD registradas. Ahorro = ingreso líquido − gastos. Inversiones = cambio neto del capital base de ARQ/Cocos, sin mezclar valorización. Saldo post inversión = ahorro − aportes netos.</div>
@@ -295,7 +325,7 @@
       render(data);
       persistTarget(n);
     });
-    requestAnimationFrame(()=>drawCharts(state.yearRows,target,cur,r));
+    requestAnimationFrame(()=>drawCharts(state.displayRows,target,cur,r));
   }
 
   function drawCharts(rows,target,cur,r){
@@ -330,7 +360,7 @@
   function style(){
     if(document.getElementById('incomeSavingsDashboardStyles'))return;
     const s=document.createElement('style');s.id='incomeSavingsDashboardStyles';s.textContent=`
-      .income-savings-dashboard{display:grid;gap:12px}.income-focus-label{align-self:end;color:#7890ae;font-size:10px}.income-flow-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.income-flow-card{border:1px solid var(--border-soft);background:linear-gradient(180deg,#0d1623,#0a111b);border-radius:12px;padding:11px;min-width:0}.income-flow-card>span{display:block;color:#6e83a0;font-size:8px;text-transform:uppercase;letter-spacing:.055em;font-weight:800}.income-flow-card>strong{display:block;margin-top:5px;color:#f0f5fc;font-size:18px;line-height:1.05}.income-flow-card>small{display:block;margin-top:5px;color:#718098;font-size:9px;line-height:1.35}.income-flow-card.green>strong{color:#6ce3a7}.income-flow-card.blue>strong{color:#67a6ff}.income-flow-card.gold>strong{color:#ffd15a}.income-flow-card.bad>strong{color:#ff7d8a}.income-target-panel{display:grid;grid-template-columns:minmax(220px,.85fr) 180px minmax(0,2fr);gap:10px;align-items:stretch;border:1px solid var(--border-soft);background:#09111b;border-radius:13px;padding:11px}.income-target-copy{padding:4px 6px}.income-target-copy>span{font-size:8px;font-weight:800;color:#5f9cff;letter-spacing:.07em}.income-target-copy>strong{display:block;margin-top:5px;font-size:20px;color:#eef5ff}.income-target-copy>small{display:block;margin-top:5px;font-size:9px;line-height:1.4;color:#718098}.income-target-control{border:1px solid var(--border-soft);border-radius:10px;padding:8px 10px;background:rgba(255,255,255,.02)}.income-target-control>span{display:block;font-size:8px;color:#6d819c;text-transform:uppercase;font-weight:800}.income-target-control>div{display:flex;align-items:center;gap:5px;margin-top:5px}.income-target-control input{width:70px;background:#0b1420;border:1px solid #26374c;color:#eef5ff;border-radius:8px;padding:6px 8px;font:700 14px Inter}.income-target-control b{font-size:13px;color:#8fa1b8}.income-target-control small{display:block;margin-top:5px;font-size:8px;color:#677b94}.income-target-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.income-target-stats .income-flow-card{padding:9px}.income-target-stats .income-flow-card>strong{font-size:14px}.income-chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.income-chart-box{height:270px;padding:4px 8px 8px}.income-chart-box.target{height:230px}.income-monthly-table th,.income-monthly-table td{white-space:nowrap}.income-monthly-table td.num,.income-monthly-table th.num{text-align:right}.income-monthly-table tr.projection{opacity:.58}.income-quality{display:inline-flex;border:1px solid var(--border);border-radius:99px;padding:4px 7px;font-size:8px;font-weight:700;color:#94a5ba}.income-quality.good{color:#73dfaa;border-color:rgba(38,208,124,.22);background:rgba(38,208,124,.05)}.income-quality.warn{color:#ffcb68;border-color:rgba(246,200,68,.22);background:rgba(246,200,68,.05)}.income-quality.muted{color:#66788e}.income-method-note{border:1px solid var(--border-soft);background:#081019;border-radius:10px;padding:9px 11px;color:#73859b;font-size:9px;line-height:1.45}.income-method-note strong{color:#b6c7dc}.income-monthly-table .positive{color:#6ce3a7}.income-monthly-table .negative{color:#ff8390}@media(max-width:1300px){.income-flow-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.income-target-panel{grid-template-columns:1fr 170px}.income-target-stats{grid-column:1/-1}}@media(max-width:900px){.income-chart-grid{grid-template-columns:1fr}.income-flow-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.income-flow-grid{grid-template-columns:1fr}.income-target-panel{grid-template-columns:1fr}.income-target-stats{grid-template-columns:1fr}.income-focus-label{display:none}}`;
+      .income-savings-dashboard{display:grid;gap:12px}.income-source-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.income-focus-label{align-self:end;color:#7890ae;font-size:10px}.income-flow-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.income-flow-card{border:1px solid var(--border-soft);background:linear-gradient(180deg,#0d1623,#0a111b);border-radius:12px;padding:11px;min-width:0}.income-flow-card>span{display:block;color:#6e83a0;font-size:8px;text-transform:uppercase;letter-spacing:.055em;font-weight:800}.income-flow-card>strong{display:block;margin-top:5px;color:#f0f5fc;font-size:18px;line-height:1.05}.income-flow-card>small{display:block;margin-top:5px;color:#718098;font-size:9px;line-height:1.35}.income-flow-card.green>strong{color:#6ce3a7}.income-flow-card.blue>strong{color:#67a6ff}.income-flow-card.gold>strong{color:#ffd15a}.income-flow-card.bad>strong{color:#ff7d8a}.income-target-panel{display:grid;grid-template-columns:minmax(220px,.85fr) 180px minmax(0,2fr);gap:10px;align-items:stretch;border:1px solid var(--border-soft);background:#09111b;border-radius:13px;padding:11px}.income-target-copy{padding:4px 6px}.income-target-copy>span{font-size:8px;font-weight:800;color:#5f9cff;letter-spacing:.07em}.income-target-copy>strong{display:block;margin-top:5px;font-size:20px;color:#eef5ff}.income-target-copy>small{display:block;margin-top:5px;font-size:9px;line-height:1.4;color:#718098}.income-target-control{border:1px solid var(--border-soft);border-radius:10px;padding:8px 10px;background:rgba(255,255,255,.02)}.income-target-control>span{display:block;font-size:8px;color:#6d819c;text-transform:uppercase;font-weight:800}.income-target-control>div{display:flex;align-items:center;gap:5px;margin-top:5px}.income-target-control input{width:70px;background:#0b1420;border:1px solid #26374c;color:#eef5ff;border-radius:8px;padding:6px 8px;font:700 14px Inter}.income-target-control b{font-size:13px;color:#8fa1b8}.income-target-control small{display:block;margin-top:5px;font-size:8px;color:#677b94}.income-target-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.income-target-stats .income-flow-card{padding:9px}.income-target-stats .income-flow-card>strong{font-size:14px}.income-chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.income-chart-box{height:270px;padding:4px 8px 8px}.income-chart-box.target{height:230px}.income-monthly-table th,.income-monthly-table td{white-space:nowrap}.income-monthly-table td.num,.income-monthly-table th.num{text-align:right}.income-monthly-table tr.projection{opacity:.58}.income-quality{display:inline-flex;border:1px solid var(--border);border-radius:99px;padding:4px 7px;font-size:8px;font-weight:700;color:#94a5ba}.income-quality.good{color:#73dfaa;border-color:rgba(38,208,124,.22);background:rgba(38,208,124,.05)}.income-quality.warn{color:#ffcb68;border-color:rgba(246,200,68,.22);background:rgba(246,200,68,.05)}.income-quality.muted{color:#66788e}.income-method-note{border:1px solid var(--border-soft);background:#081019;border-radius:10px;padding:9px 11px;color:#73859b;font-size:9px;line-height:1.45}.income-method-note strong{color:#b6c7dc}.income-monthly-table .positive{color:#6ce3a7}.income-monthly-table .negative{color:#ff8390}@media(max-width:1300px){.income-source-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.income-flow-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.income-target-panel{grid-template-columns:1fr 170px}.income-target-stats{grid-column:1/-1}}@media(max-width:900px){.income-chart-grid{grid-template-columns:1fr}.income-flow-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.income-source-grid{grid-template-columns:1fr}.income-flow-grid{grid-template-columns:1fr}.income-target-panel{grid-template-columns:1fr}.income-target-stats{grid-template-columns:1fr}.income-focus-label{display:none}}`;
     document.head.appendChild(s);
   }
 
@@ -344,6 +374,7 @@
   style();
   document.addEventListener('panel:view-root-changed',e=>{if(e.detail?.view==='ingresos')schedule(false);});
   document.addEventListener('panel:filters-updated',()=>{if(activeView()==='ingresos')schedule(false);});
+  document.addEventListener('panel:section-filters-changed',e=>{if(activeView()==='ingresos'&&(!e.detail?.view||e.detail.view==='ingresos'))schedule(false);});
   document.addEventListener('panel:backend-refresh-requested',()=>{cache=null;if(activeView()==='ingresos')schedule(true);});
   document.addEventListener('panel:app-data-ready',()=>{cache=null;if(activeView()==='ingresos')schedule(false);});
   document.addEventListener('click',e=>{if(e.target.closest('.currency-btn')&&activeView()==='ingresos')setTimeout(()=>schedule(false),0);});
