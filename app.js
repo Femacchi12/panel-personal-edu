@@ -132,12 +132,14 @@
       state.filters[btn.dataset.clearFilter] = [];
       renderFilterOptions();
       render();
+      document.dispatchEvent(new CustomEvent('panel:filters-updated',{detail:{view:state.view,filters:state.filters}}));
     }));
     byId('resetCurrentMonth')?.addEventListener('click',()=>resetCurrentMonth(true));
     byId('clearFilters')?.addEventListener('click',()=>{
       Object.keys(state.filters).forEach(k=>state.filters[k]=[]);
       renderFilterOptions();
       render();
+      document.dispatchEvent(new CustomEvent('panel:filters-updated',{detail:{view:state.view,filters:state.filters}}));
     });
     byId('refreshBtn')?.addEventListener('click',()=>loadLiveData(true));
     document.addEventListener('click',e=>{ if (!e.target.closest('.multi-filter')) closeFilterMenus(); });
@@ -265,6 +267,7 @@
         state.filters[key]=list;
         renderFilterOptions();
         render();
+        document.dispatchEvent(new CustomEvent('panel:filters-updated',{detail:{view:state.view,filters:state.filters}}));
       }));
       updateFilterControl(key);
     });
@@ -305,7 +308,7 @@
     const root=byId('viewRoot');
     if(!root)return;
     if(state.loadedSources===0 && state.token && state.loadErrors.length) {root.innerHTML=renderLoadError();bindDynamic();return;}
-    const fn={general:renderGeneral,gastos:renderGastos,flujo:renderFlujo,tarjetas:renderTarjetas,deudas:renderDeudas,inversiones:renderInversiones,pension:renderPension,ingresos:renderIngresos,servicios:renderServicios,salud:renderSalud,citas:renderCitas,tratamientos:renderTratamientos,documentos:renderDocumentos,viajes:renderViajes}[state.view]||renderGeneral;
+    const fn={general:renderGeneral,resumen:renderResumen,gastos:renderGastos,flujo:renderFlujo,tarjetas:renderTarjetas,deudas:renderDeudas,inversiones:renderInversiones,pension:renderPension,ingresos:renderIngresos,servicios:renderServicios,salud:renderSalud,citas:renderCitas,tratamientos:renderTratamientos,documentos:renderDocumentos,viajes:renderViajes}[state.view]||renderGeneral;
     root.innerHTML=fn();bindDynamic();requestAnimationFrame(drawViewCharts);
   }
 
@@ -318,9 +321,128 @@
     const mov=filteredMovements();const expenses=mov.filter(isExpense);const total=sum(expenses,movementAmount);const paid=sum(expenses.filter(r=>!isFinanced(r)),movementAmount);const debt=sum(expenses.filter(isFinanced),movementAmount);const savings=latestAhorroValue();const topCats=[...aggregate(expenses,r=>pick(r,['Categoría','Categoria'])||'Sin categoría',movementAmount).entries()].sort((a,b)=>b[1]-a[1]).slice(0,8);const max=topCats[0]?.[1]||1;const latest=expenses.slice().sort((a,b)=>dateValue(b)-dateValue(a));
     return `${sectionHead('RESUMEN','Tu mes en una sola vista','Finanzas, movimientos y evolución con los filtros globales aplicados')}<div class="kpi-grid">${kpi('Total gastado',money(total),`${expenses.length} movimientos`)}${kpi('Pagado',money(paid),'Efectivo/débito y no financiado','green')}${kpi('En deuda',money(debt),'Tarjetas y compras financiadas','gold')}${kpi('Ahorro',money(savings),'Último período disponible','blue')}</div><div class="panel-grid equal">${chartPanel('Gasto por día','Evolución dentro del período','generalDailyChart',Math.max(760,dayCount(expenses)*52))}${chartPanel('Gastos por categoría','Comparación del período','generalCategoryChart',760)}</div><div class="panel-grid"><div class="panel"><div class="panel-header"><div class="panel-title"><strong>Top categorías</strong><span>Rubros con mayor gasto</span></div></div><div class="progress-list">${topCats.length?topCats.map(([l,v])=>progress(l,v,max)).join(''):empty('Sin gastos para los filtros')}</div></div><div class="panel"><div class="panel-header"><div class="panel-title"><strong>Últimos movimientos</strong><span>Más recientes del período</span></div></div><div class="card-list">${latestMovementCards(latest.slice(0,6))}</div></div></div>${tablePanel('Movimientos recientes',latest,['Fecha real','Categoría','Subcategoría','Descripción / Comercio','Cuenta / Tarjeta','Titular','Monto COP','Monto ARS','Monto USD'])}`;
   }
+  function registeredExpense(row){
+    const status=norm(pick(row,['Estado']));
+    if(status&&(status.includes('proyecc')||status.includes('programad')||status.includes('pendiente')))return false;
+    return isExpense(row);
+  }
+
+  function isCreditPurchase(row){
+    if(!registeredExpense(row))return false;
+    const method=norm(pick(row,['Modalidad de pago','Modalidad','Medio de pago']));
+    const account=norm(pick(row,['Cuenta / Tarjeta','Medio de Pago','Pago']));
+    const installments=num(pick(row,['Cuotas','N° cuotas','Numero cuotas']));
+    const credit=method.includes('credito')||account.includes('arq')||account.includes('nu ')||account==='nu'||(installments>0&&(account.includes('nu')||account.includes('arq')));
+    if(!credit)return false;
+    if(norm(pick(row,['Categoría','Categoria']))==='tarjeta col')return false;
+    const description=norm(`${pick(row,['Descripción / Comercio','Descripción','Comercio'])} ${pick(row,['Descripción original'])}`);
+    return !/cuota de manejo|interes|pago de tarjeta|pago tarjeta/.test(description);
+  }
+
+  function configFinanceValue(label,fallback=0){
+    const key=norm(label);
+    const row=(state.data.configFinanzas||[]).find(r=>norm(pick(r,['Parámetro','Parametro']))===key);
+    return num(pick(row,['Valor']))||fallback;
+  }
+  function copToDisplay(value){
+    const cop=Number(value)||0;
+    if(state.currency==='COP')return cop;
+    const usdCop=configFinanceValue('Tasa actual USD/COP',3150);
+    const usdArs=configFinanceValue('Tasa actual USD/ARS',1500);
+    if(state.currency==='USD')return usdCop?cop/usdCop:cop;
+    if(state.currency==='ARS')return usdCop?cop/usdCop*usdArs:cop;
+    return cop;
+  }
+  function summaryMoneyCop(value){return money(copToDisplay(value));}
+
+  function incomeConceptTotals(rows){
+    const salaryCop=sum(rows,r=>num(pick(r,['Sueldo COP'])));
+    const llc=sum(rows,r=>num(pick(r,['Sueldo USD (equiv. COP)'])));
+    const total=sum(rows,r=>num(pick(r,['Total consolidado'])));
+    return{salaryCop,llc,other:total-salaryCop-llc,total};
+  }
+
+  function cardSpendLabel(card){
+    const issuer=String(pick(card,['Emisor'])||'Tarjeta').trim();
+    const owner=String(pick(card,['Titular'])||'').trim();
+    if(norm(issuer).includes('nu')&&norm(owner).includes('rocio'))return'Nu Ro';
+    if(norm(issuer).includes('nu')&&norm(owner).includes('edu'))return'Nu Edu';
+    if(norm(issuer).includes('arq'))return'ARQ Edu';
+    return`${issuer} ${owner}`.trim();
+  }
+  function movementMatchesCard(row,card){
+    const account=norm(pick(row,['Cuenta / Tarjeta']));
+    const issuer=norm(pick(card,['Emisor'])),owner=norm(pick(card,['Titular']));
+    if(issuer.includes('arq'))return account.includes('arq');
+    if(issuer.includes('nu')&&owner.includes('rocio'))return account.includes('nu ro');
+    if(issuer.includes('nu')&&owner.includes('edu'))return account.includes('nu edu');
+    return account.includes(issuer)&&(!owner||account.includes(owner.split(' ')[0]));
+  }
+  function creditSpendRows(){return filteredMovements().filter(isCreditPurchase);}
+  function creditSpendPanel(cards){
+    const rows=creditSpendRows(),total=sum(rows,movementAmount);
+    const cells=(cards||[]).map(card=>{
+      const amount=sum(rows.filter(row=>movementMatchesCard(row,card)),movementAmount);
+      const share=total?amount/total*100:0;
+      return`<div class="credit-spend-item"><span>${esc(cardSpendLabel(card))}</span><strong>${money(amount)}</strong><small>${formatNumber(share,1)}% del gasto en crédito</small></div>`;
+    }).join('');
+    return`<div class="panel credit-spend-panel"><div class="panel-header"><div class="panel-title"><strong>Gasto con crédito en el período</strong><span>Compras reales según los filtros; excluye pagos de tarjeta, manejo e intereses.</span></div><div class="credit-spend-total"><span>Total</span><strong>${money(total)}</strong></div></div><div class="credit-spend-grid">${cells||empty('Sin compras con crédito para los filtros')}</div></div>`;
+  }
+
+  function breakdownRows(entries,total){
+    const sorted=[...entries].sort((a,b)=>b[1]-a[1]).slice(0,12);
+    if(!sorted.length)return empty('Sin datos para los filtros seleccionados');
+    return`<div class="summary-breakdown-list">${sorted.map(([label,value])=>`<div><span>${esc(label||'Sin categoría')}</span><strong>${money(value)}</strong><small>${total?formatNumber(value/total*100,1):'0,0'}%</small></div>`).join('')}</div>`;
+  }
+
+  function renderResumen(){
+    const incomeRows=filterByPeriod(state.data.ingresosConceptos||[]);
+    const expenseRows=filteredMovements().filter(registeredExpense);
+    const creditRows=expenseRows.filter(isCreditPurchase);
+    const incomeParts=incomeConceptTotals(incomeRows);
+    const income= copToDisplay(incomeParts.total);
+    const expenses=sum(expenseRows,movementAmount);
+    const credit=sum(creditRows,movementAmount);
+    const balance=income-expenses;
+    const expenseByCat=aggregate(expenseRows,r=>pick(r,['Categoría','Categoria'])||'Sin categoría',movementAmount);
+    const creditByCard=aggregate(creditRows,r=>pick(r,['Cuenta / Tarjeta'])||'Sin tarjeta',movementAmount);
+    const incomeEntries=[
+      ['Nómina COP',copToDisplay(incomeParts.salaryCop)],
+      ['Fibrazo LLC',copToDisplay(incomeParts.llc)],
+      ['Otros ingresos',copToDisplay(incomeParts.other)]
+    ];
+
+    const yearSet=new Set();
+    incomeRows.forEach(r=>{const d=rowDate(r);if(d)yearSet.add(d.getFullYear())});
+    expenseRows.forEach(r=>{const d=movementDate(r);if(d)yearSet.add(d.getFullYear())});
+    const years=[...yearSet].sort((a,b)=>b-a);
+    const yearTable=years.map(year=>{
+      const incRows=incomeRows.filter(r=>rowDate(r)?.getFullYear()===year);
+      const expRows=expenseRows.filter(r=>movementDate(r)?.getFullYear()===year);
+      const crRows=creditRows.filter(r=>movementDate(r)?.getFullYear()===year);
+      const parts=incomeConceptTotals(incRows),inc=copToDisplay(parts.total),exp=sum(expRows,movementAmount),cr=sum(crRows,movementAmount);
+      return{year,parts,inc,exp,cr,balance:inc-exp};
+    });
+
+    return`${sectionHead('FINANZAS','Resumen financiero','Ingresos, gastos, uso de crédito y evolución histórica en una sola pantalla')}
+      <div class="kpi-grid">
+        ${kpi('Ingresos totales',money(income),`${incomeRows.length} períodos con ingresos`,'green')}
+        ${kpi('Gastos totales',money(expenses),`${expenseRows.length} movimientos`)}
+        ${kpi('Gastos con crédito',money(credit),expenses?`${formatNumber(credit/expenses*100,1)}% de los gastos`:'—','gold')}
+        ${kpi('Balance ingreso - gasto',money(balance),'Antes de inversiones',balance>=0?'blue':'red')}
+      </div>
+      <div class="financial-summary-breakdowns">
+        <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Ingresos desagregados</strong><span>Composición del período seleccionado</span></div></div>${breakdownRows(incomeEntries,income)}</div>
+        <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Gastos desagregados</strong><span>Por categoría</span></div></div>${breakdownRows(expenseByCat,expenses)}</div>
+        <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Crédito desagregado</strong><span>Por tarjeta / cuenta</span></div></div>${breakdownRows(creditByCard,credit)}</div>
+      </div>
+      ${chartPanel('Evolución financiera','Ingresos, gastos, crédito y balance por mes','financialSummaryChart',Math.max(760,12*90))}
+      <div class="panel table-panel"><div class="panel-header"><div class="panel-title"><strong>Resumen por año</strong><span>Totales del período filtrado agrupados por año</span></div></div><div class="table-scroll expanded"><table><thead><tr><th>Año</th><th>Nómina COP</th><th>Fibrazo LLC</th><th>Otros ingresos</th><th>Ingresos totales</th><th>Gastos totales</th><th>Gasto con crédito</th><th>Balance</th></tr></thead><tbody>${yearTable.map(x=>`<tr><td><strong>${x.year}</strong></td><td>${summaryMoneyCop(x.parts.salaryCop)}</td><td>${summaryMoneyCop(x.parts.llc)}</td><td>${summaryMoneyCop(x.parts.other)}</td><td><strong>${money(x.inc)}</strong></td><td>${money(x.exp)}</td><td>${money(x.cr)}</td><td class="${x.balance>=0?'positive':'negative'}"><strong>${money(x.balance)}</strong></td></tr>`).join('')}</tbody></table></div></div>`;
+  }
+
   function renderGastos() {const rows=filteredMovements().filter(isExpense);return `${sectionHead('FINANZAS','Detalle de gastos','Histórico de consumos, comparación y base detallada')}${chartPanel('Evolución de gastos','Series por categoría / selección','spendChart',Math.max(760,periodCount(rows)*100))}<div class="panel table-panel" hidden><div class="panel-header"><div class="panel-title"><strong>Movimientos</strong><span>Base sustituida por la tabla avanzada</span></div></div></div>`;}
   function renderFlujo() {const rows=filterByPeriod(state.data.ahorro?.length?state.data.ahorro:state.data.flujo);const allRows=state.data.ahorro?.length?state.data.ahorro:state.data.flujo;const display=rows.length?rows:latestPeriodRows(allRows);const last=display[display.length-1]||{};return `${sectionHead('FINANZAS','Flujo mensual','Ingresos, egresos, ahorro y cumplimiento de metas')}<div class="kpi-grid">${kpi('Ingresos',money(num(pick(last,['Ingresos reales COP','Ingresos COP','Ingresos']))),'Último período visible','green')}${kpi('Egresos',money(num(pick(last,['Egresos reales COP','Egresos COP','Egresos']))),'Último período visible')}${kpi('Ahorro',money(num(pick(last,['Ahorro real COP','Ahorro COP','Ahorro']))),'Resultado del período','blue')}${kpi('Tasa de ahorro',pick(last,['Tasa de ahorro real','Tasa de ahorro','% ahorro'])||'—','Objetivo vs realidad','gold')}</div>${chartPanel('Evolución mensual','Ingresos vs egresos vs ahorro','flowChart',Math.max(760,display.length*105))}${tablePanel('Flujo y ahorro mensual',display)}`;}
-  function renderTarjetas() {const rows=state.data.tarjetas||[];const used=sum(rows,r=>num(pick(r,['Cupo usado','Utilizado','Saldo usado'])));const total=sum(rows,r=>num(pick(r,['Cupo total actual','Cupo total','Límite','Limite','Cupo'])));return `${sectionHead('FINANZAS','Tarjetas de crédito','Uso, cupo, facturación, pagos y nivel de utilización')}<div class="kpi-grid">${kpi('Cupo total',money(total),`${rows.length} tarjetas`)}${kpi('Cupo usado',money(used),total?`${formatNumber(used/total*100,1)}% consolidado`:'—','gold')}${kpi('Disponible',money(Math.max(0,total-used)),'Cupo consolidado','green')}${kpi('Pago próximo',money(sum(rows,r=>num(pick(r,['Pago total próximo','Pago mínimo próximo'])))),'Suma registrada')}</div><div class="credit-grid">${rows.length?rows.map(creditCard).join(''):empty('No hay tarjetas registradas')}</div>${chartPanel('Uso por tarjeta','Cupo usado vs disponible','cardsChart',760,true)}${tablePanel('Detalle de tarjetas',rows,['Emisor','Producto','Titular','Moneda','Cupo total actual','Cupo usado','Cupo disponible','% utilización','Día corte','Día vencimiento','Pago mínimo próximo','Pago total próximo','Fecha actualización','Observaciones','Límite personal de gasto','% uso límite personal'])}`;}
+  function renderTarjetas() {const rows=state.data.tarjetas||[];const used=sum(rows,r=>num(pick(r,['Cupo usado','Utilizado','Saldo usado'])));const total=sum(rows,r=>num(pick(r,['Cupo total actual','Cupo total','Límite','Limite','Cupo'])));return `${sectionHead('FINANZAS','Tarjetas de crédito','Uso, cupo, facturación, pagos y nivel de utilización')}<div class="kpi-grid">${kpi('Cupo total',money(total),`${rows.length} tarjetas`)}${kpi('Cupo usado',money(used),total?`${formatNumber(used/total*100,1)}% consolidado`:'—','gold')}${kpi('Disponible',money(Math.max(0,total-used)),'Cupo consolidado','green')}${kpi('Pago próximo',money(sum(rows,r=>num(pick(r,['Pago total próximo','Pago mínimo próximo'])))),'Suma registrada')}</div>${creditSpendPanel(rows)}<div class="credit-grid">${rows.length?rows.map(creditCard).join(''):empty('No hay tarjetas registradas')}</div>${chartPanel('Uso por tarjeta','Cupo usado vs disponible','cardsChart',760,true)}${tablePanel('Detalle de tarjetas',rows,['Emisor','Producto','Titular','Moneda','Cupo total actual','Cupo usado','Cupo disponible','% utilización','Día corte','Día vencimiento','Pago mínimo próximo','Pago total próximo','Fecha actualización','Observaciones','Límite personal de gasto','% uso límite personal'])}`;}
   function canonicalDebtPurchases(rows) {
     const groups = new Map();
     (rows || []).forEach(row => {
@@ -398,8 +520,27 @@
   function renderViajes() {const rows=state.data.viajes||[];const filtered=filterByPeriod(rows);const display=filtered.length?filtered:rows;const days=sum(display,r=>num(pick(r,['Días calendario','Días','Duración'])));return `${sectionHead('VIDA','Vacaciones y viajes','Histórico de vacaciones, desplazamientos y financiación')}<div class="kpi-grid">${kpi('Registros',String(display.length),'Viajes y vacaciones')}${kpi('Días calendario',formatNumber(days,0),'Total registrado')}${kpi('Destinos',String(unique(display.map(r=>pick(r,['Destino'])).filter(Boolean)).length),'Diferentes')}${kpi('Vacaciones',String(display.filter(r=>norm(pick(r,['Tipo de registro'])).includes('vacacion')).length),'Registros de vacaciones','gold')}</div>${chartPanel('Duración por viaje','Días calendario registrados','travelChart',Math.max(760,display.length*95))}${tablePanel('Vacaciones y viajes',display,['Tipo de registro','Titular/Pasajero','Financiación','Origen','Destino','Fecha salida','Fecha regreso','Días calendario','Días hábiles','Período laboral','Estado','Fuente','Observaciones'])}`;}
 
   function chartPanel(title,subtitle,id,width=760,hidden=false) {return `<div class="panel"${hidden?' hidden':''}><div class="panel-header"><div class="panel-title"><strong>${esc(title)}</strong><span>${esc(subtitle)}</span></div></div>${chartShell(id,width)}</div>`;}
-  function drawViewCharts() {try{const map={general:drawGeneralCharts,gastos:drawSpendChart,flujo:drawFlowChart,tarjetas:drawCardsChart,deudas:drawDebtChart,pension:drawPensionChart,ingresos:drawIncomeChart,salud:drawHealthCharts,citas:drawAppointmentsChart,tratamientos:drawTreatmentsChart,viajes:drawTravelChart};map[state.view]?.();}catch(error){console.error('Error dibujando gráficos:',error);}}
+  function drawViewCharts() {try{const map={general:drawGeneralCharts,resumen:drawFinancialSummaryChart,gastos:drawSpendChart,flujo:drawFlowChart,tarjetas:drawCardsChart,deudas:drawDebtChart,pension:drawPensionChart,ingresos:drawIncomeChart,salud:drawHealthCharts,citas:drawAppointmentsChart,tratamientos:drawTreatmentsChart,viajes:drawTravelChart};map[state.view]?.();}catch(error){console.error('Error dibujando gráficos:',error);}}
   function drawGeneralCharts(){const rows=filteredMovements().filter(isExpense);const daily=aggregate(rows,r=>{const d=movementDate(r);return d?`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`:'Sin fecha';},movementAmount);makeBar('generalDailyChart',[...daily.keys()],[{label:`Gasto ${state.currency}`,data:[...daily.values()]}]);const cats=[...aggregate(rows,r=>pick(r,['Categoría','Categoria'])||'Sin categoría',movementAmount).entries()].sort((a,b)=>b[1]-a[1]).slice(0,12);makeBar('generalCategoryChart',cats.map(x=>x[0]),[{label:`Total ${state.currency}`,data:cats.map(x=>x[1])}],true);}
+  function drawFinancialSummaryChart(){
+    const incomeRows=filterByPeriod(state.data.ingresosConceptos||[]);
+    const expenseRows=filteredMovements().filter(registeredExpense);
+    const creditRows=expenseRows.filter(isCreditPurchase);
+    const periods=unique([
+      ...incomeRows.map(r=>periodKey(rowDate(r))).filter(Boolean),
+      ...expenseRows.map(r=>periodKey(movementDate(r))).filter(Boolean)
+    ]).sort();
+    const incomeData=periods.map(p=>copToDisplay(sum(incomeRows.filter(r=>periodKey(rowDate(r))===p),r=>num(pick(r,['Total consolidado'])))));
+    const expenseData=periods.map(p=>sum(expenseRows.filter(r=>periodKey(movementDate(r))===p),movementAmount));
+    const creditData=periods.map(p=>sum(creditRows.filter(r=>periodKey(movementDate(r))===p),movementAmount));
+    const balanceData=periods.map((p,i)=>incomeData[i]-expenseData[i]);
+    makeLine('financialSummaryChart',periods.map(prettyPeriod),[
+      ds('Ingresos',incomeData,2),
+      ds('Gastos',expenseData,3),
+      ds('Crédito',creditData,1),
+      ds('Balance',balanceData,0)
+    ]);
+  }
   function drawSpendChart(){const rows=filteredMovements().filter(isExpense);const groupKey=state.filters.subcategory.length?r=>pick(r,['Subcategoría','Subcategoria'])||'Sin subcategoría':r=>pick(r,['Categoría','Categoria'])||'Total';const periods=unique(rows.map(r=>periodKey(movementDate(r))).filter(Boolean)).sort();const series=unique(rows.map(groupKey).filter(Boolean)).slice(0,10);const datasets=series.map((s,i)=>({label:s,data:periods.map(p=>sum(rows.filter(r=>periodKey(movementDate(r))===p&&groupKey(r)===s),movementAmount)),borderColor:COLORS[i%COLORS.length],backgroundColor:COLORS[i%COLORS.length],borderWidth:2,tension:.25}));if(datasets.length>1)datasets.push({label:'Total seleccionado',data:periods.map(p=>sum(rows.filter(r=>periodKey(movementDate(r))===p),movementAmount)),borderColor:'#f6f8fb',backgroundColor:'#f6f8fb',borderWidth:2,borderDash:[5,4],tension:.25});makeLine('spendChart',periods.map(prettyPeriod),datasets);}
   function drawFlowChart(){const rows0=filterByPeriod(state.data.ahorro?.length?state.data.ahorro:state.data.flujo);const rows=rows0.length?rows0:(state.data.ahorro?.length?state.data.ahorro:state.data.flujo);makeLine('flowChart',rows.map(r=>pick(r,['Mes','Periodo','Período','Fecha'])||''),[ds('Ingresos',rows.map(r=>num(pick(r,['Ingresos reales COP','Ingresos COP','Ingresos']))),0),ds('Egresos',rows.map(r=>num(pick(r,['Egresos reales COP','Egresos COP','Egresos']))),3),ds('Ahorro',rows.map(r=>num(pick(r,['Ahorro real COP','Ahorro COP','Ahorro']))),2)]);}
   function drawCardsChart(){const rows=state.data.tarjetas||[];const labels=rows.map(r=>`${pick(r,['Emisor'])||'Tarjeta'} ${pick(r,['Titular'])||''}`.trim());makeBar('cardsChart',labels,[{label:'Usado',data:rows.map(r=>num(pick(r,['Cupo usado']))),backgroundColor:COLORS[0]},{label:'Disponible',data:rows.map(r=>num(pick(r,['Cupo disponible']))),backgroundColor:COLORS[2]}],true);}
@@ -492,6 +633,6 @@
   function validDate(y,m,d){if(m<0||m>11)return null;const x=new Date(y,m,d);return Number.isNaN(x.getTime())?null:x}function startOfToday(){const d=new Date();d.setHours(0,0,0,0);return d}
   function money(value){const digits=state.currency==='USD'?2:0;try{return new Intl.NumberFormat('es-CO',{style:'currency',currency:state.currency,minimumFractionDigits:digits,maximumFractionDigits:digits}).format(Number(value)||0)}catch(_){return`${state.currency} ${formatNumber(value,digits)}`}}function shortMoney(value){const n=Number(value)||0,a=Math.abs(n);if(a>=1e9)return`${(n/1e9).toFixed(1)}B`;if(a>=1e6)return`${(n/1e6).toFixed(1)}M`;if(a>=1e3)return`${(n/1e3).toFixed(0)}K`;return String(Math.round(n))}function hash(v){let h=0;v=String(v);for(let i=0;i<v.length;i++)h=((h<<5)-h)+v.charCodeAt(i)|0;return Math.abs(h).toString(36)}function shortError(v){const s=String(v||'');return s.length>420?s.slice(0,420)+'…':s}
   function setSync(kind,text){const dot=byId('syncDot');if(dot)dot.className=`sync-dot${kind==='ok'?' ok':kind==='loading'?' loading':''}`;if(byId('syncText'))byId('syncText').textContent=text;}function destroyCharts(){state.charts.forEach(c=>{try{c.destroy()}catch(_){}});state.charts=[]}
-  function emptyData(){return{movimientos:[],flujo:[],tarjetas:[],cuotas:[],inversiones:[],posiciones:[],pension:[],ingresos:[],ahorro:[],servicios:[],referenciasPersonales:[],cuentas:[],plan:[],patrimonio:[],docsFinancieros:[],docsIdentidad:[],docsLaborales:[],docsTributarios:[],docsPensionCesantias:[],docsPersonales:[],viajes:[],pacientes:[],citas:[],tratamientos:[],estudios:[],eventosSalud:[],mediciones:[],docsSalud:[],documentos:[]};}
+  function emptyData(){return{movimientos:[],flujo:[],tarjetas:[],cuotas:[],inversiones:[],posiciones:[],pension:[],ingresos:[],ingresosConceptos:[],ahorro:[],configFinanzas:[],servicios:[],referenciasPersonales:[],cuentas:[],plan:[],patrimonio:[],docsFinancieros:[],docsIdentidad:[],docsLaborales:[],docsTributarios:[],docsPensionCesantias:[],docsPersonales:[],viajes:[],pacientes:[],citas:[],tratamientos:[],estudios:[],eventosSalud:[],mediciones:[],docsSalud:[],documentos:[]};}
   function showFatal(error){console.error('Panel Personal Edu: error de inicio',error);setSync('demo','Error de inicio');const root=byId('viewRoot');if(root)root.innerHTML=`<div class="panel"><div class="empty-state"><div><strong>No se pudo iniciar el dashboard</strong><span>${esc(error?.message||String(error))}</span></div></div></div>`;}
 })();
