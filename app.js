@@ -49,6 +49,8 @@
     {key:'ingresos', book:'finance', range:'Resumen_Ingresos!A:H', parser:'smart'},
     {key:'ingresosConceptos', book:'finance', range:'Resumen_Conceptos_Ingresos!A:L', parser:'smart'},
     {key:'ahorro', book:'finance', range:'Flujo_Ahorro!A:W', parser:'smart'},
+    {key:'resumenFinanciero', book:'finance', range:'Resumen_Financiero!A:V', parser:'smart'},
+    {key:'creditoMensual', book:'finance', range:'Credito_Mensual!A:J', parser:'smart'},
     {key:'configFinanzas', book:'finance', range:'Config!A:C', parser:'smart'},
     {key:'servicios', book:'finance', range:'Servicios!A:O', parser:'smart'},
     {key:'referenciasPersonales', book:'finance', range:'Referencias_Personales!A:N', parser:'smart'},
@@ -332,7 +334,9 @@
     const method=norm(pick(row,['Modalidad de pago','Modalidad','Medio de pago']));
     const account=norm(pick(row,['Cuenta / Tarjeta','Medio de Pago','Pago']));
     const installments=num(pick(row,['Cuotas','N° cuotas','Numero cuotas']));
-    const credit=method.includes('credito')||account.includes('arq')||account.includes('nu ')||account==='nu'||(installments>0&&(account.includes('nu')||account.includes('arq')));
+    const credit=method
+      ? method.includes('credito')
+      : (account.includes('arq')||account.includes('nu edu')||account.includes('nu ro')||(installments>0&&(account.includes('nu')||account.includes('arq'))));
     if(!credit)return false;
     if(norm(pick(row,['Categoría','Categoria']))==='tarjeta col')return false;
     const description=norm(`${pick(row,['Descripción / Comercio','Descripción','Comercio'])} ${pick(row,['Descripción original'])}`);
@@ -633,6 +637,6 @@
   function validDate(y,m,d){if(m<0||m>11)return null;const x=new Date(y,m,d);return Number.isNaN(x.getTime())?null:x}function startOfToday(){const d=new Date();d.setHours(0,0,0,0);return d}
   function money(value){const digits=state.currency==='USD'?2:0;try{return new Intl.NumberFormat('es-CO',{style:'currency',currency:state.currency,minimumFractionDigits:digits,maximumFractionDigits:digits}).format(Number(value)||0)}catch(_){return`${state.currency} ${formatNumber(value,digits)}`}}function shortMoney(value){const n=Number(value)||0,a=Math.abs(n);if(a>=1e9)return`${(n/1e9).toFixed(1)}B`;if(a>=1e6)return`${(n/1e6).toFixed(1)}M`;if(a>=1e3)return`${(n/1e3).toFixed(0)}K`;return String(Math.round(n))}function hash(v){let h=0;v=String(v);for(let i=0;i<v.length;i++)h=((h<<5)-h)+v.charCodeAt(i)|0;return Math.abs(h).toString(36)}function shortError(v){const s=String(v||'');return s.length>420?s.slice(0,420)+'…':s}
   function setSync(kind,text){const dot=byId('syncDot');if(dot)dot.className=`sync-dot${kind==='ok'?' ok':kind==='loading'?' loading':''}`;if(byId('syncText'))byId('syncText').textContent=text;}function destroyCharts(){state.charts.forEach(c=>{try{c.destroy()}catch(_){}});state.charts=[]}
-  function emptyData(){return{movimientos:[],flujo:[],tarjetas:[],cuotas:[],inversiones:[],posiciones:[],pension:[],ingresos:[],ingresosConceptos:[],ahorro:[],configFinanzas:[],servicios:[],referenciasPersonales:[],cuentas:[],plan:[],patrimonio:[],docsFinancieros:[],docsIdentidad:[],docsLaborales:[],docsTributarios:[],docsPensionCesantias:[],docsPersonales:[],viajes:[],pacientes:[],citas:[],tratamientos:[],estudios:[],eventosSalud:[],mediciones:[],docsSalud:[],documentos:[]};}
+  function emptyData(){return{movimientos:[],flujo:[],tarjetas:[],cuotas:[],inversiones:[],posiciones:[],pension:[],ingresos:[],ingresosConceptos:[],ahorro:[],resumenFinanciero:[],creditoMensual:[],configFinanzas:[],servicios:[],referenciasPersonales:[],cuentas:[],plan:[],patrimonio:[],docsFinancieros:[],docsIdentidad:[],docsLaborales:[],docsTributarios:[],docsPensionCesantias:[],docsPersonales:[],viajes:[],pacientes:[],citas:[],tratamientos:[],estudios:[],eventosSalud:[],mediciones:[],docsSalud:[],documentos:[]};}
   function showFatal(error){console.error('Panel Personal Edu: error de inicio',error);setSync('demo','Error de inicio');const root=byId('viewRoot');if(root)root.innerHTML=`<div class="panel"><div class="empty-state"><div><strong>No se pudo iniciar el dashboard</strong><span>${esc(error?.message||String(error))}</span></div></div></div>`;}
 })();
