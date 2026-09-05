@@ -233,7 +233,9 @@
     const allYears=[...new Set(rows.map(r=>r.year).filter(Boolean))].sort();
     const years=ys.length?ys:allYears;
     const yearRows=rows.filter(r=>!years.length||years.includes(r.year));
-    const displayRows=ms.length?yearRows.filter(r=>ms.includes(r.month)):yearRows;
+    const displayRows=ms.length
+      ? yearRows.filter(r=>ms.includes(r.month))
+      : yearRows.filter(r=>!norm(r.state).includes('proyecc'));
     const actual=displayRows.filter(r=>!norm(r.state).includes('proyecc'));
     return{
       years,months:ms,yearRows,displayRows,
