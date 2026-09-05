@@ -399,49 +399,88 @@
     return`<div class="summary-breakdown-list">${sorted.map(([label,value])=>`<div><span>${esc(label||'Sin categoría')}</span><strong>${money(value)}</strong><small>${total?formatNumber(value/total*100,1):'0,0'}%</small></div>`).join('')}</div>`;
   }
 
+  function summaryCanonicalRows(){
+    const rows=filterByPeriod(state.data.resumenFinanciero||[]);
+    return state.filters.month.length
+      ? rows
+      : rows.filter(row=>!norm(pick(row,['Estado'])).includes('proyecc'));
+  }
+
   function renderResumen(){
-    const incomeRows=filterByPeriod(state.data.ingresosConceptos||[]);
+    const canonical=summaryCanonicalRows();
     const expenseRows=filteredMovements().filter(registeredExpense);
     const creditRows=expenseRows.filter(isCreditPurchase);
-    const incomeParts=incomeConceptTotals(incomeRows);
-    const income= copToDisplay(incomeParts.total);
-    const expenses=sum(expenseRows,movementAmount);
-    const credit=sum(creditRows,movementAmount);
-    const balance=income-expenses;
+    const categoryFiltered=Boolean(state.filters.category.length||state.filters.subcategory.length);
+
+    const consolidated=copToDisplay(sum(canonical,r=>num(pick(r,['Ingresos consolidados COP']))));
+    const liquid=copToDisplay(sum(canonical,r=>num(pick(r,['Ingresos líquidos COP']))));
+    const salaryCop=copToDisplay(sum(canonical,r=>num(pick(r,['Nómina COP']))));
+    const llc=copToDisplay(sum(canonical,r=>num(pick(r,['Fibrazo LLC COP']))));
+    const other=copToDisplay(sum(canonical,r=>num(pick(r,['Otros ingresos consolidados']))));
+    const adjustments=copToDisplay(sum(canonical,r=>num(pick(r,['Ajustes no líquidos / comisiones COP']))));
+    const investments=copToDisplay(sum(canonical,r=>num(pick(r,['Aportes netos inversiones COP']))));
+
+    const expenses=categoryFiltered
+      ? sum(expenseRows,movementAmount)
+      : copToDisplay(sum(canonical,r=>num(pick(r,['Gastos reales COP']))));
+    const credit=categoryFiltered
+      ? sum(creditRows,movementAmount)
+      : copToDisplay(sum(canonical,r=>num(pick(r,['Gasto crédito COP']))));
+
+    const saving=liquid-expenses;
+    const post=saving-investments;
     const expenseByCat=aggregate(expenseRows,r=>pick(r,['Categoría','Categoria'])||'Sin categoría',movementAmount);
-    const creditByCard=aggregate(creditRows,r=>pick(r,['Cuenta / Tarjeta'])||'Sin tarjeta',movementAmount);
+    const creditByCard=categoryFiltered
+      ? aggregate(creditRows,r=>pick(r,['Cuenta / Tarjeta'])||'Sin tarjeta',movementAmount)
+      : new Map([
+          ['ARQ Edu',copToDisplay(sum(canonical,r=>num(pick(r,['ARQ Edu crédito COP']))))],
+          ['Nu Edu',copToDisplay(sum(canonical,r=>num(pick(r,['Nu Edu crédito COP']))))],
+          ['Nu Ro',copToDisplay(sum(canonical,r=>num(pick(r,['Nu Ro crédito COP']))))]
+        ].filter(([,value])=>value>0));
+
     const incomeEntries=[
-      ['Nómina COP',copToDisplay(incomeParts.salaryCop)],
-      ['Fibrazo LLC',copToDisplay(incomeParts.llc)],
-      ['Otros ingresos',copToDisplay(incomeParts.other)]
+      ['Nómina COP',salaryCop],
+      ['Fibrazo LLC',llc],
+      ['Otros ingresos',other],
+      ['Ajustes no líquidos / comisiones',-adjustments]
     ];
 
-    const yearSet=new Set();
-    incomeRows.forEach(r=>{const d=rowDate(r);if(d)yearSet.add(d.getFullYear())});
-    expenseRows.forEach(r=>{const d=movementDate(r);if(d)yearSet.add(d.getFullYear())});
-    const years=[...yearSet].sort((a,b)=>b-a);
+    const years=[...new Set(canonical.map(r=>rowDate(r)?.getFullYear()).filter(Boolean))].sort((a,b)=>b-a);
     const yearTable=years.map(year=>{
-      const incRows=incomeRows.filter(r=>rowDate(r)?.getFullYear()===year);
+      const can=canonical.filter(r=>rowDate(r)?.getFullYear()===year);
       const expRows=expenseRows.filter(r=>movementDate(r)?.getFullYear()===year);
       const crRows=creditRows.filter(r=>movementDate(r)?.getFullYear()===year);
-      const parts=incomeConceptTotals(incRows),inc=copToDisplay(parts.total),exp=sum(expRows,movementAmount),cr=sum(crRows,movementAmount);
-      return{year,parts,inc,exp,cr,balance:inc-exp};
+      const inc=copToDisplay(sum(can,r=>num(pick(r,['Ingresos líquidos COP']))));
+      const gross=copToDisplay(sum(can,r=>num(pick(r,['Ingresos consolidados COP']))));
+      const sal=copToDisplay(sum(can,r=>num(pick(r,['Nómina COP']))));
+      const usd=copToDisplay(sum(can,r=>num(pick(r,['Fibrazo LLC COP']))));
+      const oth=copToDisplay(sum(can,r=>num(pick(r,['Otros ingresos consolidados']))));
+      const adj=copToDisplay(sum(can,r=>num(pick(r,['Ajustes no líquidos / comisiones COP']))));
+      const inv=copToDisplay(sum(can,r=>num(pick(r,['Aportes netos inversiones COP']))));
+      const exp=categoryFiltered?sum(expRows,movementAmount):copToDisplay(sum(can,r=>num(pick(r,['Gastos reales COP']))));
+      const cr=categoryFiltered?sum(crRows,movementAmount):copToDisplay(sum(can,r=>num(pick(r,['Gasto crédito COP']))));
+      return{year,gross,inc,sal,usd,oth,adj,exp,cr,inv,saving:inc-exp,post:inc-exp-inv};
     });
 
-    return`${sectionHead('FINANZAS','Resumen financiero','Ingresos, gastos, uso de crédito y evolución histórica en una sola pantalla')}
+    const expenseMeta=categoryFiltered?'Gasto de las categorías seleccionadas':`${expenseRows.length} movimientos en el período`;
+    const balanceMeta=categoryFiltered?'Ingreso líquido menos gasto filtrado':'Ingreso líquido menos gastos reales';
+
+    return`${sectionHead('FINANZAS','Resumen financiero','Ingresos líquidos, gastos, crédito, inversiones y evolución histórica en una sola pantalla')}
       <div class="kpi-grid">
-        ${kpi('Ingresos totales',money(income),`${incomeRows.length} períodos con ingresos`,'green')}
-        ${kpi('Gastos totales',money(expenses),`${expenseRows.length} movimientos`)}
-        ${kpi('Gastos con crédito',money(credit),expenses?`${formatNumber(credit/expenses*100,1)}% de los gastos`:'—','gold')}
-        ${kpi('Balance ingreso - gasto',money(balance),'Antes de inversiones',balance>=0?'blue':'red')}
+        ${kpi('Ingresos líquidos',money(liquid),`Consolidado ${money(consolidated)}`,'green')}
+        ${kpi('Gastos totales',money(expenses),expenseMeta)}
+        ${kpi('Gastos con crédito',money(credit),expenses?`${formatNumber(credit/expenses*100,1)}% del gasto visible`:'—','gold')}
+        ${kpi('Aportes a inversiones',money(investments),'Capital neto; no incluye valorización','blue')}
+        ${kpi('Ahorro antes de invertir',money(saving),balanceMeta,saving>=0?'green':'red')}
+        ${kpi('Saldo post inversión',money(post),'Ingreso − gastos − inversión',post>=0?'blue':'red')}
       </div>
       <div class="financial-summary-breakdowns">
-        <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Ingresos desagregados</strong><span>Composición del período seleccionado</span></div></div>${breakdownRows(incomeEntries,income)}</div>
-        <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Gastos desagregados</strong><span>Por categoría</span></div></div>${breakdownRows(expenseByCat,expenses)}</div>
-        <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Crédito desagregado</strong><span>Por tarjeta / cuenta</span></div></div>${breakdownRows(creditByCard,credit)}</div>
+        <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Ingresos desagregados</strong><span>Los ajustes negativos reconcilian ingreso consolidado con ingreso líquido.</span></div></div>${breakdownRows(incomeEntries,liquid)}</div>
+        <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Gastos desagregados</strong><span>Por categoría ${categoryFiltered?'· filtros activos':''}</span></div></div>${breakdownRows(expenseByCat,expenses)}</div>
+        <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Crédito desagregado</strong><span>Compras reales; excluye pagos, manejo e intereses.</span></div></div>${breakdownRows(creditByCard,credit)}</div>
       </div>
-      ${chartPanel('Evolución financiera','Ingresos, gastos, crédito y balance por mes','financialSummaryChart',Math.max(760,12*90))}
-      <div class="panel table-panel"><div class="panel-header"><div class="panel-title"><strong>Resumen por año</strong><span>Totales del período filtrado agrupados por año</span></div></div><div class="table-scroll expanded"><table><thead><tr><th>Año</th><th>Nómina COP</th><th>Fibrazo LLC</th><th>Otros ingresos</th><th>Ingresos totales</th><th>Gastos totales</th><th>Gasto con crédito</th><th>Balance</th></tr></thead><tbody>${yearTable.map(x=>`<tr><td><strong>${x.year}</strong></td><td>${summaryMoneyCop(x.parts.salaryCop)}</td><td>${summaryMoneyCop(x.parts.llc)}</td><td>${summaryMoneyCop(x.parts.other)}</td><td><strong>${money(x.inc)}</strong></td><td>${money(x.exp)}</td><td>${money(x.cr)}</td><td class="${x.balance>=0?'positive':'negative'}"><strong>${money(x.balance)}</strong></td></tr>`).join('')}</tbody></table></div></div>`;
+      ${chartPanel('Evolución financiera','Ingreso líquido, gastos, crédito, inversiones y saldo post inversión','financialSummaryChart',Math.max(760,12*90))}
+      <div class="panel table-panel"><div class="panel-header"><div class="panel-title"><strong>Resumen por año</strong><span>Control anual reconciliado contra Resumen_Financiero del Sheet Finanzas.</span></div></div><div class="table-scroll expanded"><table><thead><tr><th>Año</th><th>Nómina COP</th><th>Fibrazo LLC</th><th>Otros</th><th>Ajustes</th><th>Ingreso líquido</th><th>Gastos</th><th>Crédito</th><th>Inversiones</th><th>Ahorro pre inv.</th><th>Post inversión</th></tr></thead><tbody>${yearTable.map(x=>`<tr><td><strong>${x.year}</strong></td><td>${money(x.sal)}</td><td>${money(x.usd)}</td><td>${money(x.oth)}</td><td>${money(-x.adj)}</td><td><strong>${money(x.inc)}</strong></td><td>${money(x.exp)}</td><td>${money(x.cr)}</td><td>${money(x.inv)}</td><td class="${x.saving>=0?'positive':'negative'}">${money(x.saving)}</td><td class="${x.post>=0?'positive':'negative'}"><strong>${money(x.post)}</strong></td></tr>`).join('')}</tbody></table></div></div>`;
   }
 
   function renderGastos() {const rows=filteredMovements().filter(isExpense);return `${sectionHead('FINANZAS','Detalle de gastos','Histórico de consumos, comparación y base detallada')}${chartPanel('Evolución de gastos','Series por categoría / selección','spendChart',Math.max(760,periodCount(rows)*100))}<div class="panel table-panel" hidden><div class="panel-header"><div class="panel-title"><strong>Movimientos</strong><span>Base sustituida por la tabla avanzada</span></div></div></div>`;}
@@ -527,24 +566,34 @@
   function drawViewCharts() {try{const map={general:drawGeneralCharts,resumen:drawFinancialSummaryChart,gastos:drawSpendChart,flujo:drawFlowChart,tarjetas:drawCardsChart,deudas:drawDebtChart,pension:drawPensionChart,ingresos:drawIncomeChart,salud:drawHealthCharts,citas:drawAppointmentsChart,tratamientos:drawTreatmentsChart,viajes:drawTravelChart};map[state.view]?.();}catch(error){console.error('Error dibujando gráficos:',error);}}
   function drawGeneralCharts(){const rows=filteredMovements().filter(isExpense);const daily=aggregate(rows,r=>{const d=movementDate(r);return d?`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`:'Sin fecha';},movementAmount);makeBar('generalDailyChart',[...daily.keys()],[{label:`Gasto ${state.currency}`,data:[...daily.values()]}]);const cats=[...aggregate(rows,r=>pick(r,['Categoría','Categoria'])||'Sin categoría',movementAmount).entries()].sort((a,b)=>b[1]-a[1]).slice(0,12);makeBar('generalCategoryChart',cats.map(x=>x[0]),[{label:`Total ${state.currency}`,data:cats.map(x=>x[1])}],true);}
   function drawFinancialSummaryChart(){
-    const incomeRows=filterByPeriod(state.data.ingresosConceptos||[]);
+    const canonical=summaryCanonicalRows();
     const expenseRows=filteredMovements().filter(registeredExpense);
     const creditRows=expenseRows.filter(isCreditPurchase);
+    const categoryFiltered=Boolean(state.filters.category.length||state.filters.subcategory.length);
     const periods=unique([
-      ...incomeRows.map(r=>periodKey(rowDate(r))).filter(Boolean),
+      ...canonical.map(r=>periodKey(rowDate(r))).filter(Boolean),
       ...expenseRows.map(r=>periodKey(movementDate(r))).filter(Boolean)
     ]).sort();
-    const incomeData=periods.map(p=>copToDisplay(sum(incomeRows.filter(r=>periodKey(rowDate(r))===p),r=>num(pick(r,['Total consolidado'])))));
-    const expenseData=periods.map(p=>sum(expenseRows.filter(r=>periodKey(movementDate(r))===p),movementAmount));
-    const creditData=periods.map(p=>sum(creditRows.filter(r=>periodKey(movementDate(r))===p),movementAmount));
-    const balanceData=periods.map((p,i)=>incomeData[i]-expenseData[i]);
+
+    const incomeData=periods.map(p=>copToDisplay(sum(canonical.filter(r=>periodKey(rowDate(r))===p),r=>num(pick(r,['Ingresos líquidos COP'])))));
+    const expenseData=periods.map(p=>categoryFiltered
+      ? sum(expenseRows.filter(r=>periodKey(movementDate(r))===p),movementAmount)
+      : copToDisplay(sum(canonical.filter(r=>periodKey(rowDate(r))===p),r=>num(pick(r,['Gastos reales COP'])))));
+    const creditData=periods.map(p=>categoryFiltered
+      ? sum(creditRows.filter(r=>periodKey(movementDate(r))===p),movementAmount)
+      : copToDisplay(sum(canonical.filter(r=>periodKey(rowDate(r))===p),r=>num(pick(r,['Gasto crédito COP'])))));
+    const investmentData=periods.map(p=>copToDisplay(sum(canonical.filter(r=>periodKey(rowDate(r))===p),r=>num(pick(r,['Aportes netos inversiones COP'])))));
+    const postData=periods.map((p,i)=>incomeData[i]-expenseData[i]-investmentData[i]);
+
     makeLine('financialSummaryChart',periods.map(prettyPeriod),[
-      ds('Ingresos',incomeData,2),
+      ds('Ingreso líquido',incomeData,2),
       ds('Gastos',expenseData,3),
       ds('Crédito',creditData,1),
-      ds('Balance',balanceData,0)
+      ds('Inversiones',investmentData,4),
+      ds('Saldo post inversión',postData,0)
     ]);
   }
+
   function drawSpendChart(){const rows=filteredMovements().filter(isExpense);const groupKey=state.filters.subcategory.length?r=>pick(r,['Subcategoría','Subcategoria'])||'Sin subcategoría':r=>pick(r,['Categoría','Categoria'])||'Total';const periods=unique(rows.map(r=>periodKey(movementDate(r))).filter(Boolean)).sort();const series=unique(rows.map(groupKey).filter(Boolean)).slice(0,10);const datasets=series.map((s,i)=>({label:s,data:periods.map(p=>sum(rows.filter(r=>periodKey(movementDate(r))===p&&groupKey(r)===s),movementAmount)),borderColor:COLORS[i%COLORS.length],backgroundColor:COLORS[i%COLORS.length],borderWidth:2,tension:.25}));if(datasets.length>1)datasets.push({label:'Total seleccionado',data:periods.map(p=>sum(rows.filter(r=>periodKey(movementDate(r))===p),movementAmount)),borderColor:'#f6f8fb',backgroundColor:'#f6f8fb',borderWidth:2,borderDash:[5,4],tension:.25});makeLine('spendChart',periods.map(prettyPeriod),datasets);}
   function drawFlowChart(){const rows0=filterByPeriod(state.data.ahorro?.length?state.data.ahorro:state.data.flujo);const rows=rows0.length?rows0:(state.data.ahorro?.length?state.data.ahorro:state.data.flujo);makeLine('flowChart',rows.map(r=>pick(r,['Mes','Periodo','Período','Fecha'])||''),[ds('Ingresos',rows.map(r=>num(pick(r,['Ingresos reales COP','Ingresos COP','Ingresos']))),0),ds('Egresos',rows.map(r=>num(pick(r,['Egresos reales COP','Egresos COP','Egresos']))),3),ds('Ahorro',rows.map(r=>num(pick(r,['Ahorro real COP','Ahorro COP','Ahorro']))),2)]);}
   function drawCardsChart(){const rows=state.data.tarjetas||[];const labels=rows.map(r=>`${pick(r,['Emisor'])||'Tarjeta'} ${pick(r,['Titular'])||''}`.trim());makeBar('cardsChart',labels,[{label:'Usado',data:rows.map(r=>num(pick(r,['Cupo usado']))),backgroundColor:COLORS[0]},{label:'Disponible',data:rows.map(r=>num(pick(r,['Cupo disponible']))),backgroundColor:COLORS[2]}],true);}
