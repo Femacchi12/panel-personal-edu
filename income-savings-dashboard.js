@@ -259,7 +259,7 @@
     const root=document.getElementById('viewRoot');if(!root)return;
     const rows=normalized(data),state=viewState(rows),cur=activeCurrency(),r=rates(data),target=targetRate(data);
     const focus=state.focus.filter(x=>!norm(x.state).includes('proyecc'));
-    const allActual=state.yearRows.filter(x=>!norm(x.state).includes('proyecc'));
+    const allActual=state.displayRows.filter(x=>!norm(x.state).includes('proyecc'));
     const total=sum(focus,'total'),salaryCop=sum(focus,'salaryCop'),salaryUsd=sum(focus,'salaryUsd'),extras=sum(focus,'extras'),liquid=sum(focus,'liquid'),expenses=sum(focus,'expenses'),saving=liquid-expenses,invested=sum(focus,'invested'),totalOut=expenses+invested,post=liquid-totalOut;
     const savingRate=liquid?saving/liquid:null,postRate=liquid?post/liquid:null;
     const targetAmount=focus.reduce((s,x)=>s+x.regular*target,0);
