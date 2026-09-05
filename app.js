@@ -24,6 +24,7 @@
 
   const viewMeta = {
     general:['PANEL PERSONAL','Visión general'],
+    resumen:['FINANZAS','Resumen financiero'],
     gastos:['FINANZAS','Gastos diarios'],
     flujo:['FINANZAS','Flujo mensual'],
     tarjetas:['FINANZAS','Tarjetas de crédito'],
@@ -46,7 +47,9 @@
     {key:'cuotas', book:'finance', range:'Cuotas!A:T', parser:'smart'},
     {key:'pension', book:'finance', range:'Pensiones_Cesantias!A:T', parser:'smart'},
     {key:'ingresos', book:'finance', range:'Resumen_Ingresos!A:H', parser:'smart'},
+    {key:'ingresosConceptos', book:'finance', range:'Resumen_Conceptos_Ingresos!A:L', parser:'smart'},
     {key:'ahorro', book:'finance', range:'Flujo_Ahorro!A:W', parser:'smart'},
+    {key:'configFinanzas', book:'finance', range:'Config!A:C', parser:'smart'},
     {key:'servicios', book:'finance', range:'Servicios!A:O', parser:'smart'},
     {key:'referenciasPersonales', book:'finance', range:'Referencias_Personales!A:N', parser:'smart'},
     {key:'cuentas', book:'finance', range:'Cuentas!A:T', parser:'smart'},
