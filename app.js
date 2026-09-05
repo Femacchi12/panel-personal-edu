@@ -300,6 +300,7 @@
     state.filters.category=[];state.filters.subcategory=[];state.filters.currency=[];
     renderFilterOptions();
     if(doRender)render();
+    document.dispatchEvent(new CustomEvent('panel:filters-updated',{detail:{view:state.view,filters:state.filters}}));
   }
 
   function render() {
