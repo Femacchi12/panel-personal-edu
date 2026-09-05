@@ -42,10 +42,15 @@
   }
 
   function isFinancedPurchase(row) {
-    if (norm(method(row)) !== 'credito') return false;
-    if (norm(row?.['Categoría']) === 'tarjeta col') return false;
-    const description = norm(`${row?.['Descripción / Comercio'] ?? ''} ${row?.['Descripción original'] ?? ''}`);
-    if (/cuota de manejo|interes|interés/.test(description)) return false;
+    const explicit = String(row?.['Modalidad de pago'] ?? '').trim();
+    const account = norm(row?.['Cuenta / Tarjeta']);
+    const installments = num(row?.Cuotas);
+    const isCredit = explicit
+      ? norm(explicit) === 'credito'
+      : (account.includes('arq') || account.includes('nu edu') || account.includes('nu ro') || (installments > 0 && (account.includes('nu') || account.includes('arq'))));
+    if (!isCredit) return false;
+    const description = norm(`${row?.['Subcategoría'] ?? ''} ${row?.['Descripción / Comercio'] ?? ''} ${row?.['Descripción original'] ?? ''}`);
+    if (/cuota de manejo|interes|pago de tarjeta|pago tarjeta/.test(description)) return false;
     return true;
   }
 
