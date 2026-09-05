@@ -343,8 +343,7 @@
       ? method.includes('credito')
       : (account.includes('arq')||account.includes('nu edu')||account.includes('nu ro')||(installments>0&&(account.includes('nu')||account.includes('arq'))));
     if(!credit)return false;
-    if(norm(pick(row,['Categoría','Categoria']))==='tarjeta col')return false;
-    const description=norm(`${pick(row,['Descripción / Comercio','Descripción','Comercio'])} ${pick(row,['Descripción original'])}`);
+    const description=norm(`${pick(row,['Subcategoría','Subcategoria'])} ${pick(row,['Descripción / Comercio','Descripción','Comercio'])} ${pick(row,['Descripción original'])}`);
     return !/cuota de manejo|interes|pago de tarjeta|pago tarjeta/.test(description);
   }
 
