@@ -50,8 +50,8 @@
     {key:'ingresosConceptos', book:'finance', range:'Resumen_Conceptos_Ingresos!A:L', parser:'smart'},
     {key:'ahorro', book:'finance', range:'Flujo_Ahorro!A:W', parser:'smart'},
     {key:'flujoInversiones', book:'finance', range:'Flujo_Inversiones!A:M', parser:'smart'},
-    {key:'resumenFinanciero', book:'finance', range:'Resumen_Financiero!A:V', parser:'smart'},
-    {key:'creditoMensual', book:'finance', range:'Credito_Mensual!A:J', parser:'smart'},
+    {key:'resumenFinanciero', book:'finance', range:'Resumen_Financiero!A:V', parser:'smart', optional:true},
+    {key:'creditoMensual', book:'finance', range:'Credito_Mensual!A:J', parser:'smart', optional:true},
     {key:'configFinanzas', book:'finance', range:'Config!A:C', parser:'smart'},
     {key:'servicios', book:'finance', range:'Servicios!A:O', parser:'smart'},
     {key:'referenciasPersonales', book:'finance', range:'Referencias_Personales!A:N', parser:'smart'},
@@ -162,6 +162,9 @@
       const src = SOURCES[index];
       if (result.status === 'fulfilled') {
         next[src.key] = result.value;
+        state.loadedSources++;
+      } else if (src.optional) {
+        next[src.key] = [];
         state.loadedSources++;
       } else {
         state.loadErrors.push({source:src.range,error:String(result.reason?.message || result.reason)});
