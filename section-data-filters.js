@@ -26,6 +26,7 @@
 
   const VIEW_CONFIG = {
     general: { global:['year','month','category','subcategory'], local:[] },
+    resumen: { global:['year','month','category','subcategory'], local:[] },
     gastos: { global:['year','month','category','subcategory'], local:[] },
     flujo: { global:['year','month'], local:[] },
     tarjetas: { global:['year','month','category','subcategory'], local:[
