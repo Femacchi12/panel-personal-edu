@@ -32,6 +32,8 @@ const SOURCES = [
   { book: 'finance', range: 'Nomina_Colombia!A:AI' },
   { book: 'finance', range: 'Facturas_USD!A:L' },
   { book: 'finance', range: 'Flujo_Ahorro!A:W' },
+  { book: 'finance', range: 'Resumen_Financiero!A:V' },
+  { book: 'finance', range: 'Credito_Mensual!A:J' },
   { book: 'finance', range: 'Flujo_Inversiones!A:M' },
   { book: 'finance', range: 'Config!A:C' },
   { book: 'finance', range: 'Tipos_Cambio!A:F' },
