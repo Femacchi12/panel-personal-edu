@@ -12,6 +12,7 @@
     summary:'Resumen_Conceptos_Ingresos!A:L',
     detail:'Detalle_Ingresos!A:L',
     incomes:'Ingresos!A:T',
+    movements:'Movimientos!A:Z',
     investments:'Flujo_Inversiones!A:M',
     patrimonio:'Patrimonio_Inversiones!A:K',
     config:'Config!A:C'
@@ -113,6 +114,7 @@
       summary:rowsFrom(payload,RANGES.summary),
       detail:rowsFrom(payload,RANGES.detail),
       incomes:rowsFrom(payload,RANGES.incomes),
+      movements:rowsFrom(payload,RANGES.movements),
       investments:rowsFrom(payload,RANGES.investments),
       patrimonio:rowsFrom(payload,RANGES.patrimonio),
       config:rowsFrom(payload,RANGES.config)
@@ -175,6 +177,14 @@
 
   function normalized(data){
     const summaryMap=new Map((data.summary||[]).map(row=>[monthKey(row.Mes),row]).filter(x=>x[0]));
+    const flowMap=new Map((data.flow||[]).map(row=>[monthKey(row.Mes),row]).filter(x=>x[0]));
+    const expenseMap=new Map();
+    (data.movements||[]).forEach(row=>{
+      const key=monthKey(row['Mes consumo']||row['Fecha real']||row['Fecha registrada']);
+      if(!key||norm(row.Tipo)!=='gasto'||norm(row.Estado)!=='registrado')return;
+      expenseMap.set(key,(expenseMap.get(key)||0)+num(row['Monto COP']));
+    });
+
     const ratesNow=rates(data),adjust=adjustmentMaps(data,ratesNow),investments=investmentMap(data,ratesNow);
     const salaryHistory=[...summaryMap].map(([key,row])=>({key,value:num(row['Sueldo COP'])})).filter(x=>x.value>0).sort((a,b)=>a.key.localeCompare(b.key));
     const salaryReference=key=>{
@@ -184,15 +194,16 @@
     };
     const llcReference=(Number(cfg.regularIncome?.fibrazoLlcUsdBase)||1300)*ratesNow.usdCop;
     const current=new Date(),currentKey=`${current.getFullYear()}-${String(current.getMonth()+1).padStart(2,'0')}`;
+    const keys=[...new Set([...summaryMap.keys(),...flowMap.keys(),...expenseMap.keys()])].filter(Boolean).sort();
 
-    return (data.flow||[]).map(row=>{
-      const key=monthKey(row.Mes);if(!key)return null;
-      const s=summaryMap.get(key)||{};
+    return keys.map(key=>{
+      const row=flowMap.get(key)||{},s=summaryMap.get(key)||{};
       const salaryCop=num(s['Sueldo COP']),salaryUsd=num(s['Sueldo USD (equiv. COP)']);
       const total=num(s['Total consolidado'])||num(row['Ingresos totales consolidados COP'])||num(row['Ingresos reales COP']);
       const deduction=(adjust.nonLiquid.get(key)||0)+(adjust.fees.get(key)||0);
       const liquid=total>0?Math.max(0,total-deduction):0;
-      const expenses=num(row['Egresos reales COP']);
+      const flowExpense=num(row['Egresos reales COP']);
+      const expenses=(String(row['Egresos reales COP']??'').trim()!=='')?flowExpense:(expenseMap.get(key)||0);
       const saving=liquid-expenses;
       const regularComplete=salaryCop>0&&salaryUsd>0;
       const regular=regularComplete?salaryCop+salaryUsd:(salaryReference(key)+llcReference);
@@ -225,7 +236,7 @@
           ['Otros ingresos',num(s['Otros ingresos'])]
         ].filter(x=>x[1]>0)
       };
-    }).filter(Boolean).sort((a,b)=>a.key.localeCompare(b.key));
+    });
   }
 
   function viewState(rows){
