@@ -18,7 +18,7 @@ const ALLOWED_EMAILS = new Set([
 ]);
 
 const SOURCES = [
-  { book: 'finance', range: 'Movimientos!A:Z' },
+  { book: 'finance', range: 'Movimientos!A:AA' },
   { book: 'finance', range: 'Flujo_Mensual!A:J' },
   { book: 'finance', range: 'Tarjetas!A:T' },
   { book: 'finance', range: 'Cuotas!A:T' },
@@ -198,7 +198,7 @@ async function buildPayload(force = false) {
 }
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'panel-personal-edu-backend', sourceCount: SOURCES.length, revision: 'income-savings-consolidation-2026-09-04' });
+  res.json({ ok: true, service: 'panel-personal-edu-backend', sourceCount: SOURCES.length, revision: 'finance-scope-2026-09-14' });
 });
 
 app.get('/api/data', requireAuthorizedUser, async (req, res) => {
