@@ -11,7 +11,7 @@
 
   const GROUPS = Object.freeze({
     gastos: [
-      ['payment-method-filters.js'],
+      ['finance-scope-card-controller.js','payment-method-filters.js'],
       ['expense-table-advanced.js','monthly-projection-control.js','movement-type-columns.js','spend-chart-controller.js','finance-context-controller.js']
     ],
     flujo: [
@@ -19,7 +19,7 @@
       ['monthly-projection-control.js','flow-income-controller.js','finance-context-controller.js']
     ],
     tarjetas: [
-      ['card-specific-filter.js'],
+      ['card-specific-filter.js','finance-scope-card-controller.js'],
       ['card-payment-control.js','card-chart-personal-limit.js','card-payments-installments.js','finance-context-controller.js']
     ],
     deudas: [],
