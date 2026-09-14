@@ -39,14 +39,17 @@
   const isRealExpense=row=>(norm(row.Tipo)==='gasto'||!row.Tipo)&&(window.MovementStatusCore?.isActual(row.Estado)??!/proyecc|proyect|programad/.test(norm(row.Estado)));
   const selectedGlobal=key=>[...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)].map(el=>String(el.dataset.value||'').trim()).filter(Boolean);
 
+  function scopeOf(row){const explicit=norm(row['Ámbito']||row.Ambito);if(explicit.includes('fibrazo'))return'FIBRAZO';if(explicit.includes('personal'))return'Personal';const fallback=norm([row['Descripción / Comercio'],row['Descripción original'],row.Observaciones,row.Fuente].filter(Boolean).join(' '));return fallback.includes('fibrazo')?'FIBRAZO':'Personal';}
+  function activeScope(){return window.__FINANCE_SCOPE_FILTER_STATE__?.gastos||'Personal';}
   function account(row){const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);if(n.includes('efectivo'))return'Efectivo';if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';if(n.includes('arq'))return'ARQ Edu';if(n.includes('nu'))return(n.includes(' ro')||n.endsWith('ro')||holder.includes('rocio')||holder==='ro')?'Nu Ro':'Nu Edu';if(n.includes('transferencia'))return'Transferencia sin cuenta';if(n.includes('debito'))return'Débito sin cuenta';return raw||'Sin especificar';}
   function method(row){const policy=window.FinancePurchasePolicy;if(typeof policy?.method==='function')return policy.method(row);const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;const raw=norm(row['Cuenta / Tarjeta']);if(raw.includes('credito'))return'Crédito';if(raw.includes('transferencia'))return'Transferencia';if(raw.includes('debito'))return'Débito';if(raw.includes('efectivo'))return'Efectivo';const q=parseNumber(row.Cuotas);if(q>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';return'Sin especificar';}
 
   function filteredRows(rows){
     const years=selectedGlobal('year'),months=selectedGlobal('month').map(Number),cats=selectedGlobal('category'),subs=selectedGlobal('subcategory');
     const payment=window.__PAYMENT_FILTER_STATE__?.view==='gastos'?window.__PAYMENT_FILTER_STATE__:{account:[],method:[]};
+    const scope=activeScope();
     return rows.filter(row=>{
-      if(!isRealExpense(row))return false;const d=effectiveDate(row);
+      if(!isRealExpense(row))return false;if(scope!=='Todos'&&scopeOf(row)!==scope)return false;const d=effectiveDate(row);
       if(years.length&&(!d||!years.includes(String(d.getFullYear()))))return false;
       if(months.length&&(!d||!months.includes(d.getMonth()+1)))return false;
       if(cats.length&&!cats.includes(String(row['Categoría']||'')))return false;
@@ -63,18 +66,21 @@
     if(payload===lastPayload)return lastRows;
     lastPayload=payload;
     const cached=window.__PANEL_GET_CACHED_ROWS__;
-    lastRows=typeof cached==='function'?cached(payload,financeId,'Movimientos!A:Z'):parseRows(payload?.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
+    if(typeof cached==='function'){
+      const wide=cached(payload,financeId,'Movimientos!A:AA');
+      lastRows=wide.length?wide:cached(payload,financeId,'Movimientos!A:Z');
+    }else lastRows=parseRows(payload?.sources?.[`${financeId}|Movimientos!A:AA`]||payload?.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
     return lastRows;
   }
 
-  function valueFor(row,col){if(col==='Fecha real')return dateLabel(row);if(col==='Tipo de gasto')return expenseType(row);if(col==='Monto original')return formatOriginal(row);if(col==='Modalidad de pago')return method(row);return row[col]??'';}
+  function valueFor(row,col){if(col==='Fecha real')return dateLabel(row);if(col==='Tipo de gasto')return expenseType(row);if(col==='Monto original')return formatOriginal(row);if(col==='Modalidad de pago')return method(row);if(col==='Ámbito')return scopeOf(row);return row[col]??'';}
   function compare(a,b,col){if(col==='Fecha real')return dateKey(a)-dateKey(b);if(['Monto original','Monto COP','Monto ARS','Monto USD','Cuotas','N° cuota'].includes(col))return parseNumber(a[col])-parseNumber(b[col]);return String(valueFor(a,col)).localeCompare(String(valueFor(b,col)),'es',{numeric:true,sensitivity:'base'});}
-  const columns=['Fecha real','Tipo de gasto','Tipo','Categoría','Subcategoría','Descripción / Comercio','Monto original','Moneda original','Cuenta / Tarjeta','Modalidad de pago','Titular','Cuotas','N° cuota','Estado','Monto COP','Monto ARS','Monto USD'];
-  function searchable(row){const cached=rowMeta.get(row)||{};if(cached.search)return cached.search;cached.search=norm(columns.map(c=>valueFor(row,c)).join(' '));rowMeta.set(row,cached);return cached.search;}
+  const columns=['Fecha real','Ámbito','Tipo de gasto','Tipo','Categoría','Subcategoría','Descripción / Comercio','Monto original','Moneda original','Cuenta / Tarjeta','Modalidad de pago','Titular','Cuotas','N° cuota','Estado','Monto COP','Monto ARS','Monto USD'];
+  function searchable(row){const cached=rowMeta.get(row)||{};const key=`${activeScope()}|${columns.map(c=>valueFor(row,c)).join(' ')}`;if(cached.searchKey===key)return cached.search;cached.searchKey=key;cached.search=norm(key);rowMeta.set(row,cached);return cached.search;}
 
   function renderTable(host,rows){
     let data=rows.slice();if(query){const q=norm(query);data=data.filter(r=>searchable(r).includes(q));}data.sort((a,b)=>compare(a,b,sort.col)*(sort.dir==='desc'?-1:1));const visible=expanded?data:data.slice(0,15);
-    host.innerHTML=`<div class="panel-header"><div class="panel-title"><strong>Movimientos</strong><span>${data.length} de ${rows.length} gastos realizados · filtros consolidados</span></div><div class="table-toolbar"><input id="expenseAdvancedSearch" class="search-input" placeholder="Buscar en la tabla…" value="${esc(query)}"></div></div><div class="table-scroll${expanded?' expanded':''}"><table class="date-first-table expense-advanced-table"><thead><tr>${columns.map(c=>`<th data-expense-sort="${esc(c)}">${esc(c)}${sort.col===c?(sort.dir==='asc'?' ↑':' ↓'):''}</th>`).join('')}</tr></thead><tbody>${visible.map(r=>`<tr>${columns.map(c=>`<td data-date-sort="${c==='Fecha real'?dateKey(r):''}">${esc(valueFor(r,c))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${data.length>15?`<button type="button" class="show-more" id="expenseAdvancedMore">${expanded?'Ver menos':`Ver más (${data.length-15})`}</button>`:''}`;
+    host.innerHTML=`<div class="panel-header"><div class="panel-title"><strong>Movimientos</strong><span>${data.length} de ${rows.length} gastos realizados · Ámbito: ${esc(activeScope())}</span></div><div class="table-toolbar"><input id="expenseAdvancedSearch" class="search-input" placeholder="Buscar en la tabla…" value="${esc(query)}"></div></div><div class="table-scroll${expanded?' expanded':''}"><table class="date-first-table expense-advanced-table"><thead><tr>${columns.map(c=>`<th data-expense-sort="${esc(c)}">${esc(c)}${sort.col===c?(sort.dir==='asc'?' ↑':' ↓'):''}</th>`).join('')}</tr></thead><tbody>${visible.map(r=>`<tr>${columns.map(c=>`<td data-date-sort="${c==='Fecha real'?dateKey(r):''}">${esc(valueFor(r,c))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${data.length>15?`<button type="button" class="show-more" id="expenseAdvancedMore">${expanded?'Ver menos':`Ver más (${data.length-15})`}</button>`:''}`;
     host.querySelectorAll('[data-expense-sort]').forEach(th=>th.addEventListener('click',()=>{const col=th.dataset.expenseSort;if(sort.col===col)sort.dir=sort.dir==='asc'?'desc':'asc';else sort={col,dir:'asc'};renderTable(host,rows);}));
     host.querySelector('#expenseAdvancedSearch')?.addEventListener('input',event=>{query=event.target.value;expanded=false;renderTable(host,rows);requestAnimationFrame(()=>{const input=host.querySelector('#expenseAdvancedSearch');if(input){input.focus();input.setSelectionRange(query.length,query.length);}});});
     host.querySelector('#expenseAdvancedMore')?.addEventListener('click',()=>{expanded=!expanded;renderTable(host,rows);});
@@ -89,17 +95,10 @@
     renderTable(host,filteredRows(data));
   }
 
-  function schedule(force=false){
-    scheduledForce=scheduledForce||force;
-    if(frame)return;
-    frame=requestAnimationFrame(()=>{
-      frame=0;
-      const useForce=scheduledForce;
-      scheduledForce=false;
-      run(useForce).catch(error=>console.error('Tabla avanzada de gastos:',error));
-    });
-  }
+  function schedule(force=false){scheduledForce=scheduledForce||force;if(frame)return;frame=requestAnimationFrame(()=>{frame=0;const useForce=scheduledForce;scheduledForce=false;run(useForce).catch(error=>console.error('Tabla avanzada de gastos:',error));});}
   document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='gastos')schedule(false);});
   document.addEventListener('panel:payment-filters-changed',event=>{if(event.detail?.view==='gastos')schedule(false);});
+  document.addEventListener('panel:expense-scope-changed',event=>{if(event.detail?.view==='gastos')schedule(false);});
+  document.addEventListener('panel:filters-updated',()=>{if(activeView()==='gastos')schedule(false);});
   queueMicrotask(()=>schedule(false));
 })();
