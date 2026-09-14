@@ -29,11 +29,16 @@ Los datos personales no se guardan dentro del repositorio.
 
 ### Regla financiera crítica
 
-`Finanzas Edu → Movimientos!A:Z` es la **única fuente oficial de gastos reales**.
+`Finanzas Edu → Movimientos!A:AA` es la **única fuente oficial de gastos reales**. La columna `Ámbito` distingue `Personal` y `FIBRAZO`.
 
 - Resúmenes, extractos, tarjetas y proyecciones pueden servir para conciliación.
 - Ninguna de esas fuentes debe crear automáticamente un gasto real.
 - Si un resumen difiere de `Movimientos`, se corrige o concilia el resumen; `Movimientos` conserva autoridad.
+- Los movimientos `Ámbito = FIBRAZO` sí afectan el uso y el pago real de la tarjeta personal cuando fueron pagados con ella.
+- Los movimientos `Ámbito = FIBRAZO` no forman parte del gasto personal del hogar.
+- En **Gastos diarios**, el ámbito predeterminado es `Personal`; el usuario puede alternar `Personal | FIBRAZO | Todos`.
+- En **Tarjetas de crédito**, el ámbito predeterminado es `Todos`, porque el saldo bancario debe incluir consumos personales y de FIBRAZO. El panel muestra el desglose por ámbito y el monto por recuperar de FIBRAZO.
+- Un reintegro de la empresa debe registrarse como `Reembolso FIBRAZO`, no como ingreso personal.
 
 ## Backend
 
@@ -43,7 +48,7 @@ Responsabilidades:
 
 - validar sesión Firebase;
 - permitir solo cuentas autorizadas;
-- leer los Sheets en modo `readonly`;
+- leer los Sheets;
 - entregar un payload central al frontend;
 - mantener una caché corta para reducir lecturas repetidas;
 - permitir actualización manual forzada con `GET /api/data?refresh=1`;
@@ -66,6 +71,7 @@ Componentes principales:
 - `data-backend-adapter.js`: adaptador único hacia el payload central;
 - `regular-income-core.js`: definición central del ingreso regular;
 - `finance-purchase-policy.js`: definición central de compra financiada;
+- `finance-scope-card-controller.js`: ámbito Personal/FIBRAZO, desglose de crédito, tabla de compras con tarjeta y selección directa de tarjeta;
 - `section-module-loader.js`: carga los controladores especializados solo la primera vez que se visita cada sección;
 - controladores especializados para General, Gastos, Flujo, Tarjetas, Inversiones, Salud, Documentos y Viajes.
 
@@ -89,7 +95,7 @@ El cargador:
 ## Privacidad
 
 - Los Sheets permanecen privados.
-- El backend usa permisos de lectura.
+- El backend autentica al usuario antes de exponer los datos del panel.
 - El navegador no necesita almacenar los datos personales en el repositorio.
 - Las cuentas autorizadas se validan tanto en Firebase como en el backend.
 
