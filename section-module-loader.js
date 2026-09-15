@@ -21,9 +21,10 @@
     ],
     tarjetas: [
       ['card-specific-filter.js','finance-scope-card-controller.js'],
-      ['card-payment-control.js','card-chart-personal-limit.js','card-payments-installments.js','finance-context-controller.js'],
+      ['card-payment-control.js','card-chart-personal-limit.js','card-payments-installments.js'],
       ['card-section-order-controller.js'],
-      ['card-detail-accordion-controller.js']
+      ['card-detail-accordion-controller.js'],
+      ['card-finance-context-hide.js']
     ],
     deudas: [],
     inversiones: [
