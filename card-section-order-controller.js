@@ -2,7 +2,7 @@
   'use strict';
 
   let frame = 0;
-  let timers = [];
+  let settleTimer = 0;
 
   const activeView = () => document.querySelector('.nav-item.active')?.dataset.view || '';
 
@@ -16,13 +16,41 @@
     return panel && panel.parentElement === root ? panel : null;
   }
 
-  function refreshCharts() {
+  function removeUsageBar(root, linePanel) {
+    // El gráfico de línea se crea originalmente usando el panel de barras como
+    // ancla. Esperamos a que exista antes de retirar definitivamente la barra.
+    if (!linePanel) return false;
+    const panel = panelFor(root, '#cardsChart');
+    if (!panel) return false;
+    const canvas = panel.querySelector('#cardsChart');
+    const chart = canvas && window.Chart ? Chart.getChart(canvas) : null;
+    try { chart?.destroy(); } catch (_) {}
+    panel.remove();
+    return true;
+  }
+
+  function applyStableOrder(root, desired) {
+    let changed = false;
+    let cursor = root.firstElementChild;
+
+    desired.forEach(node => {
+      if (!node || node.parentElement !== root) return;
+      if (node === cursor) {
+        cursor = cursor.nextElementSibling;
+        return;
+      }
+      root.insertBefore(node, cursor);
+      changed = true;
+    });
+
+    return changed;
+  }
+
+  function refreshTrendChart() {
     requestAnimationFrame(() => {
-      ['cardsChart','cardTrendChart'].forEach(id => {
-        const canvas = document.getElementById(id);
-        const chart = canvas && window.Chart ? Chart.getChart(canvas) : null;
-        try { chart?.resize(); chart?.update('none'); } catch (_) {}
-      });
+      const canvas = document.getElementById('cardTrendChart');
+      const chart = canvas && window.Chart ? Chart.getChart(canvas) : null;
+      try { chart?.resize(); chart?.update('none'); } catch (_) {}
     });
   }
 
@@ -32,47 +60,49 @@
     if (!root) return;
 
     const sectionHead = direct(root, '.section-head');
+    const linePanel = direct(root, '[data-card-line-panel]');
     const financeContext = direct(root, '.finance-context');
     const kpis = direct(root, '.kpi-grid');
     const creditGrid = direct(root, '.credit-grid');
-    const linePanel = direct(root, '[data-card-line-panel]');
-    const cardsChartPanel = panelFor(root, '#cardsChart');
     const expensePanel = direct(root, '#cardExpenseScopePanel');
 
-    // La visualización "Uso por tarjeta" forma parte del orden solicitado.
-    if (cardsChartPanel) cardsChartPanel.hidden = false;
+    const removedBar = removeUsageBar(root, linePanel);
 
+    // Los filtros viven fuera de viewRoot. Dentro de la sección, el orden queda:
+    // título -> gráfico de línea -> resumen -> tarjetas -> gastos con tarjeta -> resto.
     const priority = [
       sectionHead,
+      linePanel,
       financeContext,
       kpis,
       creditGrid,
-      linePanel,
-      cardsChartPanel,
       expensePanel
     ].filter(Boolean);
 
     const prioritySet = new Set(priority);
     const rest = [...root.children].filter(node => !prioritySet.has(node));
     const desired = [...priority, ...rest];
+    const changed = applyStableOrder(root, desired);
 
-    desired.forEach(node => root.appendChild(node));
-    root.dataset.cardSectionOrder = 'filters-cards-line-usage-expenses-rest';
-    refreshCharts();
+    root.dataset.cardSectionOrder = 'filters-line-summary-cards-expenses-rest';
+    if (changed || removedBar) refreshTrendChart();
   }
 
   function schedule() {
     if (activeView() !== 'tarjetas') return;
-    if (frame) cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(() => {
-      frame = 0;
-      reorder();
-    });
+    if (!frame) {
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        reorder();
+      });
+    }
 
-    timers.forEach(clearTimeout);
-    timers = [60, 180, 420].map(delay => setTimeout(() => {
+    // Una única pasada tardía absorbe módulos que terminan de montar después.
+    // Se reemplaza en cada evento para evitar temporizadores acumulados.
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => {
       if (activeView() === 'tarjetas') reorder();
-    }, delay));
+    }, 140);
   }
 
   document.addEventListener('panel:view-root-changed', event => {
