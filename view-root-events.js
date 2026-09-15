@@ -27,6 +27,19 @@
     if (view === 'salud' && root.querySelector('.health-enhancement')) return;
     if ((view === 'citas' || view === 'tratamientos') && root.querySelector('.health-derived-notice')) return;
 
+    // Tarjetas monta varios módulos como hijos directos: gráfico histórico,
+    // contexto, tabla de consumos y tablas de pagos/cuotas. Esas mutaciones
+    // son renders derivados, no un cambio real de vista. Reemitir el evento
+    // aquí provocaba el ciclo que hacía que las tablas se reconstruyeran
+    // constantemente. Cuando el render base de app.js reemplaza viewRoot,
+    // estos marcadores desaparecen y el evento vuelve a emitirse normalmente.
+    if (view === 'tarjetas' && (
+      root.querySelector('[data-card-line-panel]') ||
+      root.querySelector('#cardExpenseScopePanel') ||
+      root.querySelector('#cardPaymentsInstallments') ||
+      root.querySelector('.finance-context')
+    )) return;
+
     document.dispatchEvent(new CustomEvent('panel:view-root-changed', {
       detail: { view, root }
     }));
