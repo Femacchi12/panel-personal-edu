@@ -32,15 +32,14 @@
     try{return await cardsPromise;}finally{cardsPromise=null;}
   }
 
+  // El filtro de tarjeta es puramente de presentación. Antes forzaba
+  // __PANEL_RELOAD_DATA__ y reconstruía toda la vista cada vez que se
+  // seleccionaba una tarjeta. Los módulos de Tarjetas ya escuchan
+  // panel:card-filter-changed, así que no hace falta volver a leer ni
+  // volver a renderizar el dashboard completo.
   function refreshCardsView(){
     if(activeView()!=='tarjetas')return;
-    const reload=window.__PANEL_RELOAD_DATA__;
-    if(typeof reload==='function'){
-      Promise.resolve(reload(false)).catch(error=>console.error('No fue posible aplicar el filtro de tarjeta:',error));
-      return;
-    }
-    const button=document.getElementById('refreshBtn');
-    if(button&&!button.disabled)button.click();
+    scheduleUI();
   }
 
   function renderOptions(root){
