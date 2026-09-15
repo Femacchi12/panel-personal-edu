@@ -16,6 +16,16 @@
     return panel && panel.parentElement === root ? panel : null;
   }
 
+  function refreshCharts() {
+    requestAnimationFrame(() => {
+      ['cardsChart','cardTrendChart'].forEach(id => {
+        const canvas = document.getElementById(id);
+        const chart = canvas && window.Chart ? Chart.getChart(canvas) : null;
+        try { chart?.resize(); chart?.update('none'); } catch (_) {}
+      });
+    });
+  }
+
   function reorder() {
     if (activeView() !== 'tarjetas') return;
     const root = document.getElementById('viewRoot');
@@ -47,8 +57,8 @@
     const desired = [...priority, ...rest];
 
     desired.forEach(node => root.appendChild(node));
-
     root.dataset.cardSectionOrder = 'filters-cards-line-usage-expenses-rest';
+    refreshCharts();
   }
 
   function schedule() {
