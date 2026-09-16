@@ -20,65 +20,119 @@
     }) || null;
   }
 
-  function moveAfter(anchor, node) {
-    if (!anchor || !node || anchor === node || anchor.parentElement !== node.parentElement) return anchor;
-    if (node.previousElementSibling !== anchor) anchor.insertAdjacentElement('afterend', node);
-    return node;
+  function exactPanel(root, title) {
+    return [...root.querySelectorAll('.panel')].find(node => norm(node.querySelector('.panel-title strong')?.textContent) === norm(title)) || null;
   }
 
-  function orderNodes(root, nodes) {
-    let anchor = null;
-    nodes.filter(Boolean).forEach(node => {
-      if (!anchor) {
-        anchor = node;
-        return;
-      }
-      anchor = moveAfter(anchor, node);
+  function ensureDetachedHost(root, id) {
+    let host = direct(root, `#${id}`);
+    if (!host) {
+      host = document.createElement('section');
+      host.id = id;
+      host.className = 'monthly-detached-host';
+      root.appendChild(host);
+    }
+    return host;
+  }
+
+  function detachMonthlyPanels(root) {
+    const programmedHost = ensureDetachedHost(root, 'monthlyProgrammedHost');
+    const comparisonHost = ensureDetachedHost(root, 'monthlyComparisonHost');
+    const programmed = root.querySelector('.monthly-programmed-panel');
+    const comparison = root.querySelector('.monthly-comparison-panel');
+
+    if (programmed && programmed.parentElement !== programmedHost) programmedHost.replaceChildren(programmed);
+    if (comparison && comparison.parentElement !== comparisonHost) comparisonHost.replaceChildren(comparison);
+
+    return { programmedHost, comparisonHost };
+  }
+
+  function applyPriorityOrder(root, priorityNodes) {
+    const priority = [];
+    const seen = new Set();
+    priorityNodes.forEach(node => {
+      if (!node || node.parentElement !== root || seen.has(node)) return;
+      seen.add(node);
+      priority.push(node);
     });
+
+    const current = [...root.children];
+    const rest = current.filter(node => !seen.has(node));
+    const desired = [...priority, ...rest];
+    if (desired.length !== current.length || desired.every((node, index) => node === current[index])) return;
+
+    desired.forEach(node => root.appendChild(node));
   }
 
-  function primaryFlowKpis(root) {
+  function baseMovementsPanel(root) {
     return [...root.children].find(node => {
-      if (!node.matches?.('.kpi-grid') || node.id === 'flowFinancingKpis') return false;
-      const labels = [...node.querySelectorAll('.kpi-label')].map(x => norm(x.textContent));
-      return labels.includes('egresos') && labels.includes('ahorro') && labels.some(x => x.includes('ingresos'));
+      if (!node.matches?.('.panel') || node.id === 'expenseAdvancedPanel') return false;
+      return norm(node.querySelector('.panel-title strong')?.textContent) === 'movimientos';
     }) || null;
   }
 
   function stabilizeGastos(root) {
+    const { programmedHost, comparisonHost } = detachMonthlyPanels(root);
     const head = direct(root, '.section-head');
     const monthly = direct(root, '#monthlyProjectionSuite');
     const context = direct(root, '.finance-context');
-    const chart = document.getElementById('spendChart')?.closest('.panel') || null;
+    const evolution = document.getElementById('spendChart')?.closest('.panel') || null;
+    const baseMovements = baseMovementsPanel(root);
     const advanced = direct(root, '#expenseAdvancedPanel');
 
-    // La tabla avanzada de movimientos siempre debe estar visible. El panel base oculto
-    // de app.js es solo un ancla y no debe trasladar su estado visual al panel avanzado.
+    // El panel base de Movimientos es un ancla técnica oculta. Debe quedar inmediatamente
+    // antes de la tabla avanzada para que expense-table-advanced.js nunca oculte la tabla visible.
+    if (baseMovements) {
+      baseMovements.hidden = true;
+      baseMovements.style.display = 'none';
+    }
     if (advanced) {
       advanced.hidden = false;
       if (advanced.style.display === 'none') advanced.style.removeProperty('display');
     }
 
-    // Solo fijamos los bloques superiores. Movimientos y sus paneles auxiliares conservan
-    // exactamente la posición nativa que les asigna expense-table-advanced.js.
-    orderNodes(root, [head, monthly, context, chart]);
+    // Orden visual solicitado:
+    // Detalle de gastos → Cierre estimado → Lectura del gasto → Evolución → Movimientos
+    // → Proyecciones → Comparación. Cualquier bloque no especificado queda después.
+    applyPriorityOrder(root, [
+      head,
+      monthly,
+      context,
+      evolution,
+      baseMovements,
+      advanced,
+      programmedHost,
+      comparisonHost
+    ]);
   }
 
   function stabilizeFlujo(root) {
+    const { programmedHost, comparisonHost } = detachMonthlyPanels(root);
     const head = direct(root, '.section-head');
-    const monthly = direct(root, '#monthlyProjectionSuite');
     const context = direct(root, '.finance-context');
-    const primary = primaryFlowKpis(root);
-    const scope = direct(root, '#flowScopeSummary');
-    const financing = direct(root, '#flowFinancingKpis');
     const evolution = document.getElementById('flowChart')?.closest('.panel') || null;
     const matrix = direct(root, '#flowMatrixV3');
-    const detail = direct(root, '#flowMatrixDetailV3');
+    const matrixDetail = direct(root, '#flowMatrixDetailV3');
     const savings = titledPanel(root, 'Flujo y ahorro mensual');
-    const programmed = direct(root, '#monthlyProgrammedHost');
-    const comparison = direct(root, '#monthlyComparisonHost');
 
-    orderNodes(root, [head, monthly, context, primary, scope, financing, evolution, matrix, detail, savings, programmed, comparison]);
+    // Orden visual solicitado:
+    // Flujo mensual → Lectura del flujo → Evolución → Matriz → Flujo y ahorro
+    // → Proyecciones → Comparación. Todo bloque no especificado queda al final.
+    applyPriorityOrder(root, [
+      head,
+      context,
+      evolution,
+      matrix,
+      savings,
+      programmedHost,
+      comparisonHost
+    ]);
+
+    // El detalle de la matriz no forma parte del orden principal: permanece entre los bloques
+    // no especificados y solo se muestra cuando el usuario abre un detalle.
+    if (matrixDetail && !matrixDetail.hidden && matrix && matrix.parentElement === root) {
+      matrix.insertAdjacentElement('afterend', matrixDetail);
+    }
   }
 
   function stabilize() {
@@ -96,7 +150,7 @@
     observer?.disconnect();
     observedRoot = root;
     observer = new MutationObserver(() => schedule());
-    observer.observe(root, { childList: true });
+    observer.observe(root, { childList: true, subtree: false });
   }
 
   function schedule() {
@@ -107,6 +161,16 @@
     });
   }
 
-  ['panel:view-root-changed','panel:section-modules-ready','panel:filters-updated','panel:payment-filters-changed','panel:expense-scope-changed','panel:backend-data-loaded','panel:monthly-projection-change','panel:flow-income-controller-applied'].forEach(name => document.addEventListener(name, schedule));
+  [
+    'panel:view-root-changed',
+    'panel:section-modules-ready',
+    'panel:filters-updated',
+    'panel:payment-filters-changed',
+    'panel:expense-scope-changed',
+    'panel:backend-data-loaded',
+    'panel:monthly-projection-change',
+    'panel:flow-income-controller-applied'
+  ].forEach(name => document.addEventListener(name, schedule));
+
   queueMicrotask(schedule);
 })();
