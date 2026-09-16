@@ -14,16 +14,18 @@
   function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const headers=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(row=>row?.some(v=>String(v??'').trim()!=='')).map(row=>Object.fromEntries(headers.map((name,index)=>[name||`Col ${index+1}`,row?.[index]??''])));}
   function rowsFromPayload(payload,range){const cached=window.__PANEL_GET_CACHED_ROWS__;return typeof cached==='function'?cached(payload,financeId,range):parseRows(payload?.sources?.[`${financeId}|${range}`]||[]);}
   function parseNumber(value){if(typeof value==='number')return Number.isFinite(value)?value:0;let s=String(value??'').trim().replace(/[^\d,.\-]/g,'');if(!s)return 0;const c=s.lastIndexOf(','),d=s.lastIndexOf('.');if(c>=0&&d>=0){if(c>d)s=s.replace(/\./g,'').replace(',','.');else s=s.replace(/,/g,'');}else if(c>=0){const p=s.split(',');s=p.length===2&&p[1].length<=2?p[0].replace(/\./g,'')+'.'+p[1]:s.replace(/,/g,'');}else if(d>=0){const p=s.split('.');if(p.length>2||(p.length===2&&p[1].length===3))s=s.replace(/\./g,'');}const n=Number(s);return Number.isFinite(n)?n:0;}
+  function scopeOf(row){const explicit=norm(row['Ámbito']||row.Ambito);if(explicit.includes('fibrazo'))return'FIBRAZO';if(explicit.includes('personal'))return'Personal';const fallback=norm([row['Descripción / Comercio'],row['Descripción original'],row.Observaciones,row.Fuente].filter(Boolean).join(' '));return fallback.includes('fibrazo')?'FIBRAZO':'Personal';}
 
   function categoryReconciliation(payload,policy){
     if(!financeId||!payload?.sources)return[];
-    const movementRows=rowsFromPayload(payload,'Movimientos!A:Z');
+    const movementRows=rowsFromPayload(payload,'Movimientos!A:AA');
     const summaryRows=rowsFromPayload(payload,'Flujo_Mensual!A:J');
     const now=new Date(),current=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
     const start=String(policy?.reconciliationStart||'2026-01');
     const canonical=new Map(),summary=new Map(),labels=new Map();
     movementRows.forEach(row=>{
       if(typeof policy?.isExpenseRow==='function'&&!policy.isExpenseRow(row))return;
+      if(scopeOf(row)!=='Personal')return;
       const month=policy?.monthKey?.(row['Mes consumo']||row['Fecha real']||row['Fecha registrada'])||'';
       if(!month||month<start||month>current)return;
       const label=String(row['Categoría']||row.Categoria||'Sin categoría').trim()||'Sin categoría';
@@ -79,7 +81,7 @@
     const summary=[monthlyCount?`${monthlyCount} total${monthlyCount===1?'':'es'} mensual${monthlyCount===1?'':'es'}`:'',categoryCount?`${categoryCount} categoría${categoryCount===1?'':'s'}`:''].filter(Boolean).join(' y ');
     const latestLabel=latest.kind==='category'?`${monthLabel(latest.month)} · ${latest.category}`:monthLabel(latest.month);
     host.dataset.hasIssues='1';
-    host.innerHTML=`<div class="expense-reconciliation-head"><div><strong>Conciliación de gastos pendiente</strong><span>Es un control de consistencia: compara Movimientos (fuente oficial) contra resúmenes derivados. Detecté diferencias en ${summary}. Última: ${latestLabel} · diferencia del resumen ${money(latest.differenceCop)}.</span><span class="expense-reconciliation-note">No es un gasto nuevo y no se agregó nada automáticamente. Si hay diferencia, se conserva Movimientos y revisamos el resumen.</span></div><button type="button" class="expense-reconciliation-toggle">Ver detalle</button></div><div class="expense-reconciliation-detail" hidden>${issues.slice().sort((a,b)=>b.month.localeCompare(a.month)||String(a.category||'').localeCompare(String(b.category||''),'es')).slice(0,20).map(item=>`<div class="expense-reconciliation-row"><strong>${item.kind==='category'?'Categoría':'Total mensual'} · ${monthLabel(item.month)}${item.kind==='category'?` · ${item.category}`:''}</strong><span><b>Oficial · Movimientos:</b> ${money(item.canonicalCop)}</span><span><b>Resumen · ${item.source}:</b> ${money(item.summaryCop)}</span><span><b>Resumen − oficial:</b> ${money(item.differenceCop)}</span></div>`).join('')}</div>`;
+    host.innerHTML=`<div class="expense-reconciliation-head"><div><strong>Conciliación de gastos pendiente</strong><span>Es un control de consistencia: compara Movimientos personales (fuente oficial) contra resúmenes personales derivados. Detecté diferencias en ${summary}. Última: ${latestLabel} · diferencia del resumen ${money(latest.differenceCop)}.</span><span class="expense-reconciliation-note">Los gastos Ámbito = FIBRAZO se excluyen de esta conciliación personal. No es un gasto nuevo y no se agrega nada automáticamente.</span></div><button type="button" class="expense-reconciliation-toggle">Ver detalle</button></div><div class="expense-reconciliation-detail" hidden>${issues.slice().sort((a,b)=>b.month.localeCompare(a.month)||String(a.category||'').localeCompare(String(b.category||''),'es')).slice(0,20).map(item=>`<div class="expense-reconciliation-row"><strong>${item.kind==='category'?'Categoría':'Total mensual'} · ${monthLabel(item.month)}${item.kind==='category'?` · ${item.category}`:''}</strong><span><b>Oficial · Movimientos:</b> ${money(item.canonicalCop)}</span><span><b>Resumen · ${item.source}:</b> ${money(item.summaryCop)}</span><span><b>Resumen − oficial:</b> ${money(item.differenceCop)}</span></div>`).join('')}</div>`;
     const button=host.querySelector('.expense-reconciliation-toggle'),detail=host.querySelector('.expense-reconciliation-detail');
     button?.addEventListener('click',()=>{const open=detail?.hidden!==false;if(detail)detail.hidden=!open;if(button)button.textContent=open?'Ocultar detalle':'Ver detalle';});
     applyVisibility();
