@@ -139,7 +139,7 @@
     observer?.disconnect();
     observedRoot = root;
     observer = new MutationObserver(() => schedule());
-    observer.observe(root, { childList: true, subtree: false });
+    observer.observe(root, { childList: true, subtree: true });
   }
 
   function schedule() {
