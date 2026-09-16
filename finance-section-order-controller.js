@@ -20,6 +20,14 @@
     }) || null;
   }
 
+  function primaryFlowKpis(root) {
+    return [...root.children].find(node => {
+      if (!node.matches?.('.kpi-grid') || node.id === 'flowFinancingKpis') return false;
+      const labels = [...node.querySelectorAll('.kpi-label')].map(x => norm(x.textContent));
+      return labels.includes('egresos') && labels.includes('ahorro') && labels.some(x => x.includes('ingresos'));
+    }) || null;
+  }
+
   function ensureDetachedHost(root, id) {
     let host = direct(root, `#${id}`);
     if (!host) {
@@ -85,10 +93,6 @@
       if (advanced.style.display === 'none') advanced.style.removeProperty('display');
     }
 
-    // FILTROS y FILTROS DE LA SECCIÓN viven fuera de viewRoot y ya aparecen primero.
-    // Dentro de la sección el orden solicitado es:
-    // Detalle de gastos → Cierre estimado → Lectura del gasto → Evolución → Movimientos
-    // → Proyecciones → Comparación. Todo lo no mencionado se conserva al final.
     applyPriorityOrder(root, [
       head,
       monthly,
@@ -106,18 +110,23 @@
     const head = direct(root, '.section-head');
     const monthly = direct(root, '#monthlyProjectionSuite');
     const context = direct(root, '.finance-context');
+    const primary = primaryFlowKpis(root);
+    const scope = direct(root, '#flowScopeSummary');
+    const financing = direct(root, '#flowFinancingKpis');
     const evolution = document.getElementById('flowChart')?.closest('.panel') || null;
     const matrix = direct(root, '#flowMatrixV3');
     const savings = titledPanel(root, 'Flujo y ahorro mensual');
 
-    // FILTROS y FILTROS DE LA SECCIÓN viven fuera de viewRoot y ya aparecen primero.
-    // Dentro de la sección el orden solicitado es:
-    // Flujo mensual → Cierre estimado → Lectura del flujo → Evolución → Matriz
-    // → Flujo y ahorro → Proyecciones → Comparación. Todo bloque no mencionado queda después.
+    // Flujo mensual → Cierre estimado → Lectura del flujo → tarjetas de la lectura
+    // (Ingresos/Egresos/Ahorro/Tasa → Personal/FIBRAZO/Total → Crédito)
+    // → Evolución → Matriz → Flujo y ahorro → Proyecciones → Comparación.
     applyPriorityOrder(root, [
       head,
       monthly,
       context,
+      primary,
+      scope,
+      financing,
       evolution,
       matrix,
       savings,
