@@ -16,13 +16,15 @@
       ['finance-scope-context-controller.js'],
       ['expense-table-polish.js'],
       ['expense-current-month-close-controller.js'],
-      ['expense-interactions-controller.js']
+      ['expense-interactions-controller.js'],
+      ['finance-section-order-controller.js']
     ],
     flujo: [
       ['finance-scope-bar-controller.js','payment-method-filters.js','flow-matrix-v3.js'],
       ['monthly-projection-control.js','flow-income-controller.js','finance-context-controller.js'],
       ['flow-matrix-polish.js'],
-      ['flow-scope-controller.js']
+      ['flow-scope-controller.js'],
+      ['finance-section-order-controller.js']
     ],
     tarjetas: [
       ['card-specific-filter.js','finance-scope-card-controller.js'],
