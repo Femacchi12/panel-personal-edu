@@ -25,7 +25,8 @@
       ['flow-matrix-polish.js'],
       ['flow-scope-controller.js'],
       ['finance-section-order-controller.js'],
-      ['flow-scope-consistency-controller.js']
+      ['flow-scope-consistency-controller.js'],
+      ['flow-summary-unified-controller.js']
     ],
     tarjetas: [
       ['card-specific-filter.js','finance-scope-card-controller.js'],
