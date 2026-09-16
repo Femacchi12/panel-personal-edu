@@ -50,6 +50,14 @@
     const monthly = direct(root, '#monthlyProjectionSuite');
     const context = direct(root, '.finance-context');
     const chart = document.getElementById('spendChart')?.closest('.panel') || null;
+    const advanced = direct(root, '#expenseAdvancedPanel');
+
+    // La tabla avanzada de movimientos siempre debe estar visible. El panel base oculto
+    // de app.js es solo un ancla y no debe trasladar su estado visual al panel avanzado.
+    if (advanced) {
+      advanced.hidden = false;
+      if (advanced.style.display === 'none') advanced.style.removeProperty('display');
+    }
 
     // Solo fijamos los bloques superiores. Movimientos y sus paneles auxiliares conservan
     // exactamente la posición nativa que les asigna expense-table-advanced.js.
