@@ -79,14 +79,27 @@
 
   function hideDuplicateBlocks(root) {
     const primary = primaryGrid(root);
-    if (primary) primary.hidden = true;
+    if (primary) {
+      primary.hidden = true;
+      primary.style.setProperty('display', 'none', 'important');
+      primary.setAttribute('aria-hidden', 'true');
+      primary.dataset.flowLegacyKpis = 'hidden';
+    }
     const scope = root.querySelector(':scope > #flowScopeSummary');
-    if (scope) scope.hidden = true;
+    if (scope) {
+      scope.hidden = true;
+      scope.style.setProperty('display', 'none', 'important');
+      scope.setAttribute('aria-hidden', 'true');
+    }
     const financing = root.querySelector(':scope > #flowFinancingKpis');
-    if (financing) financing.hidden = true;
+    if (financing) {
+      financing.hidden = true;
+      financing.style.setProperty('display', 'none', 'important');
+      financing.setAttribute('aria-hidden', 'true');
+    }
 
     const originalSwitch = root.querySelector('#monthlyProjectionSuite .monthly-switch');
-    if (originalSwitch) originalSwitch.style.display = 'none';
+    if (originalSwitch) originalSwitch.style.setProperty('display', 'none', 'important');
   }
 
   function readPrimary(root) {
@@ -116,9 +129,9 @@
     const audit = window.__PANEL_FLOW_SCOPE_AUDIT__;
     if (!host || !audit?.key) return;
 
+    const primary = readPrimary(root);
     hideDuplicateBlocks(root);
 
-    const primary = readPrimary(root);
     const currency = activeCurrency();
     const on = projectionOn();
     const scope = audit.scope || 'Personal';
@@ -132,6 +145,7 @@
     const savingsRate = isPersonal && income ? savings / income : NaN;
     const target = income * 0.30;
     const gap = isPersonal ? savings - target : NaN;
+    const gapRate = isPersonal && income ? gap / income : NaN;
     const label = monthLabel(audit.key);
 
     const previousState = host.querySelector('.finance-context-state')?.textContent?.trim() || (audit.key === (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; })() ? 'En curso' : 'Cerrado');
@@ -157,7 +171,7 @@
         ${item('Ingresos promedio', money(income, currency), `${primary.incomeMeta}${on ? ' · base del cierre proyectado' : ' · base del gasto real'}`, 'positive')}
         ${item('Egresos', money(expense, currency), on ? `Real + proyección pendiente + faltante recurrente · ${scope}` : `Solo gasto realizado · ${scope}`)}
         ${item(on ? 'Ahorro sobre gasto proyectado' : 'Ahorro sobre gasto real', isPersonal ? money(savings, currency) : '—', isPersonal ? `${percent(savingsRate)} del ingreso regular` : 'Disponible únicamente en ámbito Personal', isPersonal ? toneFor(savings, true) : '')}
-        ${item('Brecha vs meta 30%', isPersonal ? money(gap, currency) : '—', isPersonal ? `Meta ${money(target, currency)} · ${on ? 'sobre cierre proyectado' : 'sobre gasto real'}` : 'La meta de ahorro aplica únicamente al ámbito Personal', isPersonal ? toneFor(gap, true) : '')}
+        ${item('Brecha vs meta 30%', isPersonal ? money(gap, currency) : '—', isPersonal ? `${percent(gapRate)} del ingreso regular · Meta ${money(target, currency)} · ${on ? 'sobre cierre proyectado' : 'sobre gasto real'}` : 'La meta de ahorro aplica únicamente al ámbito Personal', isPersonal ? toneFor(gap, true) : '')}
       </div>`;
 
     host.querySelector('#flowUnifiedProjectionToggle')?.addEventListener('change', event => setProjection(event.target.checked));
