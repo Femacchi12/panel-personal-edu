@@ -50,12 +50,14 @@
     const monthly = direct(root, '#monthlyProjectionSuite');
     const context = direct(root, '.finance-context');
     const chart = document.getElementById('spendChart')?.closest('.panel') || null;
+    const baseMovements = titledPanel(root, 'Movimientos', 'expenseAdvancedPanel');
     const advanced = direct(root, '#expenseAdvancedPanel');
     const programmed = direct(root, '#monthlyProgrammedHost');
     const comparison = direct(root, '#monthlyComparisonHost');
 
-    // Orden histórico aprobado: encabezado → Cierre estimado → Lectura del gasto → Evolución → detalle.
-    orderNodes(root, [head, monthly, context, chart, advanced, programmed, comparison]);
+    // Mantener el panel base oculto inmediatamente antes de la tabla avanzada es importante:
+    // expense-table-advanced lo usa como ancla y no debe confundir la tabla visible con el panel base.
+    orderNodes(root, [head, monthly, context, chart, baseMovements, advanced, programmed, comparison]);
   }
 
   function stabilizeFlujo(root) {
@@ -72,7 +74,6 @@
     const programmed = direct(root, '#monthlyProgrammedHost');
     const comparison = direct(root, '#monthlyComparisonHost');
 
-    // Conserva la secuencia original y ubica los bloques nuevos sin desplazar los existentes.
     orderNodes(root, [head, monthly, context, primary, scope, financing, evolution, matrix, detail, savings, programmed, comparison]);
   }
 
