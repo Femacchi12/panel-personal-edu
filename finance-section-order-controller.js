@@ -104,6 +104,7 @@
   function stabilizeFlujo(root) {
     const { programmedHost, comparisonHost } = detachMonthlyPanels(root);
     const head = direct(root, '.section-head');
+    const monthly = direct(root, '#monthlyProjectionSuite');
     const context = direct(root, '.finance-context');
     const evolution = document.getElementById('flowChart')?.closest('.panel') || null;
     const matrix = direct(root, '#flowMatrixV3');
@@ -111,10 +112,11 @@
 
     // FILTROS y FILTROS DE LA SECCIÓN viven fuera de viewRoot y ya aparecen primero.
     // Dentro de la sección el orden solicitado es:
-    // Flujo mensual → Lectura del flujo → Evolución → Matriz → Flujo y ahorro
-    // → Proyecciones → Comparación. Todo bloque no mencionado queda después.
+    // Flujo mensual → Cierre estimado → Lectura del flujo → Evolución → Matriz
+    // → Flujo y ahorro → Proyecciones → Comparación. Todo bloque no mencionado queda después.
     applyPriorityOrder(root, [
       head,
+      monthly,
       context,
       evolution,
       matrix,
