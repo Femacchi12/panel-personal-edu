@@ -50,14 +50,10 @@
     const monthly = direct(root, '#monthlyProjectionSuite');
     const context = direct(root, '.finance-context');
     const chart = document.getElementById('spendChart')?.closest('.panel') || null;
-    const baseMovements = titledPanel(root, 'Movimientos', 'expenseAdvancedPanel');
-    const advanced = direct(root, '#expenseAdvancedPanel');
-    const programmed = direct(root, '#monthlyProgrammedHost');
-    const comparison = direct(root, '#monthlyComparisonHost');
 
-    // Mantener el panel base oculto inmediatamente antes de la tabla avanzada es importante:
-    // expense-table-advanced lo usa como ancla y no debe confundir la tabla visible con el panel base.
-    orderNodes(root, [head, monthly, context, chart, baseMovements, advanced, programmed, comparison]);
+    // Solo fijamos los bloques superiores. Movimientos y sus paneles auxiliares conservan
+    // exactamente la posición nativa que les asigna expense-table-advanced.js.
+    orderNodes(root, [head, monthly, context, chart]);
   }
 
   function stabilizeFlujo(root) {
