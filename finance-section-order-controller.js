@@ -20,10 +20,6 @@
     }) || null;
   }
 
-  function exactPanel(root, title) {
-    return [...root.querySelectorAll('.panel')].find(node => norm(node.querySelector('.panel-title strong')?.textContent) === norm(title)) || null;
-  }
-
   function ensureDetachedHost(root, id) {
     let host = direct(root, `#${id}`);
     if (!host) {
@@ -80,8 +76,6 @@
     const baseMovements = baseMovementsPanel(root);
     const advanced = direct(root, '#expenseAdvancedPanel');
 
-    // El panel base de Movimientos es un ancla técnica oculta. Debe quedar inmediatamente
-    // antes de la tabla avanzada para que expense-table-advanced.js nunca oculte la tabla visible.
     if (baseMovements) {
       baseMovements.hidden = true;
       baseMovements.style.display = 'none';
@@ -91,9 +85,10 @@
       if (advanced.style.display === 'none') advanced.style.removeProperty('display');
     }
 
-    // Orden visual solicitado:
+    // FILTROS y FILTROS DE LA SECCIÓN viven fuera de viewRoot y ya aparecen primero.
+    // Dentro de la sección el orden solicitado es:
     // Detalle de gastos → Cierre estimado → Lectura del gasto → Evolución → Movimientos
-    // → Proyecciones → Comparación. Cualquier bloque no especificado queda después.
+    // → Proyecciones → Comparación. Todo lo no mencionado se conserva al final.
     applyPriorityOrder(root, [
       head,
       monthly,
@@ -112,12 +107,12 @@
     const context = direct(root, '.finance-context');
     const evolution = document.getElementById('flowChart')?.closest('.panel') || null;
     const matrix = direct(root, '#flowMatrixV3');
-    const matrixDetail = direct(root, '#flowMatrixDetailV3');
     const savings = titledPanel(root, 'Flujo y ahorro mensual');
 
-    // Orden visual solicitado:
+    // FILTROS y FILTROS DE LA SECCIÓN viven fuera de viewRoot y ya aparecen primero.
+    // Dentro de la sección el orden solicitado es:
     // Flujo mensual → Lectura del flujo → Evolución → Matriz → Flujo y ahorro
-    // → Proyecciones → Comparación. Todo bloque no especificado queda al final.
+    // → Proyecciones → Comparación. Todo bloque no mencionado queda después.
     applyPriorityOrder(root, [
       head,
       context,
@@ -127,12 +122,6 @@
       programmedHost,
       comparisonHost
     ]);
-
-    // El detalle de la matriz no forma parte del orden principal: permanece entre los bloques
-    // no especificados y solo se muestra cuando el usuario abre un detalle.
-    if (matrixDetail && !matrixDetail.hidden && matrix && matrix.parentElement === root) {
-      matrix.insertAdjacentElement('afterend', matrixDetail);
-    }
   }
 
   function stabilize() {
