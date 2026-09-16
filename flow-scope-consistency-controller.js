@@ -33,7 +33,6 @@
   }
 
   const money = value => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(Number(value) || 0);
-  const pct = value => `${new Intl.NumberFormat('es-CO', { minimumFractionDigits:1, maximumFractionDigits:1 }).format((Number(value) || 0) * 100)}%`;
 
   function monthKey(value) {
     if (typeof window.RegularIncomeCore?.monthKey === 'function') return window.RegularIncomeCore.monthKey(value);
@@ -338,8 +337,10 @@
     if (observedRoot === root) return;
     observer?.disconnect();
     observedRoot = root;
+    // Solo observamos inserciones/reordenamientos de bloques principales. Las actualizaciones
+    // internas se atienden por eventos y no deben provocar un ciclo de render continuo.
     observer = new MutationObserver(() => schedule());
-    observer.observe(root, { childList:true, subtree:true });
+    observer.observe(root, { childList:true, subtree:false });
   }
 
   function schedule() {
