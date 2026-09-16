@@ -15,7 +15,8 @@
       ['expense-table-advanced.js','monthly-projection-control.js','movement-type-columns.js','spend-chart-controller.js','finance-context-controller.js'],
       ['finance-scope-context-controller.js'],
       ['expense-table-polish.js'],
-      ['expense-current-month-close-controller.js']
+      ['expense-current-month-close-controller.js'],
+      ['expense-interactions-controller.js']
     ],
     flujo: [
       ['finance-scope-bar-controller.js','payment-method-filters.js','flow-matrix-v3.js'],
