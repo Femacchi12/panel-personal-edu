@@ -39,7 +39,10 @@
   const isRealExpense=row=>(norm(row.Tipo)==='gasto'||!row.Tipo)&&(window.MovementStatusCore?.isActual(row.Estado)??!/proyecc|proyect|programad/.test(norm(row.Estado)));
   const selectedGlobal=key=>[...document.querySelectorAll(`.multi-filter[data-filter="${key}"] .multi-filter-option.selected`)].map(el=>String(el.dataset.value||'').trim()).filter(Boolean);
 
-  function scopeOf(row){const explicit=norm(row['Ámbito']||row.Ambito);if(explicit.includes('fibrazo'))return'FIBRAZO';if(explicit.includes('personal'))return'Personal';const fallback=norm([row['Descripción / Comercio'],row['Descripción original'],row.Observaciones,row.Fuente].filter(Boolean).join(' '));return fallback.includes('fibrazo')?'FIBRAZO':'Personal';}
+  function scopeOf(row) {
+    const explicit = norm(row['Ámbito'] || row.Ambito);
+    return explicit.includes('fibrazo') ? 'FIBRAZO' : 'Personal';
+  }
   function activeScope(){return window.__FINANCE_SCOPE_FILTER_STATE__?.gastos||'Personal';}
   function account(row){const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);if(n.includes('efectivo'))return'Efectivo';if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';if(n.includes('arq'))return'ARQ Edu';if(n.includes('nu'))return(n.includes(' ro')||n.endsWith('ro')||holder.includes('rocio')||holder==='ro')?'Nu Ro':'Nu Edu';if(n.includes('transferencia'))return'Transferencia sin cuenta';if(n.includes('debito'))return'Débito sin cuenta';return raw||'Sin especificar';}
   function method(row){const policy=window.FinancePurchasePolicy;if(typeof policy?.method==='function')return policy.method(row);const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;const raw=norm(row['Cuenta / Tarjeta']);if(raw.includes('credito'))return'Crédito';if(raw.includes('transferencia'))return'Transferencia';if(raw.includes('debito'))return'Débito';if(raw.includes('efectivo'))return'Efectivo';const q=parseNumber(row.Cuotas);if(q>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';return'Sin especificar';}
