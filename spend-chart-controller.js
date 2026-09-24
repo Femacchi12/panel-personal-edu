@@ -85,10 +85,7 @@
 
   function scopeOf(row) {
     const explicit = norm(row['Ámbito'] || row.Ambito);
-    if (explicit.includes('fibrazo')) return 'FIBRAZO';
-    if (explicit.includes('personal')) return 'Personal';
-    const fallback = norm([row['Descripción / Comercio'],row['Descripción original'],row.Observaciones,row.Fuente].filter(Boolean).join(' '));
-    return fallback.includes('fibrazo') ? 'FIBRAZO' : 'Personal';
+    return explicit.includes('fibrazo') ? 'FIBRAZO' : 'Personal';
   }
 
   function activeScope() {
