@@ -15,7 +15,10 @@
   function parseDate(value){const s=String(value??'').trim();let m=s.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?/);if(m)return new Date(+m[1],+m[2]-1,+(m[3]||1));m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);return null;}
   function monthKey(value){const s=norm(value);let m=s.match(/^(20\d{2})-(\d{1,2})/);if(m)return`${m[1]}-${String(+m[2]).padStart(2,'0')}`;const map={ene:1,enero:1,feb:2,febrero:2,mar:3,marzo:3,abr:4,abril:4,may:5,mayo:5,jun:6,junio:6,jul:7,julio:7,ago:8,agosto:8,sep:9,sept:9,septiembre:9,oct:10,octubre:10,nov:11,noviembre:11,dic:12,diciembre:12};m=s.match(/^(ene|enero|feb|febrero|mar|marzo|abr|abril|may|mayo|jun|junio|jul|julio|ago|agosto|sep|sept|septiembre|oct|octubre|nov|noviembre|dic|diciembre)[\s-]+(20\d{2})/);return m?`${m[2]}-${String(map[m[1]]).padStart(2,'0')}`:'';}
   function rowMonth(row){return monthKey(row['Mes consumo']||row['Mes pago']||row['Fecha real']||row['Fecha registrada']);}
-  function scopeOf(row){const value=norm(row['Ámbito']||row.Ambito);if(value.includes('fibrazo'))return'FIBRAZO';if(value.includes('personal'))return'Personal';return norm([row['Descripción / Comercio'],row['Descripción original'],row.Observaciones,row.Fuente].filter(Boolean).join(' ')).includes('fibrazo')?'FIBRAZO':'Personal';}
+  function scopeOf(row) {
+    const explicit = norm(row['Ámbito'] || row.Ambito);
+    return explicit.includes('fibrazo') ? 'FIBRAZO' : 'Personal';
+  }
   function isExpense(row){const status=norm(row.Estado),type=norm(row.Tipo||row.Naturaleza||'gasto');return !/proyecc|proyect|programad|pendiente/.test(status)&&(!type||type.includes('gasto')||type.includes('egreso')||type.includes('compra'));}
   function method(row){if(typeof window.FinancePurchasePolicy?.method==='function')return window.FinancePurchasePolicy.method(row);return String(row['Modalidad de pago']||'').trim();}
   function account(row){const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);if(n.includes('efectivo'))return'Efectivo';if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';if(n.includes('arq'))return'ARQ Edu';if(n.includes('nu'))return n.includes(' ro')||holder.includes('rocio')?'Nu Ro':'Nu Edu';return raw||'Sin especificar';}
