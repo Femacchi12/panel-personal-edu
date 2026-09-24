@@ -32,7 +32,10 @@
   function currentMonthKey(){const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
   function previousMonth(key){const [y,m]=String(key).split('-').map(Number);const d=new Date(y,m-2,1);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
   function monthLabel(key){const [y,m]=String(key).split('-').map(Number);return Number.isFinite(y)&&Number.isFinite(m)?`${MONTHS[m-1]} ${y}`:key;}
-  function scopeOf(row){const value=norm(row['Ámbito']||row.Ambito);if(value.includes('fibrazo'))return'FIBRAZO';if(value.includes('personal'))return'Personal';return norm([row['Descripción / Comercio'],row['Descripción original'],row.Observaciones,row.Fuente].filter(Boolean).join(' ')).includes('fibrazo')?'FIBRAZO':'Personal';}
+  function scopeOf(row) {
+    const explicit = norm(row['Ámbito'] || row.Ambito);
+    return explicit.includes('fibrazo') ? 'FIBRAZO' : 'Personal';
+  }
   function status(row){return norm(row.Estado);}
   function isActual(row){return norm(row.Tipo)==='gasto'&&(window.MovementStatusCore?.isActual(row.Estado)??!/proyecc|proyect|programad/.test(status(row)));}
   function isProjection(row){return norm(row.Tipo)==='gasto'&&(window.MovementStatusCore?.isProjection(row.Estado)??/proyecc|proyect|programad/.test(status(row)));}
