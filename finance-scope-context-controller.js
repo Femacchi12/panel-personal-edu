@@ -32,6 +32,7 @@
   async function source(){
     const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return{payload:null,rows:[]};
     const payload=await getData(false),cached=window.__PANEL_GET_CACHED_ROWS__;
+    if(window.FinanceScopeCore?.movementRows) return{payload,rows:window.FinanceScopeCore.movementRows(payload,financeId)};
     if(typeof cached==='function'){
       const wide=cached(payload,financeId,'Movimientos!A:AA');
       return{payload,rows:wide.length?wide:cached(payload,financeId,'Movimientos!A:Z')};
