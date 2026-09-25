@@ -90,6 +90,13 @@
     return num(row?.['Monto COP']);
   }
 
+  function movementRows(payload,financeId){
+    const cached=window.__PANEL_GET_CACHED_ROWS__;
+    if(typeof cached!=='function'||!payload||!financeId) return [];
+    const wide=cached(payload,financeId,'Movimientos!A:AA');
+    return wide.length?wide:cached(payload,financeId,'Movimientos!A:Z');
+  }
+
   function closeStats(rows,{scope='Personal',currency='COP',key=currentMonthKey()}={}){
     const source=Array.isArray(rows)?rows:[];
     const scoped=scope==='Todos'?source:source.filter(row=>scopeOf(row)===scope);
@@ -127,6 +134,7 @@
     isFixed,
     isSuper,
     amount,
+    movementRows,
     closeStats
   });
 
