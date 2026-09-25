@@ -10,7 +10,8 @@
 
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
-  const money=v=>new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(Number(v)||0);
+  const activeCurrency=()=>document.querySelector('.currency-btn.active')?.dataset.currency||'COP';
+  const money=(v,currency=activeCurrency())=>new Intl.NumberFormat('es-CO',{style:'currency',currency,minimumFractionDigits:currency==='USD'?2:0,maximumFractionDigits:currency==='USD'?2:0}).format(Number(v)||0);
 
   function num(value){
     if(typeof value==='number')return Number.isFinite(value)?value:0;
@@ -59,23 +60,28 @@
   }
 
   function activeScope(){
-    return window.__FINANCE_SCOPE_FILTER_STATE__?.gastos || 'Personal';
+    return window.FinanceScopeCore?.getScope?.('gastos') || window.__FINANCE_SCOPE_FILTER_STATE__?.gastos || 'Personal';
   }
 
-  function stats(source,scope=activeScope()){
+  function stats(source,scope=activeScope(),currency=activeCurrency()){
+    if(window.FinanceScopeCore?.closeStats){
+      return window.FinanceScopeCore.closeStats(source,{scope,currency});
+    }
     const key=currentMonthKey(),prev=previousMonth(key);
     const scoped=scope==='Todos'?source:source.filter(row=>scopeOf(row)===scope);
     const actual=scoped.filter(row=>rowMonth(row)===key&&isActual(row));
     const previous=scoped.filter(row=>rowMonth(row)===prev&&isActual(row));
     const projections=scoped.filter(row=>rowMonth(row)===key&&isProjection(row));
+    const amount=row=>currency==='USD'?num(row['Monto USD']):currency==='ARS'?num(row['Monto ARS']):num(row['Monto COP']);
+    const sumCurrency=rows=>rows.reduce((s,row)=>s+amount(row),0);
     const groups={super:{current:0,previous:0,projection:0},fixed:{current:0,previous:0,projection:0}};
-    actual.forEach(row=>{const value=num(row['Monto COP']);if(isSuper(row))groups.super.current+=value;if(isFixed(row))groups.fixed.current+=value;});
-    previous.forEach(row=>{const value=num(row['Monto COP']);if(isSuper(row))groups.super.previous+=value;if(isFixed(row))groups.fixed.previous+=value;});
-    projections.forEach(row=>{const value=num(row['Monto COP']);if(isSuper(row))groups.super.projection+=value;if(isFixed(row))groups.fixed.projection+=value;});
+    actual.forEach(row=>{const value=amount(row);if(isSuper(row))groups.super.current+=value;if(isFixed(row))groups.fixed.current+=value;});
+    previous.forEach(row=>{const value=amount(row);if(isSuper(row))groups.super.previous+=value;if(isFixed(row))groups.fixed.previous+=value;});
+    projections.forEach(row=>{const value=amount(row);if(isSuper(row))groups.super.projection+=value;if(isFixed(row))groups.fixed.projection+=value;});
     const supermarketGap=Math.max(0,groups.super.previous-groups.super.current-groups.super.projection);
     const fixedGap=Math.max(0,groups.fixed.previous-groups.fixed.current-groups.fixed.projection);
-    const realTotal=sum(actual),projectionTotal=sum(projections),recurringGap=supermarketGap+fixedGap;
-    return{key,scope,realTotal,projectionTotal,recurringGap,projectedTotal:realTotal+projectionTotal+recurringGap,projections};
+    const realTotal=sumCurrency(actual),projectionTotal=sumCurrency(projections),recurringGap=supermarketGap+fixedGap;
+    return{key,scope,currency,realTotal,projectionTotal,recurringGap,projectedTotal:realTotal+projectionTotal+recurringGap,projections};
   }
 
   function setText(node,value){if(node&&node.textContent!==value)node.textContent=value;}
@@ -102,16 +108,16 @@
       const projectionOn=Boolean(panel.querySelector('#monthlyProjectionToggle')?.checked);
       const considered=projectionOn?data.projectedTotal:data.realTotal;
       setText(items[0].querySelector('span'),'Real hasta hoy');
-      setText(items[0].querySelector('strong'),money(data.realTotal));
+      setText(items[0].querySelector('strong'),money(data.realTotal,data.currency));
       setText(items[0].querySelector('small'),`Movimientos realizados · ${data.scope}`);
       setText(items[1].querySelector('span'),'Proyección pendiente');
-      setText(items[1].querySelector('strong'),money(data.projectionTotal));
+      setText(items[1].querySelector('strong'),money(data.projectionTotal,data.currency));
       setText(items[1].querySelector('small'),`${data.projections.length} gasto${data.projections.length===1?'':'s'} · ${data.scope}`);
       setText(items[2].querySelector('span'),'Faltante recurrente');
-      setText(items[2].querySelector('strong'),money(data.recurringGap));
+      setText(items[2].querySelector('strong'),money(data.recurringGap,data.currency));
       setText(items[2].querySelector('small'),`Supermercado + fijos/servicios · ${data.scope}`);
       setText(items[3].querySelector('span'),'Total considerado');
-      setText(items[3].querySelector('strong'),money(considered));
+      setText(items[3].querySelector('strong'),money(considered,data.currency));
       setText(items[3].querySelector('small'),projectionOn?`Real + cierre estimado · ${data.scope}`:`Solo gasto real · ${data.scope}`);
       items[3].classList.toggle('projected',projectionOn);
       items[3].classList.toggle('actual',!projectionOn);
@@ -126,7 +132,7 @@
     const source=await rows();
     if(runVersion!==version||activeView()!=='gastos'||!root.isConnected)return;
     stabilize(root);
-    patchClose(root,stats(source,activeScope()));
+    patchClose(root,stats(source,activeScope(),activeCurrency()));
     stabilize(root);
     observe(root);
   }
