@@ -340,6 +340,7 @@
     style.id='cardLimitControlStyles';
     style.textContent=`
       .card-limit-reference{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:auto;font-size:11px;color:#8fa0b6}
+      .card-limit-reference[hidden]{display:none!important}
       .card-limit-reference>span{margin-right:2px}
       .card-limit-reference button{border:1px solid #2b3a4d;background:#111b28;color:#aeb9c8;border-radius:999px;padding:5px 9px;font:inherit;cursor:pointer}
       .card-limit-reference button.active{border-color:#26d07c;color:#e8fff3;background:#143225}
