@@ -82,7 +82,7 @@
   function filterState() {
     const payment = window.__PAYMENT_FILTER_STATE__?.view === 'flujo' ? window.__PAYMENT_FILTER_STATE__ : { account:[], method:[] };
     return {
-      scope: window.__FINANCE_SCOPE_FILTER_STATE__?.flujo || 'Personal',
+      scope: window.FinanceScopeCore?.getScope?.('flujo') || window.__FINANCE_SCOPE_FILTER_STATE__?.flujo || 'Personal',
       years: selectedGlobal('year'),
       months: selectedGlobal('month').map(Number).filter(n => n >= 1 && n <= 12),
       categories: selectedGlobal('category'),
@@ -314,7 +314,9 @@
     const blocks = ensureBlocks(root);
     hideLegacy(root);
     const closeState = { scope:state.scope, years:[], months:[], categories:[], subcategories:[], accounts:[], methods:[] };
-    const closeStats = monthStats(data.rows,currentMonthKey(),closeState,currency);
+    const closeStats = window.FinanceScopeCore?.closeStats
+      ? window.FinanceScopeCore.closeStats(data.rows,{scope:state.scope,currency,key:currentMonthKey()})
+      : monthStats(data.rows,currentMonthKey(),closeState,currency);
     const filtered = filteredStats(data.rows,data.model,state,currency);
     renderClose(blocks,closeStats,state,on,currency);
     renderSummary(blocks,filtered,state,on,currency);
