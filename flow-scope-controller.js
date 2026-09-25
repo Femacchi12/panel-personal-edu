@@ -135,11 +135,16 @@
 
   function ensureScopeFilter() {
     if (activeView() !== 'flujo') return;
-    window.__PANEL_ENSURE_FINANCE_SCOPE_BAR__?.('flujo');
+    const bar=document.getElementById('sectionFilterBar');
+    const ready=bar?.dataset.view==='flujo' && bar.querySelector('[data-section-scope-filter]');
+    if (!ready) window.__PANEL_ENSURE_FINANCE_SCOPE_BAR__?.('flujo');
   }
 
   function updateScopeButtons() {
-    window.__PANEL_ENSURE_FINANCE_SCOPE_BAR__?.('flujo');
+    const bar=document.getElementById('sectionFilterBar');
+    if (bar?.dataset.view!=='flujo' || !bar.querySelector('[data-section-scope-filter]')) {
+      window.__PANEL_ENSURE_FINANCE_SCOPE_BAR__?.('flujo');
+    }
   }
 
   async function getData() {
