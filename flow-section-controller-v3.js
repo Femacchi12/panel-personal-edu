@@ -239,14 +239,14 @@
     card.querySelector('span').textContent = label; card.querySelector('strong').textContent = value; card.querySelector('small').textContent = meta;
     card.classList.toggle('monthly-considered',index===3); card.classList.toggle('projected',Boolean(projected)); card.classList.toggle('actual',index===3&&!projected);
   }
-  function renderClose(blocks, stats, on, currency) {
+  function renderClose(blocks, stats, state, on, currency) {
     const panel = blocks.suite.querySelector('.monthly-close-panel');
     panel.querySelector('[data-close-title]').textContent = `Cierre estimado · ${monthLabel(stats.key)}`;
-    panel.querySelector('[data-close-subtitle]').textContent = 'Mes actual fijo · gasto Personal. No cambia con los filtros de la sección.';
-    setCloseCard(panel,0,'Real hasta hoy',money(stats.realTotal,currency),'Solo movimientos realizados · Personal');
-    setCloseCard(panel,1,'Proyección pendiente',money(stats.projectionTotal,currency),`${stats.projections.length} gasto${stats.projections.length===1?'':'s'} · Personal`);
-    setCloseCard(panel,2,'Faltante recurrente',money(stats.recurringGap,currency),'Supermercado + fijos/servicios · Personal');
-    setCloseCard(panel,3,'Total considerado',money(on?stats.projectedTotal:stats.realTotal,currency),on?'Real + cierre estimado · Personal':'Solo gasto real · Personal',on);
+    panel.querySelector('[data-close-subtitle]').textContent = `Mes actual fijo · responde al ámbito ${state.scope}; los demás filtros no modifican este bloque.`;
+    setCloseCard(panel,0,'Real hasta hoy',money(stats.realTotal,currency),`Movimientos realizados · ${state.scope}`);
+    setCloseCard(panel,1,'Proyección pendiente',money(stats.projectionTotal,currency),`${stats.projections.length} gasto${stats.projections.length===1?'':'s'} · ${state.scope}`);
+    setCloseCard(panel,2,'Faltante recurrente',money(stats.recurringGap,currency),`Supermercado + fijos/servicios · ${state.scope}`);
+    setCloseCard(panel,3,'Total considerado',money(on?stats.projectedTotal:stats.realTotal,currency),on?`Real + cierre estimado · ${state.scope}`:`Solo gasto real · ${state.scope}`,on);
   }
 
   function setFlowCard(context,index,label,value,meta,tone='') {
@@ -310,10 +310,10 @@
     const sig = signature(state,currency,on,data);
     const blocks = ensureBlocks(root);
     hideLegacy(root);
-    const closeState = { scope:'Personal', years:[], months:[], categories:[], subcategories:[], accounts:[], methods:[] };
+    const closeState = { scope:state.scope, years:[], months:[], categories:[], subcategories:[], accounts:[], methods:[] };
     const closeStats = monthStats(data.rows,currentMonthKey(),closeState,currency);
     const filtered = filteredStats(data.rows,data.model,state,currency);
-    renderClose(blocks,closeStats,on,currency);
+    renderClose(blocks,closeStats,state,on,currency);
     renderSummary(blocks,filtered,state,on,currency);
     if (sig !== lastSignature) renderPlanning(blocks,data.rows,state,currency);
     lastSignature = sig;
