@@ -79,7 +79,13 @@
   function previousMonthKey(d){const p=new Date(d.getFullYear(),d.getMonth()-1,1);return monthKey(p);}
 
   function isExpense(r){return norm(r.Tipo).includes('gasto')||norm(r.Naturaleza).includes('gasto');}
-  function scopeOf(r){const explicit=norm(r['Ámbito']||r.Ambito);return explicit.includes('fibrazo')?'FIBRAZO':'Personal';}
+  function scopeOf(r) {
+    const explicit = norm(r['Ámbito'] || r.Ambito);
+    if (explicit.includes('fibrazo')) return 'FIBRAZO';
+    if (explicit.includes('personal')) return 'Personal';
+    const marker = norm(r.Observaciones);
+    return marker.includes('ambito explicito: fibrazo') ? 'FIBRAZO' : 'Personal';
+  }
   function isActual(r){const s=norm(r.Estado);return s.includes('registrad')||s.includes('realiz')||s.includes('conciliad');}
   function amountCOP(r){return num(r['Monto COP']||r['Monto original']);}
 
