@@ -442,6 +442,7 @@
   }
 
   document.addEventListener('panel:finance-scope-bar-ready', event => { if (event.detail?.view === 'flujo') schedule(); });
+  document.addEventListener('panel:expense-scope-changed', event => { if (event.detail?.view === 'flujo' && activeView() === 'flujo') schedule(); });
   document.addEventListener('panel:view-root-changed', event => {
     if (event.detail?.view === 'flujo') schedule();
   });
