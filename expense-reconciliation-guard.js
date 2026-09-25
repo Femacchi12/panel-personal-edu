@@ -14,7 +14,7 @@
   function parseRows(values){if(!Array.isArray(values)||values.length<2)return[];const headers=(values[0]||[]).map(v=>String(v??'').trim());return values.slice(1).filter(row=>row?.some(v=>String(v??'').trim()!=='')).map(row=>Object.fromEntries(headers.map((name,index)=>[name||`Col ${index+1}`,row?.[index]??''])));}
   function rowsFromPayload(payload,range){const cached=window.__PANEL_GET_CACHED_ROWS__;return typeof cached==='function'?cached(payload,financeId,range):parseRows(payload?.sources?.[`${financeId}|${range}`]||[]);}
   function parseNumber(value){if(typeof value==='number')return Number.isFinite(value)?value:0;let s=String(value??'').trim().replace(/[^\d,.\-]/g,'');if(!s)return 0;const c=s.lastIndexOf(','),d=s.lastIndexOf('.');if(c>=0&&d>=0){if(c>d)s=s.replace(/\./g,'').replace(',','.');else s=s.replace(/,/g,'');}else if(c>=0){const p=s.split(',');s=p.length===2&&p[1].length<=2?p[0].replace(/\./g,'')+'.'+p[1]:s.replace(/,/g,'');}else if(d>=0){const p=s.split('.');if(p.length>2||(p.length===2&&p[1].length===3))s=s.replace(/\./g,'');}const n=Number(s);return Number.isFinite(n)?n:0;}
-  function scopeOf(row){const explicit=norm(row['Ámbito']||row.Ambito);if(explicit.includes('fibrazo'))return'FIBRAZO';if(explicit.includes('personal'))return'Personal';const fallback=norm([row['Descripción / Comercio'],row['Descripción original'],row.Observaciones,row.Fuente].filter(Boolean).join(' '));return fallback.includes('fibrazo')?'FIBRAZO':'Personal';}
+  function scopeOf(row){const explicit=norm(row['Ámbito']||row.Ambito);return explicit.includes('fibrazo')?'FIBRAZO':'Personal';}
 
   function categoryReconciliation(payload,policy){
     if(!financeId||!payload?.sources)return[];
