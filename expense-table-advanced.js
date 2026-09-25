@@ -73,7 +73,8 @@
     if(payload===lastPayload)return lastRows;
     lastPayload=payload;
     const cached=window.__PANEL_GET_CACHED_ROWS__;
-    if(typeof cached==='function'){
+    if(window.FinanceScopeCore?.movementRows) lastRows=window.FinanceScopeCore.movementRows(payload,financeId);
+    else if(typeof cached==='function'){
       const wide=cached(payload,financeId,'Movimientos!A:AA');
       lastRows=wide.length?wide:cached(payload,financeId,'Movimientos!A:Z');
     }else lastRows=parseRows(payload?.sources?.[`${financeId}|Movimientos!A:AA`]||payload?.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
