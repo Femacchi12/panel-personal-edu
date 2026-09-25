@@ -47,7 +47,16 @@
     const years=new Set(selectedFilter('year')),months=new Set(selectedFilter('month')),categories=new Set(selectedFilter('category')),subcategories=new Set(selectedFilter('subcategory'));
     const scope=window.FinanceScopeCore?.getScope?.('tarjetas')||window.__FINANCE_SCOPE_FILTER_STATE__?.tarjetas||'Todos';
     const scopeOf=row=>window.FinanceScopeCore?.scopeOf?window.FinanceScopeCore.scopeOf(row):(norm(row['Ámbito']||row.Ambito).includes('fibrazo')||norm(row.Observaciones).includes('ambito explicito: fibrazo')?'FIBRAZO':'Personal');
-    return rows.filter(row=>{if(!isExpense(row)||(window.MovementStatusCore&&!window.MovementStatusCore.isActual(row.Estado)))return false;if(scope!=='Todos'&&scopeOf(row)!==scope)return false;const d=rowDate(row);if(years.size&&(!d||!years.has(String(d.getFullYear()))))return false;if(months.size&&(!d||!months.has(String(d.getMonth()+1))))return false;if(categories.size&&!categories.has(pick(row,['Categoría','Categoria'])))return false;if(subcategories.size&&!subcategories.has(pick(row,['Subcategoría','Subcategoria'])))return false;return Boolean(d);});
+    const isCredit=row=>{
+      if(typeof window.FinancePurchasePolicy?.isFinancedPurchase==='function')return window.FinancePurchasePolicy.isFinancedPurchase(row);
+      const explicit=norm(row['Modalidad de pago']),account=norm(row['Cuenta / Tarjeta']),installments=parseNumber(row.Cuotas);
+      if(explicit&&explicit!=='credito')return false;
+      const credit=explicit==='credito'||account.includes('arq')||account.includes('nu edu')||account.includes('nu ro')||(installments>0&&(account.includes('nu')||account.includes('arq')));
+      if(!credit)return false;
+      const description=norm([row['Subcategoría'],row['Descripción / Comercio'],row['Descripción original']].filter(Boolean).join(' '));
+      return !/cuota de manejo|interes|pago de tarjeta|pago tarjeta/.test(description);
+    };
+    return rows.filter(row=>{if(!isExpense(row)||(window.MovementStatusCore&&!window.MovementStatusCore.isActual(row.Estado))||!isCredit(row))return false;if(scope!=='Todos'&&scopeOf(row)!==scope)return false;const d=rowDate(row);if(years.size&&(!d||!years.has(String(d.getFullYear()))))return false;if(months.size&&(!d||!months.has(String(d.getMonth()+1))))return false;if(categories.size&&!categories.has(pick(row,['Categoría','Categoria'])))return false;if(subcategories.size&&!subcategories.has(pick(row,['Subcategoría','Subcategoria'])))return false;return Boolean(d);});
   }
 
   function nickname(owner){const n=norm(owner);if(n.includes('eduardo')||n.includes('fernando'))return'edu';if(n.includes('rocio'))return'rocio';return n.split(/\s+/)[0]||'';}
@@ -65,8 +74,8 @@
     const daily=selectedFilter('month').length===1;
     const dated=movements.map(row=>({row,date:rowDate(row)})).filter(x=>x.date).sort((a,b)=>a.date-b.date);
     const labels=[...new Set(dated.map(x=>periodLabel(x.date,daily)))];
-    const activeId=String(window.__PANEL_ACTIVE_CARD_ID__||'').trim();if(activeId)cards=cards.filter(card=>String(card['ID tarjeta']||'').trim()===activeId);
     const counts=issuerCounts(cards);
+    const activeId=String(window.__PANEL_ACTIVE_CARD_ID__||'').trim();if(activeId)cards=cards.filter(card=>String(card['ID tarjeta']||'').trim()===activeId);
     const datasets=cards.map((card,index)=>{
       let data;
       if(metric==='limit'){
