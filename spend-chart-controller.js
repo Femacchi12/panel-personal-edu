@@ -84,6 +84,7 @@
   }
 
   function scopeOf(row) {
+    if (window.FinanceScopeCore?.scopeOf) return window.FinanceScopeCore.scopeOf(row);
     const explicit = norm(row['Ámbito'] || row.Ambito);
     if (explicit.includes('fibrazo')) return 'FIBRAZO';
     if (explicit.includes('personal')) return 'Personal';
@@ -92,7 +93,7 @@
   }
 
   function activeScope() {
-    return window.__FINANCE_SCOPE_FILTER_STATE__?.gastos || 'Personal';
+    return window.FinanceScopeCore?.getScope?.('gastos') || window.__FINANCE_SCOPE_FILTER_STATE__?.gastos || 'Personal';
   }
 
   function account(row) {
