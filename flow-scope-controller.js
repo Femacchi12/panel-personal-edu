@@ -153,9 +153,9 @@
     if (typeof getter !== 'function') return null;
     const payload = await getter(false);
     const cached = window.__PANEL_GET_CACHED_ROWS__;
-    const rows = typeof cached === 'function'
-      ? (cached(payload, financeId, 'Movimientos!A:AA').length ? cached(payload, financeId, 'Movimientos!A:AA') : cached(payload, financeId, 'Movimientos!A:Z'))
-      : [];
+    const rows = window.FinanceScopeCore?.movementRows
+      ? window.FinanceScopeCore.movementRows(payload,financeId)
+      : (typeof cached === 'function' ? (cached(payload, financeId, 'Movimientos!A:AA').length ? cached(payload, financeId, 'Movimientos!A:AA') : cached(payload, financeId, 'Movimientos!A:Z')) : []);
     const model = typeof window.RegularIncomeCore?.build === 'function' ? window.RegularIncomeCore.build(payload, financeId) : null;
     return { payload, rows, model };
   }
