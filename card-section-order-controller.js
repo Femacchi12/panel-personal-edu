@@ -9,6 +9,7 @@
   let frame = 0;
   let settleTimer = 0;
   let dataFrame = 0;
+  let pendingDataSync = false;
   let sourcePayload = null;
   let sourceCache = null;
   let sourcePromise = null;
@@ -369,8 +370,8 @@
     paymentsObserver?.disconnect();
     observedPaymentsHost = host || null;
     if (!host) return;
-    paymentsObserver = new MutationObserver(() => schedule());
-    paymentsObserver.observe(host, { childList:true, subtree:true });
+    paymentsObserver = new MutationObserver(() => schedule(false));
+    paymentsObserver.observe(host, { childList:true, subtree:false });
   }
 
   function applyStableOrder(root, desired) {
@@ -385,7 +386,7 @@
     return changed;
   }
 
-  function reorder() {
+  function reorder(syncData = true) {
     if (activeView() !== 'tarjetas') return;
     const root = document.getElementById('viewRoot');
     if (!root) return;
@@ -415,7 +416,7 @@
       const chart = canvas && window.Chart ? Chart.getChart(canvas) : null;
       try { chart?.resize(); chart?.update('none'); } catch (_) {}
     });
-    scheduleDataSync();
+    if (syncData) scheduleDataSync();
   }
 
   function scheduleDataSync() {
@@ -426,11 +427,17 @@
     });
   }
 
-  function schedule() {
+  function schedule(syncData = true) {
     if (activeView() !== 'tarjetas') return;
-    if (!frame) frame = requestAnimationFrame(() => { frame = 0; reorder(); });
+    pendingDataSync = pendingDataSync || Boolean(syncData);
+    if (!frame) frame = requestAnimationFrame(() => {
+      frame = 0;
+      const shouldSync = pendingDataSync;
+      pendingDataSync = false;
+      reorder(shouldSync);
+    });
     clearTimeout(settleTimer);
-    settleTimer = setTimeout(() => { if (activeView() === 'tarjetas') reorder(); }, 140);
+    settleTimer = setTimeout(() => { if (activeView() === 'tarjetas') reorder(false); }, 140);
   }
 
   function resetCustomFilters() {
@@ -452,8 +459,8 @@
   });
   document.addEventListener('panel:view-root-changed', event => { if (event.detail?.view === 'tarjetas') schedule(); });
   document.addEventListener('panel:section-modules-ready', event => { if (event.detail?.view === 'tarjetas') schedule(); });
-  document.addEventListener('panel:card-trend-rendered', schedule);
-  document.addEventListener('panel:card-limit-mode-changed', schedule);
+  document.addEventListener('panel:card-trend-rendered', () => schedule(false));
+  document.addEventListener('panel:card-limit-mode-changed', () => schedule(false));
   document.addEventListener('panel:card-filter-changed', schedule);
   document.addEventListener('panel:filters-updated', schedule);
   document.addEventListener('panel:section-filters-changed', event => { if (event.detail?.view === 'tarjetas') schedule(); });
