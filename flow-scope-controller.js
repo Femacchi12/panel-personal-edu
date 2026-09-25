@@ -5,7 +5,7 @@
   const financeId = String(cfg.financeSpreadsheetId || '');
   if (!financeId) return;
 
-  const scopeState = window.__FINANCE_SCOPE_FILTER_STATE__ || {};
+  const scopeState = window.FinanceScopeCore?.state?.() || window.__FINANCE_SCOPE_FILTER_STATE__ || {};
   scopeState.flujo ||= 'Personal';
   window.__FINANCE_SCOPE_FILTER_STATE__ = scopeState;
 
@@ -83,7 +83,7 @@
   function filterState() {
     const payment = window.__PAYMENT_FILTER_STATE__?.view === 'flujo' ? window.__PAYMENT_FILTER_STATE__ : { account: [], method: [] };
     return {
-      scope: scopeState.flujo || 'Personal',
+      scope: window.FinanceScopeCore?.getScope?.('flujo') || scopeState.flujo || 'Personal',
       years: new Set(selectedGlobal('year')),
       months: new Set(selectedGlobal('month').map(v => String(Number(v)))),
       categories: new Set(selectedGlobal('category')),
@@ -135,32 +135,11 @@
 
   function ensureScopeFilter() {
     if (activeView() !== 'flujo') return;
-    const bar = document.getElementById('sectionFilterBar');
-    const grid = bar?.querySelector('.section-filter-grid');
-    if (!bar || bar.hidden || !grid) return;
-    grid.querySelector('[data-finance-scope-filter]')?.remove();
-    let root = grid.querySelector('[data-flow-scope-filter]');
-    if (!root) {
-      root = document.createElement('div');
-      root.className = 'flow-scope-filter';
-      root.dataset.flowScopeFilter = 'true';
-      root.innerHTML = `<div class="filter-label-row"><span>Ámbito</span></div><div class="flow-scope-buttons"><button type="button" data-scope="Personal">Personal</button><button type="button" data-scope="FIBRAZO">FIBRAZO</button><button type="button" data-scope="Todos">Todos</button></div>`;
-      grid.prepend(root);
-      root.addEventListener('click', event => {
-        const button = event.target.closest('[data-scope]');
-        if (!button) return;
-        scopeState.flujo = String(button.dataset.scope || 'Personal');
-        window.__FINANCE_SCOPE_FILTER_STATE__ = scopeState;
-        updateScopeButtons(root);
-        document.dispatchEvent(new CustomEvent('panel:expense-scope-changed', { detail: { view: 'flujo', scope: scopeState.flujo } }));
-        schedule();
-      });
-    }
-    updateScopeButtons(root);
+    window.__PANEL_ENSURE_FINANCE_SCOPE_BAR__?.('flujo');
   }
 
-  function updateScopeButtons(root) {
-    root?.querySelectorAll('[data-scope]').forEach(button => button.classList.toggle('active', button.dataset.scope === (scopeState.flujo || 'Personal')));
+  function updateScopeButtons() {
+    window.__PANEL_ENSURE_FINANCE_SCOPE_BAR__?.('flujo');
   }
 
   async function getData() {
@@ -460,7 +439,6 @@
   document.addEventListener('panel:finance-scope-bar-ready', event => { if (event.detail?.view === 'flujo') schedule(); });
   document.addEventListener('panel:view-root-changed', event => {
     if (event.detail?.view === 'flujo') schedule();
-    else document.querySelector('[data-flow-scope-filter]')?.remove();
   });
   document.addEventListener('panel:section-modules-ready', event => { if (event.detail?.view === 'flujo') schedule(); });
   document.addEventListener('panel:flow-matrix-v3-rendered', schedule);
