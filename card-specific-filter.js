@@ -5,7 +5,7 @@
   const financeId=String(cfg.financeSpreadsheetId||'');
   if(!financeId)return;
 
-  let cards=[],cardsPromise=null,activeCardId='',uiFrame=0;
+  let cards=[],cardsPromise=null,activeCardId=String(window.__PANEL_ACTIVE_CARD_ID__||'').trim(),uiFrame=0;
   const norm=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
@@ -50,7 +50,9 @@
     if(summary)summary.textContent=selected?cardLabel(selected):'Todas';
     root.classList.toggle('has-selection',Boolean(selected));
     const box=root.querySelector('.card-specific-options');if(!box)return;
-    box.innerHTML=cards.length?cards.map(card=>{const id=cardId(card),label=cardLabel(card),on=id===activeCardId;return`<button type="button" class="multi-filter-option card-specific-option${on?' selected':''}" data-card-id="${esc(id)}" data-label="${esc(label)}" aria-pressed="${on}"><span class="multi-filter-check">${on?'✓':''}</span><span>${esc(label)}</span></button>`;}).join(''):'<div class="multi-filter-empty">Sin tarjetas registradas</div>';
+    const allOn=!activeCardId;
+    const allOption=`<button type="button" class="multi-filter-option card-specific-option${allOn?' selected':''}" data-card-id="" data-label="Todas las tarjetas" aria-pressed="${allOn}"><span class="multi-filter-check">${allOn?'✓':''}</span><span>Todas las tarjetas</span></button>`;
+    box.innerHTML=allOption+(cards.length?cards.map(card=>{const id=cardId(card),label=cardLabel(card),on=id===activeCardId;return`<button type="button" class="multi-filter-option card-specific-option${on?' selected':''}" data-card-id="${esc(id)}" data-label="${esc(label)}" aria-pressed="${on}"><span class="multi-filter-check">${on?'✓':''}</span><span>${esc(label)}</span></button>`;}).join(''):'');
     box.querySelectorAll('.card-specific-option').forEach(button=>button.addEventListener('click',event=>{
       event.stopPropagation();
       const id=String(button.dataset.cardId||'');
@@ -119,8 +121,10 @@
   }
 
   document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='tarjetas')syncUI();});
+  document.addEventListener('panel:section-modules-ready',event=>{if(event.detail?.view==='tarjetas')syncUI();});
+  document.addEventListener('panel:finance-scope-bar-ready',event=>{if(event.detail?.view==='tarjetas')scheduleUI();});
   document.addEventListener('panel:backend-refresh-requested',()=>{cards=[];cardsPromise=null;});
 
-  window.__PANEL_ACTIVE_CARD_ID__='';
+  window.__PANEL_ACTIVE_CARD_ID__=activeCardId;
   syncUI();
 })();
