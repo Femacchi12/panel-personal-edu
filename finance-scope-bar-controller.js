@@ -3,7 +3,8 @@
 
   const META = Object.freeze({
     gastos: 'Gastos diarios',
-    flujo: 'Flujo mensual'
+    flujo: 'Flujo mensual',
+    tarjetas: 'Tarjetas de crédito'
   });
   const activeView = () => document.querySelector('.nav-item.active')?.dataset.view || '';
   const core = () => window.FinanceScopeCore || null;
