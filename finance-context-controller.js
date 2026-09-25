@@ -287,7 +287,9 @@
   }
 
   async function run(force=false){
-    const view=activeView();if(!['tarjetas','flujo','gastos'].includes(view)){document.querySelector('#viewRoot > .finance-context')?.remove();return;}
+    const view=activeView();
+    if(window.FinanceScopeCore && ['tarjetas','flujo','gastos'].includes(view)) return;
+    if(!['tarjetas','flujo','gastos'].includes(view)){document.querySelector('#viewRoot > .finance-context')?.remove();return;}
     const root=document.getElementById('viewRoot');if(!root)return;
     const v=++version;
     try{
