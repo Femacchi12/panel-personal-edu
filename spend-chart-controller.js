@@ -356,7 +356,8 @@
     if (data !== lastPayload) {
       lastPayload = data;
       const cached = window.__PANEL_GET_CACHED_ROWS__;
-      if (typeof cached === 'function') {
+      if(window.FinanceScopeCore?.movementRows) rawRows=window.FinanceScopeCore.movementRows(data,FINANCE_ID);
+      else if (typeof cached === 'function') {
         const wide = cached(data,FINANCE_ID,'Movimientos!A:AA');
         rawRows = wide.length ? wide : cached(data,FINANCE_ID,'Movimientos!A:Z');
       } else {
