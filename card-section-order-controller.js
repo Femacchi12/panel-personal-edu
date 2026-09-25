@@ -144,7 +144,9 @@
 
   function cardId(card) { return String(card?.['ID tarjeta'] || '').trim(); }
   function cardLabel(card) { return `${String(card?.Emisor || 'Tarjeta').trim()}${card?.Titular ? ` · ${String(card.Titular).trim()}` : ''}`; }
-  function cardLimit(card) { return parseNumber(pick(card, ['Cupo total actual','Cupo total','Límite','Limite','Cupo'])); }
+  function cardLimit(card) { return parseNumber(pick(card, ['Cupo total actual','Cupo total','Límite real','Límite','Limite','Cupo'])); }
+  function cardControlLimit(card) { const configured=parseNumber(pick(card,['Límite personal de gasto','Límite de control'])); return configured>0?configured:cardLimit(card); }
+  function cardReferenceLimit(card) { return String(window.__PANEL_CARD_LIMIT_MODE__||'control')==='real'?cardLimit(card):cardControlLimit(card); }
   function cutDay(card) { const day = parseInt(pick(card, ['Día corte','Dia corte','Corte']), 10); return Number.isFinite(day) && day >= 1 && day <= 31 ? day : 1; }
 
   function filteredCreditRows(rows) {
@@ -192,7 +194,7 @@
     const datasets = cards.map((card, index) => {
       let data;
       if (metric === 'limit') {
-        const cut = cutDay(card), limit = cardLimit(card), running = new Map(), points = new Map();
+        const cut = cutDay(card), limit = cardReferenceLimit(card), running = new Map(), points = new Map();
         dated.forEach(item => {
           if (!rowMatchesCard(item.row, card)) return;
           const cycle = cycleKey(item.date, cut);
@@ -237,7 +239,7 @@
     chart.update('none');
     const scope = window.__FINANCE_SCOPE_FILTER_STATE__?.tarjetas || 'Todos';
     const subtitle = canvas.closest('.panel')?.querySelector('.panel-title span');
-    if (subtitle) subtitle.textContent = `Compras con crédito · ${scope} · ${metric === 'limit' ? 'porcentaje del límite utilizado' : 'gasto del período'}`;
+    if (subtitle) { const ref=String(window.__PANEL_CARD_LIMIT_MODE__||'control')==='real'?'límite real':'límite de control'; subtitle.textContent = `Compras con crédito · ${scope} · ${metric === 'limit' ? `porcentaje del ${ref} utilizado` : 'gasto del período'}`; }
   }
 
   async function syncCardSummary() {
@@ -448,6 +450,7 @@
   document.addEventListener('panel:view-root-changed', event => { if (event.detail?.view === 'tarjetas') schedule(); });
   document.addEventListener('panel:section-modules-ready', event => { if (event.detail?.view === 'tarjetas') schedule(); });
   document.addEventListener('panel:card-trend-rendered', schedule);
+  document.addEventListener('panel:card-limit-mode-changed', schedule);
   document.addEventListener('panel:card-filter-changed', schedule);
   document.addEventListener('panel:filters-updated', schedule);
   document.addEventListener('panel:section-filters-changed', event => { if (event.detail?.view === 'tarjetas') schedule(); });
