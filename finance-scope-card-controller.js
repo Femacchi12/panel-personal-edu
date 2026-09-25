@@ -147,9 +147,12 @@
     if (next === payload && rows.length) return;
     payload = next;
     const cached = window.__PANEL_GET_CACHED_ROWS__;
-    const wide = typeof cached === 'function' ? cached(next, financeId, 'Movimientos!A:AA') : [];
-    const legacy = typeof cached === 'function' ? cached(next, financeId, 'Movimientos!A:Z') : parseRows(next?.sources?.[`${financeId}|Movimientos!A:Z`] || []);
-    rows = wide.length ? wide : legacy;
+    if(window.FinanceScopeCore?.movementRows) rows=window.FinanceScopeCore.movementRows(next,financeId);
+    else {
+      const wide = typeof cached === 'function' ? cached(next, financeId, 'Movimientos!A:AA') : [];
+      const legacy = typeof cached === 'function' ? cached(next, financeId, 'Movimientos!A:Z') : parseRows(next?.sources?.[`${financeId}|Movimientos!A:Z`] || []);
+      rows = wide.length ? wide : legacy;
+    }
     cards = typeof cached === 'function' ? cached(next, financeId, 'Tarjetas!A:T') : parseRows(next?.sources?.[`${financeId}|Tarjetas!A:T`] || []);
   }
 
@@ -182,7 +185,10 @@
     if (!['gastos', 'tarjetas'].includes(view)) return;
     const bar = document.getElementById('sectionFilterBar');
     const grid = bar?.querySelector('.section-filter-grid');
-    if (!bar || bar.hidden || !grid) { setTimeout(() => schedule(), 80); return; }
+    if (!bar || bar.hidden || !grid) {
+      window.__PANEL_ENSURE_FINANCE_SCOPE_BAR__?.(view);
+      return;
+    }
     let root = grid.querySelector('[data-finance-scope-filter]');
     if (!root) {
       root = document.createElement('div'); root.className = 'finance-scope-filter'; root.dataset.financeScopeFilter = 'true';
