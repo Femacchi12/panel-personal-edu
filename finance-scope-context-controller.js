@@ -16,6 +16,7 @@
   function monthKey(value){const s=norm(value);let m=s.match(/^(20\d{2})-(\d{1,2})/);if(m)return`${m[1]}-${String(+m[2]).padStart(2,'0')}`;const map={ene:1,enero:1,feb:2,febrero:2,mar:3,marzo:3,abr:4,abril:4,may:5,mayo:5,jun:6,junio:6,jul:7,julio:7,ago:8,agosto:8,sep:9,sept:9,septiembre:9,oct:10,octubre:10,nov:11,noviembre:11,dic:12,diciembre:12};m=s.match(/^(ene|enero|feb|febrero|mar|marzo|abr|abril|may|mayo|jun|junio|jul|julio|ago|agosto|sep|sept|septiembre|oct|octubre|nov|noviembre|dic|diciembre)[\s-]+(20\d{2})/);return m?`${m[2]}-${String(map[m[1]]).padStart(2,'0')}`:'';}
   function rowMonth(row){return monthKey(row['Mes consumo']||row['Mes pago']||row['Fecha real']||row['Fecha registrada']);}
   function scopeOf(row) {
+    if (window.FinanceScopeCore?.scopeOf) return window.FinanceScopeCore.scopeOf(row);
     const explicit = norm(row['Ámbito'] || row.Ambito);
     if (explicit.includes('fibrazo')) return 'FIBRAZO';
     if (explicit.includes('personal')) return 'Personal';
@@ -41,7 +42,7 @@
   function filtered(sourceRows){
     const years=new Set(selected('year')),months=new Set(selected('month').map(v=>String(Number(v)).padStart(2,'0'))),cats=new Set(selected('category')),subs=new Set(selected('subcategory'));
     const pay=window.__PAYMENT_FILTER_STATE__?.view==='gastos'?window.__PAYMENT_FILTER_STATE__:{account:[],method:[]};
-    const accounts=new Set(pay.account||[]),methods=new Set(pay.method||[]),scope=window.__FINANCE_SCOPE_FILTER_STATE__?.gastos||'Personal';
+    const accounts=new Set(pay.account||[]),methods=new Set(pay.method||[]),scope=window.FinanceScopeCore?.getScope?.('gastos') || window.__FINANCE_SCOPE_FILTER_STATE__?.gastos || 'Personal';
     return sourceRows.filter(row=>{
       if(!isExpense(row))return false;
       if(scope!=='Todos'&&scopeOf(row)!==scope)return false;
@@ -86,7 +87,7 @@
     const supermarket=data.filter(r=>norm(r['Categoría'])==='supermercado').reduce((s,r)=>s+num(r['Monto COP']),0);
     const services=data.filter(r=>norm(r['Categoría'])==='servicios').reduce((s,r)=>s+num(r['Monto COP']),0);
     const biggest=data.slice().sort((a,b)=>num(b['Monto COP'])-num(a['Monto COP']))[0]||null;
-    const income=regularIncome(loaded.payload,data),scope=window.__FINANCE_SCOPE_FILTER_STATE__?.gastos||'Personal';
+    const income=regularIncome(loaded.payload,data),scope=window.FinanceScopeCore?.getScope?.('gastos') || window.__FINANCE_SCOPE_FILTER_STATE__?.gastos || 'Personal';
     let host=root.querySelector(':scope > .finance-context');
     if(!host){host=document.createElement('section');host.className='finance-context';root.appendChild(host);}
     host.innerHTML=`<div class="finance-context-head"><div><span>LECTURA DEL GASTO</span><strong>Resumen del período filtrado</strong><small>Ámbito: ${esc(scope)} · los gastos FIBRAZO no entran en Personal.</small></div><div class="finance-context-state">${data.length} movimientos</div></div><div class="finance-context-grid"><div class="finance-context-item"><span>Total gastado</span><strong>${esc(money(total))}</strong><small>${esc(scope)}</small></div><div class="finance-context-item"><span>Supermercado</span><strong>${esc(money(supermarket))}</strong><small>${income.total>0?`${pct(supermarket/income.total*100)}% del ingreso regular`:'Sin base de ingreso regular'}</small></div><div class="finance-context-item"><span>Mayor gasto</span><strong>${biggest?esc(money(num(biggest['Monto COP']))):'—'}</strong><small>${esc(biggest?.['Descripción / Comercio']||'Sin movimientos')}</small></div><div class="finance-context-item"><span>Servicios</span><strong>${esc(money(services))}</strong><small>${income.total>0?`${pct(services/income.total*100)}% del ingreso regular`:'Sin base de ingreso regular'}</small></div></div>`;
