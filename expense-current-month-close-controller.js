@@ -51,7 +51,9 @@
 
   async function rows(){
     const getData=window.__PANEL_GET_BACKEND_DATA__;if(typeof getData!=='function')return[];
-    const payload=await getData(false),cached=window.__PANEL_GET_CACHED_ROWS__;
+    const payload=await getData(false);
+    if(window.FinanceScopeCore?.movementRows) return window.FinanceScopeCore.movementRows(payload,financeId);
+    const cached=window.__PANEL_GET_CACHED_ROWS__;
     if(typeof cached==='function'){
       const wide=cached(payload,financeId,'Movimientos!A:AA');
       return wide.length?wide:cached(payload,financeId,'Movimientos!A:Z');
