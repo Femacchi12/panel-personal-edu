@@ -5,7 +5,7 @@
   const financeId = String(cfg.financeSpreadsheetId || '');
   if (!financeId) return;
 
-  const scopeState = window.__FINANCE_SCOPE_FILTER_STATE__ || { gastos: 'Personal', tarjetas: 'Todos' };
+  const scopeState = window.FinanceScopeCore?.state?.() || window.__FINANCE_SCOPE_FILTER_STATE__ || { gastos: 'Personal', tarjetas: 'Todos' };
   scopeState.gastos ||= 'Personal';
   scopeState.tarjetas ||= 'Todos';
   window.__FINANCE_SCOPE_FILTER_STATE__ = scopeState;
@@ -135,7 +135,7 @@
   }
 
   function scopedRows(sourceRows, view = activeView()) {
-    const selected = scopeState[view] || (view === 'gastos' ? 'Personal' : 'Todos');
+    const selected = window.FinanceScopeCore?.getScope?.(view) || scopeState[view] || (view === 'gastos' ? 'Personal' : 'Todos');
     return selected === 'Todos' ? sourceRows : sourceRows.filter(row => scopeOf(row) === selected);
   }
 
@@ -189,10 +189,14 @@
       grid.appendChild(root);
       root.addEventListener('click', event => {
         const button = event.target.closest('[data-scope]'); if (!button) return;
-        scopeState[view] = String(button.dataset.scope || 'Todos');
-        window.__FINANCE_SCOPE_FILTER_STATE__ = scopeState;
+        const next=String(button.dataset.scope || 'Todos');
+        if(window.FinanceScopeCore?.setScope) window.FinanceScopeCore.setScope(view,next,{emit:true,source:'finance-scope-card'});
+        else {
+          scopeState[view]=next;
+          window.__FINANCE_SCOPE_FILTER_STATE__=scopeState;
+          document.dispatchEvent(new CustomEvent('panel:expense-scope-changed',{detail:{view,scope:next,source:'finance-scope-card'}}));
+        }
         updateScopeButtons(root, view);
-        document.dispatchEvent(new CustomEvent('panel:expense-scope-changed', { detail: { view, scope: scopeState[view] } }));
         schedule();
       });
     }
@@ -200,7 +204,8 @@
   }
 
   function updateScopeButtons(root, view) {
-    root.querySelectorAll('[data-scope]').forEach(button => button.classList.toggle('active', button.dataset.scope === scopeState[view]));
+    const selected=window.FinanceScopeCore?.getScope?.(view)||scopeState[view];
+    root.querySelectorAll('[data-scope]').forEach(button => button.classList.toggle('active', button.dataset.scope === selected));
   }
 
   function cardLabel(card) {
