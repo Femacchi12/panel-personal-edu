@@ -132,10 +132,13 @@
   function summaryMonth(row){return monthKey(row?.Mes||row?.Periodo||row?.['Período']||row?.Fecha);}
   function isActualStatus(value){return window.MovementStatusCore?.isActual(value)??!/proyecc|proyect|programad/.test(norm(value));}
   function isExpenseRow(row){const type=norm(row?.Tipo||row?.Naturaleza);return(!type||type.includes('gasto')||type.includes('egreso')||type.includes('compra'))&&isActualStatus(row?.Estado);}
+  function scopeOf(row){const explicit=norm(row?.['Ámbito']||row?.Ambito);return explicit.includes('fibrazo')?'FIBRAZO':'Personal';}
   function canonicalExpenseTotals(payload){
     const totals=new Map();
-    cachedRows(payload,EXPENSE_POLICY.authoritativeRange).forEach(row=>{
-      if(!isExpenseRow(row))return;
+    const scoped=cachedRows(payload,'Movimientos!A:AA');
+    const movementRows=scoped.length?scoped:cachedRows(payload,EXPENSE_POLICY.authoritativeRange);
+    movementRows.forEach(row=>{
+      if(!isExpenseRow(row)||scopeOf(row)!=='Personal')return;
       const month=movementMonth(row);if(!month)return;
       totals.set(month,(totals.get(month)||0)+parseNumber(row?.['Monto COP']));
     });
