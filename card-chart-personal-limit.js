@@ -244,7 +244,6 @@
 
       const isArq=norm(card.issuer).includes('arq');
       if(isArq&&debt){
-        card.used=debt.equivalent;
         let debtBlock=cardEl.querySelector('.card-currency-debt');
         if(!debtBlock){
           debtBlock=document.createElement('div');
@@ -254,10 +253,10 @@
           else cardEl.appendChild(debtBlock);
         }
         debtBlock.innerHTML=`
-          <div class="card-debt-title">Saldo registrado del ciclo ${shortDate(debt.start)}–${shortDate(debt.end)}</div>
-          <div class="card-debt-row"><span>Deuda en COP</span><strong>${money(debt.cop)}</strong></div>
-          <div class="card-debt-row"><span>Deuda en USD</span><strong>${usdMoney(debt.usd)}</strong></div>
-          <div class="card-debt-note">Se pagan por separado · equivalente para límites: ${money(debt.equivalent)}</div>`;
+          <div class="card-debt-title">Movimientos registrados del ciclo ${shortDate(debt.start)}–${shortDate(debt.end)}</div>
+          <div class="card-debt-row"><span>Consumos en COP</span><strong>${money(debt.cop)}</strong></div>
+          <div class="card-debt-row"><span>Consumos en USD</span><strong>${usdMoney(debt.usd)}</strong></div>
+          <div class="card-debt-note">Detalle de Movimientos · el saldo/cupo actual se toma de Tarjetas: ${money(card.used)}</div>`;
       }
 
       const pct=card.used/card.control*100;
@@ -303,8 +302,6 @@
     const cards=cardsFromRows(cardRows);
     if(!cards.length) return;
     const debt=buildArqDebt(movements);
-    const arq=cards.find(card=>norm(card.issuer).includes('arq'));
-    if(arq&&debt) arq.used=debt.equivalent;
     normalizeCardTableHeaders();
     ensureSelectors();
     enhanceCards(cards,debt);
@@ -330,7 +327,7 @@
   document.addEventListener('panel:section-filters-changed',event=>{
     if(event.detail?.view==='tarjetas')schedule(false);
   });
-  document.addEventListener('panel:card-trend-rendered',()=>{syncSelectorState();schedule(false);});
+  document.addEventListener('panel:card-trend-rendered',()=>{ensureSelectors();syncSelectorState();});
   document.addEventListener('click',event=>{
     if(event.target.closest?.('[data-card-line-mode]')) setTimeout(syncSelectorState,0);
   },true);
