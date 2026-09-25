@@ -8,7 +8,7 @@
   if (!FINANCE_ID || !DOCUMENTS_ID || !HEALTH_ID) return;
 
   const RANGES = {
-    movimientos: [FINANCE_ID,'Movimientos!A:Z'],
+    movimientos: [FINANCE_ID,'Movimientos!A:AA'],
     tarjetas: [FINANCE_ID,'Tarjetas!A:T'],
     patrimonio: [FINANCE_ID,'Patrimonio_Mensual!A:X'],
     servicios: [FINANCE_ID,'Servicios!A:O'],
@@ -79,6 +79,7 @@
   function previousMonthKey(d){const p=new Date(d.getFullYear(),d.getMonth()-1,1);return monthKey(p);}
 
   function isExpense(r){return norm(r.Tipo).includes('gasto')||norm(r.Naturaleza).includes('gasto');}
+  function scopeOf(r){const explicit=norm(r['Ámbito']||r.Ambito);return explicit.includes('fibrazo')?'FIBRAZO':'Personal';}
   function isActual(r){const s=norm(r.Estado);return s.includes('registrad')||s.includes('realiz')||s.includes('conciliad');}
   function amountCOP(r){return num(r['Monto COP']||r['Monto original']);}
 
@@ -112,7 +113,7 @@
     let spend=0,prevSpend=0;
     const current=[],categories=new Map();
     (data.movimientos||[]).forEach(r=>{
-      if(!isExpense(r)||!isActual(r))return;
+      if(!isExpense(r)||!isActual(r)||scopeOf(r)!=='Personal')return;
       const mk=String(r['Mes consumo']||'')||monthKey(date(r['Fecha real']));
       const amount=amountCOP(r);
       if(mk===currentMonth){
