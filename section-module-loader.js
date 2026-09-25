@@ -11,7 +11,8 @@
 
   const GROUPS = Object.freeze({
     gastos: [
-      ['finance-scope-core.js','finance-scope-bar-controller.js','finance-scope-card-controller.js','payment-method-filters.js'],
+      ['finance-scope-core.js'],
+      ['finance-scope-bar-controller.js','finance-scope-card-controller.js','payment-method-filters.js'],
       ['expense-table-advanced.js','monthly-projection-control.js','movement-type-columns.js','spend-chart-controller.js','finance-context-controller.js'],
       ['finance-scope-context-controller.js'],
       ['expense-table-polish.js'],
@@ -20,14 +21,16 @@
       ['finance-section-order-controller.js']
     ],
     flujo: [
-      ['finance-scope-core.js','finance-scope-bar-controller.js','payment-method-filters.js','flow-matrix-v3.js'],
+      ['finance-scope-core.js'],
+      ['finance-scope-bar-controller.js','payment-method-filters.js','flow-matrix-v3.js'],
       ['flow-matrix-polish.js'],
       ['flow-scope-controller.js'],
       ['flow-section-controller-v3.js'],
       ['finance-section-order-controller.js']
     ],
     tarjetas: [
-      ['finance-scope-core.js','card-specific-filter.js','finance-scope-card-controller.js'],
+      ['finance-scope-core.js'],
+      ['card-specific-filter.js','finance-scope-card-controller.js'],
       ['card-payment-control.js','card-chart-personal-limit.js','card-payments-installments.js'],
       ['card-section-order-controller.js'],
       ['card-detail-accordion-controller.js'],
