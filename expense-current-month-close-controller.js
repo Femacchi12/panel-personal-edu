@@ -55,12 +55,16 @@
     return parseRows(payload?.sources?.[`${financeId}|Movimientos!A:AA`]||payload?.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
   }
 
-  function stats(source){
+  function activeScope(){
+    return window.__FINANCE_SCOPE_FILTER_STATE__?.gastos || 'Personal';
+  }
+
+  function stats(source,scope=activeScope()){
     const key=currentMonthKey(),prev=previousMonth(key);
-    const personal=source.filter(row=>scopeOf(row)==='Personal');
-    const actual=personal.filter(row=>rowMonth(row)===key&&isActual(row));
-    const previous=personal.filter(row=>rowMonth(row)===prev&&isActual(row));
-    const projections=personal.filter(row=>rowMonth(row)===key&&isProjection(row));
+    const scoped=scope==='Todos'?source:source.filter(row=>scopeOf(row)===scope);
+    const actual=scoped.filter(row=>rowMonth(row)===key&&isActual(row));
+    const previous=scoped.filter(row=>rowMonth(row)===prev&&isActual(row));
+    const projections=scoped.filter(row=>rowMonth(row)===key&&isProjection(row));
     const groups={super:{current:0,previous:0,projection:0},fixed:{current:0,previous:0,projection:0}};
     actual.forEach(row=>{const value=num(row['Monto COP']);if(isSuper(row))groups.super.current+=value;if(isFixed(row))groups.fixed.current+=value;});
     previous.forEach(row=>{const value=num(row['Monto COP']);if(isSuper(row))groups.super.previous+=value;if(isFixed(row))groups.fixed.previous+=value;});
@@ -68,7 +72,7 @@
     const supermarketGap=Math.max(0,groups.super.previous-groups.super.current-groups.super.projection);
     const fixedGap=Math.max(0,groups.fixed.previous-groups.fixed.current-groups.fixed.projection);
     const realTotal=sum(actual),projectionTotal=sum(projections),recurringGap=supermarketGap+fixedGap;
-    return{key,realTotal,projectionTotal,recurringGap,projectedTotal:realTotal+projectionTotal+recurringGap,projections};
+    return{key,scope,realTotal,projectionTotal,recurringGap,projectedTotal:realTotal+projectionTotal+recurringGap,projections};
   }
 
   function setText(node,value){if(node&&node.textContent!==value)node.textContent=value;}
@@ -88,7 +92,7 @@
     const title=panel.querySelector('.panel-title strong');
     const subtitle=panel.querySelector('.panel-title span');
     setText(title,`Cierre estimado mes actual · ${monthLabel(data.key)}`);
-    setText(subtitle,'Mes actual fijo · los filtros de la sección no modifican este bloque.');
+    setText(subtitle,`Mes actual fijo · responde al ámbito ${data.scope}; los demás filtros no modifican este bloque.`);
 
     const items=[...panel.querySelectorAll('.monthly-kpis > div')];
     if(items.length>=4){
@@ -96,16 +100,16 @@
       const considered=projectionOn?data.projectedTotal:data.realTotal;
       setText(items[0].querySelector('span'),'Real hasta hoy');
       setText(items[0].querySelector('strong'),money(data.realTotal));
-      setText(items[0].querySelector('small'),'Solo gastos personales asignados al mes actual');
+      setText(items[0].querySelector('small'),`Movimientos realizados · ${data.scope}`);
       setText(items[1].querySelector('span'),'Proyección pendiente');
       setText(items[1].querySelector('strong'),money(data.projectionTotal));
-      setText(items[1].querySelector('small'),`${data.projections.length} gasto${data.projections.length===1?'':'s'}`);
+      setText(items[1].querySelector('small'),`${data.projections.length} gasto${data.projections.length===1?'':'s'} · ${data.scope}`);
       setText(items[2].querySelector('span'),'Faltante recurrente');
       setText(items[2].querySelector('strong'),money(data.recurringGap));
-      setText(items[2].querySelector('small'),'Supermercado + fijos/servicios');
+      setText(items[2].querySelector('small'),`Supermercado + fijos/servicios · ${data.scope}`);
       setText(items[3].querySelector('span'),'Total considerado');
       setText(items[3].querySelector('strong'),money(considered));
-      setText(items[3].querySelector('small'),projectionOn?'Real + cierre estimado':'Solo gasto real');
+      setText(items[3].querySelector('small'),projectionOn?`Real + cierre estimado · ${data.scope}`:`Solo gasto real · ${data.scope}`);
       items[3].classList.toggle('projected',projectionOn);
       items[3].classList.toggle('actual',!projectionOn);
     }
@@ -119,7 +123,7 @@
     const source=await rows();
     if(runVersion!==version||activeView()!=='gastos'||!root.isConnected)return;
     stabilize(root);
-    patchClose(root,stats(source));
+    patchClose(root,stats(source,activeScope()));
     stabilize(root);
     observe(root);
   }
