@@ -32,7 +32,9 @@
       const payload=await getData(force);
       if(payload===lastPayload&&lastSources)return lastSources;
       lastPayload=payload;
-      lastSources={movements:rowsFromPayload(payload,'Movimientos!A:Z'),cards:rowsFromPayload(payload,'Tarjetas!A:T')};
+      const wide=rowsFromPayload(payload,'Movimientos!A:AA');
+      const movements=window.FinanceScopeCore?.movementRows?window.FinanceScopeCore.movementRows(payload,financeId):(wide.length?wide:rowsFromPayload(payload,'Movimientos!A:Z'));
+      lastSources={movements,cards:rowsFromPayload(payload,'Tarjetas!A:T')};
       return lastSources;
     }
     const direct=window.__PANEL_GET_SOURCE_VALUES__;
@@ -43,7 +45,9 @@
 
   function currentFilteredMovements(rows){
     const years=new Set(selectedFilter('year')),months=new Set(selectedFilter('month')),categories=new Set(selectedFilter('category')),subcategories=new Set(selectedFilter('subcategory'));
-    return rows.filter(row=>{if(!isExpense(row)||(window.MovementStatusCore&&!window.MovementStatusCore.isActual(row.Estado)))return false;const d=rowDate(row);if(years.size&&(!d||!years.has(String(d.getFullYear()))))return false;if(months.size&&(!d||!months.has(String(d.getMonth()+1))))return false;if(categories.size&&!categories.has(pick(row,['Categoría','Categoria'])))return false;if(subcategories.size&&!subcategories.has(pick(row,['Subcategoría','Subcategoria'])))return false;return Boolean(d);});
+    const scope=window.FinanceScopeCore?.getScope?.('tarjetas')||window.__FINANCE_SCOPE_FILTER_STATE__?.tarjetas||'Todos';
+    const scopeOf=row=>window.FinanceScopeCore?.scopeOf?window.FinanceScopeCore.scopeOf(row):(norm(row['Ámbito']||row.Ambito).includes('fibrazo')||norm(row.Observaciones).includes('ambito explicito: fibrazo')?'FIBRAZO':'Personal');
+    return rows.filter(row=>{if(!isExpense(row)||(window.MovementStatusCore&&!window.MovementStatusCore.isActual(row.Estado)))return false;if(scope!=='Todos'&&scopeOf(row)!==scope)return false;const d=rowDate(row);if(years.size&&(!d||!years.has(String(d.getFullYear()))))return false;if(months.size&&(!d||!months.has(String(d.getMonth()+1))))return false;if(categories.size&&!categories.has(pick(row,['Categoría','Categoria'])))return false;if(subcategories.size&&!subcategories.has(pick(row,['Subcategoría','Subcategoria'])))return false;return Boolean(d);});
   }
 
   function nickname(owner){const n=norm(owner);if(n.includes('eduardo')||n.includes('fernando'))return'edu';if(n.includes('rocio'))return'rocio';return n.split(/\s+/)[0]||'';}
@@ -99,7 +103,10 @@
       inner.style.width=`${Math.max(760,built.labels.length*(built.daily?58:90))}px`;scroll.hidden=false;status.hidden=true;
       cardChart?.destroy();
       cardChart=new Chart(canvas,{type:'line',data:{labels:built.labels,datasets:built.datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,labels:{color:'#9aa8ba',boxWidth:10,usePointStyle:true}},tooltip:{callbacks:{label:ctx=>cardMetric==='limit'?`${ctx.dataset.label}: ${Number(ctx.parsed.y||0).toFixed(1)}%`:`${ctx.dataset.label}: ${new Intl.NumberFormat('es-CO',{style:'currency',currency,maximumFractionDigits:currency==='USD'?2:0}).format(Number(ctx.parsed.y)||0)}`}}},scales:{x:{offset:false,bounds:'ticks',ticks:{color:'#718098',maxRotation:0,autoSkip:true},grid:{color:'#121c29'}},y:{beginAtZero:true,suggestedMax:cardMetric==='limit'?100:undefined,ticks:{color:'#718098',callback:v=>cardMetric==='limit'?`${v}%`:compactNumber(v)},grid:{color:'#121c29'}}}}});
-      document.dispatchEvent(new CustomEvent('panel:card-trend-rendered',{detail:{metric:cardMetric}}));
+      const scope=window.FinanceScopeCore?.getScope?.('tarjetas')||window.__FINANCE_SCOPE_FILTER_STATE__?.tarjetas||'Todos';
+      const subtitle=panel.querySelector('.panel-title span');
+      if(subtitle){const ref=String(window.__PANEL_CARD_LIMIT_MODE__||'control')==='real'?'límite real':'límite de control';subtitle.textContent=`Compras con crédito · ${scope} · ${cardMetric==='limit'?`gasto acumulado del ciclo / ${ref}`:'gasto del período'}`;}
+      document.dispatchEvent(new CustomEvent('panel:card-trend-rendered',{detail:{metric:cardMetric,scope}}));
       requestAnimationFrame(()=>{if(panel.isConnected)scroll.scrollLeft=scroll.scrollWidth;});
     }catch(error){if(version!==drawVersion||!panel.isConnected)return;console.error('Error en gráfico histórico de tarjetas:',error);status.hidden=false;status.textContent='No fue posible cargar el histórico de tarjetas.';scroll.hidden=true;}
   }
@@ -120,6 +127,7 @@
   }
   document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='tarjetas')schedule();else{drawVersion++;cardChart?.destroy();cardChart=null;}});
   document.addEventListener('panel:card-filter-changed',schedule);
+  document.addEventListener('panel:expense-scope-changed',event=>{if(event.detail?.view==='tarjetas')schedule();});
   document.addEventListener('panel:card-limit-mode-changed',()=>{if(activeView()==='tarjetas')schedule();});
   document.addEventListener('panel:filters-updated',()=>{if(activeView()==='tarjetas')schedule();});
   document.addEventListener('panel:backend-refresh-requested',()=>{lastPayload=null;lastSources=null;});
