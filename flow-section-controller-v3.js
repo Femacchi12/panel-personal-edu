@@ -294,8 +294,9 @@
     if (typeof getter !== 'function') return null;
     const payload = await getter(false);
     const cached = window.__PANEL_GET_CACHED_ROWS__;
-    const rowsAA = typeof cached === 'function' ? cached(payload,financeId,'Movimientos!A:AA') : [];
-    const rows = rowsAA.length ? rowsAA : (typeof cached === 'function' ? cached(payload,financeId,'Movimientos!A:Z') : []);
+    const rows = window.FinanceScopeCore?.movementRows
+      ? window.FinanceScopeCore.movementRows(payload,financeId)
+      : (()=>{const rowsAA=typeof cached==='function'?cached(payload,financeId,'Movimientos!A:AA'):[];return rowsAA.length?rowsAA:(typeof cached==='function'?cached(payload,financeId,'Movimientos!A:Z'):[]);})();
     const model = typeof window.RegularIncomeCore?.build === 'function' ? window.RegularIncomeCore.build(payload,financeId) : null;
     return { rows, model };
   }
