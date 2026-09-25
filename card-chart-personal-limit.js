@@ -185,6 +185,7 @@
             limitMode=next;
             window.__PANEL_CARD_LIMIT_MODE__=limitMode;
             syncSelectorState();
+            document.dispatchEvent(new CustomEvent('panel:card-limit-mode-changed',{detail:{mode:limitMode}}));
             schedule(false);
           });
         });
@@ -194,6 +195,11 @@
   }
 
   function syncSelectorState(){
+    const metric=document.querySelector('[data-card-line-mode].active')?.dataset.cardLineMode||'spend';
+    document.querySelectorAll('.card-limit-reference').forEach(selector=>{
+      const isTrend=Boolean(selector.closest('[data-card-line-panel]'));
+      selector.hidden=isTrend&&metric!=='limit';
+    });
     document.querySelectorAll('[data-card-limit-mode]').forEach(button=>{
       const active=button.dataset.cardLimitMode===limitMode;
       button.classList.toggle('active',active);
@@ -278,28 +284,15 @@
     });
   }
 
-  function applyTrendChart(cards){
+  function applyTrendChart(){
+    syncSelectorState();
     const canvas=document.getElementById('cardTrendChart');
-    const chart=canvas&&window.Chart?Chart.getChart(canvas):null;
-    if(!chart) return;
     const metric=document.querySelector('[data-card-line-mode].active')?.dataset.cardLineMode||'spend';
-    if(metric!=='limit') return;
-
-    let changed=false;
-    (chart.data.datasets||[]).forEach(ds=>{
-      const card=matchCard(ds.label,cards);
-      if(!card||!card.real||!card.control) return;
-      const currentSig=JSON.stringify(ds.data||[]);
-      if(!Array.isArray(ds.__panelControlData)||currentSig!==ds.__panelRenderedSig){
-        ds.__panelControlData=(ds.data||[]).map(v=>v==null?null:Number(v));
-      }
-      const factor=limitMode==='real' ? card.control/card.real : 1;
-      const next=ds.__panelControlData.map(v=>v==null?null:Number(v)*factor);
-      const nextSig=JSON.stringify(next);
-      if(currentSig!==nextSig){ds.data=next;changed=true;}
-      ds.__panelRenderedSig=nextSig;
-    });
-    if(changed) chart.update('none');
+    if(!canvas||metric!=='limit') return;
+    const panel=canvas.closest('.panel');
+    const subtitle=panel?.querySelector('.panel-title span');
+    const reference=limitMode==='real'?'límite real':'límite de control';
+    if(subtitle) subtitle.textContent=`Porcentaje del ${reference} utilizado`;
   }
 
   async function applyAll(force=false){
@@ -337,7 +330,10 @@
   document.addEventListener('panel:section-filters-changed',event=>{
     if(event.detail?.view==='tarjetas')schedule(false);
   });
-  document.addEventListener('panel:card-trend-rendered',()=>schedule(false));
+  document.addEventListener('panel:card-trend-rendered',()=>{syncSelectorState();schedule(false);});
+  document.addEventListener('click',event=>{
+    if(event.target.closest?.('[data-card-line-mode]')) setTimeout(syncSelectorState,0);
+  },true);
 
   if(!document.getElementById('cardLimitControlStyles')){
     const style=document.createElement('style');
