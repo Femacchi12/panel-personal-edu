@@ -41,7 +41,10 @@
 
   function scopeOf(row) {
     const explicit = norm(row['Ámbito'] || row.Ambito);
-    return explicit.includes('fibrazo') ? 'FIBRAZO' : 'Personal';
+    if (explicit.includes('fibrazo')) return 'FIBRAZO';
+    if (explicit.includes('personal')) return 'Personal';
+    const marker = norm(row.Observaciones);
+    return marker.includes('ambito explicito: fibrazo') ? 'FIBRAZO' : 'Personal';
   }
   function activeScope(){return window.__FINANCE_SCOPE_FILTER_STATE__?.gastos||'Personal';}
   function account(row){const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);if(n.includes('efectivo'))return'Efectivo';if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';if(n.includes('arq'))return'ARQ Edu';if(n.includes('nu'))return(n.includes(' ro')||n.endsWith('ro')||holder.includes('rocio')||holder==='ro')?'Nu Ro':'Nu Edu';if(n.includes('transferencia'))return'Transferencia sin cuenta';if(n.includes('debito'))return'Débito sin cuenta';return raw||'Sin especificar';}
