@@ -45,6 +45,7 @@
       years:selectedGlobal('year'),
       months:selectedGlobal('month').map(Number).filter(n=>n>=1&&n<=12),
       categories:selectedGlobal('category'),
+      scope:window.FinanceScopeCore?.getScope?.('gastos') || window.__FINANCE_SCOPE_FILTER_STATE__?.gastos || 'Personal',
       account:Array.isArray(payment.account)?payment.account:[],
       method:Array.isArray(payment.method)?payment.method:[]
     };
@@ -67,6 +68,10 @@
   function account(row){const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);if(n.includes('efectivo'))return'Efectivo';if(n.includes('nequi'))return holder.includes('ro')?'Nequi Ro':'Nequi Edu';if(n.includes('arq'))return'ARQ Edu';if(n.includes('nu'))return(n.includes(' ro')||holder.includes('rocio')||holder==='ro')?'Nu Ro':'Nu Edu';return raw||'Sin especificar';}
   function method(row){const policy=window.FinancePurchasePolicy;if(typeof policy?.method==='function')return policy.method(row);const explicit=String(row['Modalidad de pago']||'').trim();if(explicit)return explicit;const raw=norm(row['Cuenta / Tarjeta']);if(raw.includes('credito')||raw.includes('crédito'))return'Crédito';if(raw.includes('transferencia'))return'Transferencia';if(raw.includes('debito')||raw.includes('débito'))return'Débito';if(raw.includes('efectivo'))return'Efectivo';const q=parseNumber(row.Cuotas);if(q>0&&(raw.includes('nu')||raw.includes('arq')))return'Crédito';return'Sin especificar';}
   function matchesExtraFilters(row,ctx){
+    if(ctx.scope!=='Todos'){
+      const scope=window.FinanceScopeCore?.scopeOf?window.FinanceScopeCore.scopeOf(row):'Personal';
+      if(scope!==ctx.scope)return false;
+    }
     if(ctx.categories.length&&!ctx.categories.includes(String(row['Categoría']||'')))return false;
     if(ctx.account.length&&!ctx.account.includes(account(row)))return false;
     if(ctx.method.length&&!ctx.method.includes(method(row)))return false;
@@ -121,13 +126,16 @@
   function injectStyles(){if(document.getElementById('monthlyProjectionStylesV2'))return;const style=document.createElement('style');style.id='monthlyProjectionStylesV2';style.textContent=`#monthlyProjectionSuite{display:grid;gap:12px;margin:0 0 4px}.monthly-detached-host{display:contents}.monthly-close-head{align-items:center}.monthly-switch{display:flex;align-items:center;gap:8px;color:#aebbd0;font-size:10px;cursor:pointer;user-select:none}.monthly-switch input{display:none}.monthly-switch span{width:34px;height:18px;border-radius:99px;background:#172334;border:1px solid #24344b;position:relative}.monthly-switch span:after{content:"";position:absolute;width:12px;height:12px;border-radius:50%;top:2px;left:3px;background:#718198}.monthly-switch input:checked+span{background:rgba(23,105,255,.25);border-color:#2c67c4}.monthly-switch input:checked+span:after{left:17px;background:#6fa1ff}.monthly-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.monthly-kpis>div{background:#0c1420;border:1px solid var(--border-soft);border-radius:11px;padding:11px}.monthly-kpis span{display:block;color:#718198;text-transform:uppercase;font-size:8px;font-weight:800;letter-spacing:.05em}.monthly-kpis strong{display:block;font-size:18px;margin-top:7px}.monthly-kpis small{display:block;color:#718198;font-size:9px;margin-top:5px}.monthly-kpis .monthly-considered.projected{border-color:rgba(23,105,255,.35);background:rgba(23,105,255,.07)}.monthly-planning-table{min-width:760px}.monthly-planning-table td{white-space:normal;vertical-align:top}.monthly-diff{display:inline-flex;padding:4px 7px;border-radius:99px;font-size:9px;font-weight:800}.monthly-diff.under{color:#f6c844;background:rgba(246,200,68,.08)}.monthly-diff.over{color:#ff8797;background:rgba(255,102,122,.08)}.monthly-diff.neutral{color:#7ee6af;background:rgba(38,208,124,.08)}.monthly-status{font-size:9px;color:#8db2f2;font-weight:700}@media(max-width:900px){.monthly-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.monthly-close-head{align-items:flex-start;flex-direction:column}}`;document.head.appendChild(style);}
 
   async function run(force=false,version=requestVersion){
-    const view=activeView();if(view!=='gastos'&&view!=='flujo')return;
+    const view=activeView();if(view!=='gastos')return;
     const root=document.getElementById('viewRoot');if(!root)return;
     const p=await payload(force);if(!p||version!==requestVersion||activeView()!==view||!root.isConnected)return;
     if(p!==lastPayload){
       lastPayload=p;
       const cached=window.__PANEL_GET_CACHED_ROWS__;
-      lastRows=typeof cached==='function'?cached(p,financeId,'Movimientos!A:Z'):parseRows(p.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
+      if(typeof cached==='function'){
+        const wide=cached(p,financeId,'Movimientos!A:AA');
+        lastRows=wide.length?wide:cached(p,financeId,'Movimientos!A:Z');
+      }else lastRows=parseRows(p.sources?.[`${financeId}|Movimientos!A:Z`]||[]);
     }
     const ctx=filterContext(view),stats=monthlyStats(lastRows,targetMonth(lastRows,ctx),ctx);
     let host=root.querySelector('#monthlyProjectionSuite');
@@ -166,12 +174,13 @@
   injectStyles();
   document.addEventListener('panel:view-root-changed',event=>{
     const view=event.detail?.view;
-    if(view==='gastos'||view==='flujo')schedule(false);else requestVersion++;
+    if(view==='gastos')schedule(false);else requestVersion++;
   });
   document.addEventListener('panel:payment-filters-changed',event=>{
-    const view=activeView();if(event.detail?.view===view&&(view==='gastos'||view==='flujo'))schedule(false);
+    const view=activeView();if(event.detail?.view===view&&view==='gastos')schedule(false);
   });
-  document.addEventListener('panel:filters-updated',()=>{const view=activeView();if(view==='gastos'||view==='flujo')schedule(false);});
+  document.addEventListener('panel:filters-updated',()=>{if(activeView()==='gastos')schedule(false);});
+  document.addEventListener('panel:expense-scope-changed',event=>{if(event.detail?.view==='gastos'&&activeView()==='gastos')schedule(false);});
   document.addEventListener('panel:backend-refresh-requested',()=>{lastPayload=null;lastRows=[];});
   queueMicrotask(()=>schedule(false));
 })();
