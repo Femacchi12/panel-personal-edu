@@ -106,7 +106,7 @@
     return{key,prev,current,actual,previous,projections,groups,realTotal,projectionTotal,recurringGap,projectedTotal:realTotal+projectionTotal+recurringGap};
   }
 
-  function includeProjection(){const stored=localStorage.getItem(STORAGE_KEY);return stored===null?true:stored==='1';}
+  function includeProjection(){const stored=localStorage.getItem(STORAGE_KEY);return stored===null?Boolean(window.__PANEL_INCLUDE_MONTHLY_PROJECTION__):stored==='1';}
   function setProjection(value){localStorage.setItem(STORAGE_KEY,value?'1':'0');window.__PANEL_INCLUDE_MONTHLY_PROJECTION__=Boolean(value);document.dispatchEvent(new CustomEvent('panel:monthly-projection-change',{detail:{enabled:Boolean(value)}}));}
   function differenceCell(current,previous){const diff=current-previous;if(Math.abs(diff)<.5)return'<span class="monthly-diff neutral">Igual al mes pasado</span>';return diff<0?`<span class="monthly-diff under">Faltan ${esc(money(Math.abs(diff)))}</span>`:`<span class="monthly-diff over">Supera ${esc(money(diff))}</span>`;}
   function projectionStatus(row){const d=rowDate(row);if(!d)return'Proyección';const now=new Date();now.setHours(0,0,0,0);const normalized=new Date(d.getFullYear(),d.getMonth(),d.getDate());if(normalized.getTime()===now.getTime())return'Proyección hoy';if(normalized<now)return'Proyección vencida';return'Proyección';}
