@@ -52,6 +52,7 @@
   const isSuper = row => norm(row['Categoría']) === 'supermercado';
 
   function scopeOf(row) {
+    if (window.FinanceScopeCore?.scopeOf) return window.FinanceScopeCore.scopeOf(row);
     const explicit = norm(row['Ámbito'] || row.Ambito);
     if (explicit.includes('fibrazo')) return 'FIBRAZO';
     if (explicit.includes('personal')) return 'Personal';
