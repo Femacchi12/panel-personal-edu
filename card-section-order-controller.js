@@ -71,7 +71,7 @@
       const legacy = rowsFromPayload(payload, 'Movimientos!A:Z');
       sourcePayload = payload;
       sourceCache = {
-        movements: wide.length ? wide : legacy,
+        movements: window.FinanceScopeCore?.movementRows ? window.FinanceScopeCore.movementRows(payload,financeId) : (wide.length ? wide : legacy),
         cards: rowsFromPayload(payload, 'Tarjetas!A:T')
       };
       return sourceCache;
@@ -103,6 +103,7 @@
   }
 
   function scopeOf(row) {
+    if (window.FinanceScopeCore?.scopeOf) return window.FinanceScopeCore.scopeOf(row);
     const explicit = norm(row['Ámbito'] || row.Ambito);
     if (explicit.includes('fibrazo')) return 'FIBRAZO';
     if (explicit.includes('personal')) return 'Personal';
@@ -423,7 +424,7 @@
     if (activeView() !== 'tarjetas' || dataFrame) return;
     dataFrame = requestAnimationFrame(() => {
       dataFrame = 0;
-      Promise.all([syncTrendChart(), syncCardSummary()]).catch(error => console.error('Control de Tarjetas:', error));
+      Promise.resolve(syncCardSummary()).catch(error => console.error('Control de Tarjetas:', error));
     });
   }
 
