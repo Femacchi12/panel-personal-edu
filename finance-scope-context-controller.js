@@ -17,7 +17,10 @@
   function rowMonth(row){return monthKey(row['Mes consumo']||row['Mes pago']||row['Fecha real']||row['Fecha registrada']);}
   function scopeOf(row) {
     const explicit = norm(row['Ámbito'] || row.Ambito);
-    return explicit.includes('fibrazo') ? 'FIBRAZO' : 'Personal';
+    if (explicit.includes('fibrazo')) return 'FIBRAZO';
+    if (explicit.includes('personal')) return 'Personal';
+    const marker = norm(row.Observaciones);
+    return marker.includes('ambito explicito: fibrazo') ? 'FIBRAZO' : 'Personal';
   }
   function isExpense(row){const status=norm(row.Estado),type=norm(row.Tipo||row.Naturaleza||'gasto');return !/proyecc|proyect|programad|pendiente/.test(status)&&(!type||type.includes('gasto')||type.includes('egreso')||type.includes('compra'));}
   function method(row){if(typeof window.FinancePurchasePolicy?.method==='function')return window.FinancePurchasePolicy.method(row);return String(row['Modalidad de pago']||'').trim();}
