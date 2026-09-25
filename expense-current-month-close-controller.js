@@ -34,7 +34,10 @@
   function monthLabel(key){const [y,m]=String(key).split('-').map(Number);return Number.isFinite(y)&&Number.isFinite(m)?`${MONTHS[m-1]} ${y}`:key;}
   function scopeOf(row) {
     const explicit = norm(row['Ámbito'] || row.Ambito);
-    return explicit.includes('fibrazo') ? 'FIBRAZO' : 'Personal';
+    if (explicit.includes('fibrazo')) return 'FIBRAZO';
+    if (explicit.includes('personal')) return 'Personal';
+    const marker = norm(row.Observaciones);
+    return marker.includes('ambito explicito: fibrazo') ? 'FIBRAZO' : 'Personal';
   }
   function status(row){return norm(row.Estado);}
   function isActual(row){return norm(row.Tipo)==='gasto'&&(window.MovementStatusCore?.isActual(row.Estado)??!/proyecc|proyect|programad/.test(status(row)));}
