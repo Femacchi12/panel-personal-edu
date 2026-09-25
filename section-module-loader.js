@@ -13,7 +13,7 @@
     gastos: [
       ['finance-scope-core.js'],
       ['finance-scope-bar-controller.js','finance-scope-card-controller.js','payment-method-filters.js'],
-      ['expense-table-advanced.js','monthly-projection-control.js','movement-type-columns.js','spend-chart-controller.js','finance-context-controller.js'],
+      ['expense-table-advanced.js','monthly-projection-control.js','movement-type-columns.js','spend-chart-controller.js'],
       ['finance-scope-context-controller.js'],
       ['expense-table-polish.js'],
       ['expense-current-month-close-controller.js'],
