@@ -88,7 +88,10 @@
 
   function scopeOf(row) {
     const explicit = norm(row['Ámbito'] || row.Ambito);
-    return explicit.includes('fibrazo') ? 'FIBRAZO' : 'Personal';
+    if (explicit.includes('fibrazo')) return 'FIBRAZO';
+    if (explicit.includes('personal')) return 'Personal';
+    const marker = norm(row.Observaciones);
+    return marker.includes('ambito explicito: fibrazo') ? 'FIBRAZO' : 'Personal';
   }
 
   function account(row) {
