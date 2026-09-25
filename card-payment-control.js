@@ -141,14 +141,19 @@
     return `${dateLabel(period.start)} – ${dateLabel(end)}`;
   }
 
-  function dueDateFor(cardRow,closed,open,current) {
-    const explicit = parseDate(closed?.['Fecha vencimiento']) || parseDate(open?.['Fecha vencimiento']);
-    if (explicit) return explicit;
+  function dueDateFor(cardRow,closed,open,current,now=new Date()) {
+    const closedDue = parseDate(closed?.['Fecha vencimiento']);
+    const state = paymentState(closed);
+    if (closedDue && (state.key === 'pending' || state.key === 'partial')) return closedDue;
+
+    const openDue = parseDate(open?.['Fecha vencimiento']);
+    if (openDue) return openDue;
+
     const dueDay = Number(cardRow?.['Día vencimiento'] || 0);
-    const cut = current?.cut || parseDate(closed?.['Fecha corte']);
-    if (!dueDay || !cut) return null;
-    let due = new Date(cut.getFullYear(),cut.getMonth(),dueDay);
-    if (due < cut) due = new Date(cut.getFullYear(),cut.getMonth()+1,dueDay);
+    if (!dueDay) return null;
+    const today = new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    let due = new Date(now.getFullYear(),now.getMonth(),dueDay);
+    if (due < today) due = new Date(now.getFullYear(),now.getMonth()+1,dueDay);
     return due;
   }
 
@@ -193,18 +198,20 @@
     const closed = indexed.closed||null;
     const open = indexed.open||null;
     const current = deriveCurrentPeriod(cardRow,closed,open,now);
-    const dueDate = dueDateFor(cardRow,closed,open,current);
+    const dueDate = dueDateFor(cardRow,closed,open,current,now);
     const state = paymentState(closed);
     const stats = [...card.querySelectorAll('.credit-stat')];
 
     if (stats[1]) {
+      const label = stats[1].querySelector('span');
       const value = stats[1].querySelector('strong');
-      if (value) value.textContent = closed ? dateLabel(closed['Fecha corte']) : (current?.cut ? dateLabel(current.cut) : '—');
+      if (label) label.textContent = 'Próximo corte';
+      if (value) value.textContent = current?.cut ? dateLabel(current.cut) : '—';
     }
     if (stats[2]) {
       const label = stats[2].querySelector('span');
       const value = stats[2].querySelector('strong');
-      if (label) label.textContent = 'Vencimiento';
+      if (label) label.textContent = 'Próx. vencimiento';
       if (value) value.textContent = dueDate ? dateLabel(dueDate) : 'Por confirmar';
     }
 
@@ -220,8 +227,8 @@
       <div class="card-cycle-grid">
         <div class="card-cycle-item wide"><span>Período actual</span><strong>${esc(currentPeriodLabel(current,id))}</strong></div>
         <div class="card-cycle-item wide"><span>Último período facturado</span><strong>${esc(billedPeriod(closed,id))}</strong></div>
-        <div class="card-cycle-item"><span>Fecha de corte</span><strong>${esc(closed ? dateLabel(closed['Fecha corte']) : (current?.cut ? dateLabel(current.cut) : '—'))}</strong></div>
-        <div class="card-cycle-item"><span>Fecha límite de pago</span><strong>${esc(dueDate ? dateLabel(dueDate) : 'Pendiente de confirmar')}</strong></div>
+        <div class="card-cycle-item"><span>Próximo corte</span><strong>${esc(current?.cut ? dateLabel(current.cut) : '—')}</strong></div>
+        <div class="card-cycle-item"><span>Próximo vencimiento</span><strong>${esc(dueDate ? dateLabel(dueDate) : 'Pendiente de confirmar')}</strong></div>
         <div class="card-cycle-item"><span>Pago mínimo</span><strong>${closed ? esc(money(minDue)) : '—'}</strong></div>
         <div class="card-cycle-item"><span>Pago total corte</span><strong>${closed ? esc(money(totalDue)) : '—'}</strong></div>
         ${state.key==='paid' ? `<div class="card-cycle-item wide"><span>Fecha de pago</span><strong>${esc(paymentDate)}</strong></div>` : ''}
