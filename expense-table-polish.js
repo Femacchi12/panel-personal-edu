@@ -104,7 +104,6 @@
     injectStyles();
     const host = document.getElementById('expenseAdvancedPanel');
     if (!host) return;
-    observe(host);
 
     const scroll = host.querySelector(':scope > .table-scroll');
     const tbody = host.querySelector('.expense-advanced-table tbody');
@@ -148,14 +147,6 @@
     footer.hidden = false;
   }
 
-  function observe(host) {
-    if (host === observedHost) return;
-    observer?.disconnect();
-    observedHost = host;
-    observer = new MutationObserver(() => schedule());
-    observer.observe(host, { childList:true, subtree:true });
-  }
-
   function schedule() {
     if (activeView() !== 'gastos') return;
     if (frame) return;
@@ -170,6 +161,9 @@
   });
   document.addEventListener('panel:section-modules-ready', event => {
     if (event.detail?.view === 'gastos') schedule();
+  });
+  document.addEventListener('panel:expense-table-rendered', () => {
+    if (activeView() === 'gastos') schedule();
   });
   document.addEventListener('panel:filters-updated', () => { smallExpanded = false; schedule(); });
   document.addEventListener('panel:payment-filters-changed', event => {
