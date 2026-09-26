@@ -94,14 +94,19 @@
 
   function cardId(card) { return String(card?.['ID tarjeta'] || '').trim(); }
   function ownerNick(value) { const text = norm(value); if (text.includes('rocio')) return 'rocio'; if (text.includes('edu') || text.includes('fernando')) return 'edu'; return text; }
+  function movementCardId(row) {
+    const account=norm(row?.['Cuenta / Tarjeta']),holder=ownerNick(row?.Titular);
+    if(account.includes('arq'))return'TC-ARQ-EDU';
+    if(account.includes('nu')&&(account.includes('nu ro')||account.includes('rocio')||holder==='rocio'))return'TC-NU-RO';
+    if(account.includes('nu'))return'TC-NU-EDU';
+    return'';
+  }
   function rowMatchesCard(row, card) {
     if (!card) return true;
-    const issuer = norm(card.Emisor), owner = ownerNick(card.Titular), account = norm(row['Cuenta / Tarjeta']), holder = ownerNick(row.Titular);
-    if (issuer.includes('arq') && !account.includes('arq')) return false;
-    if (issuer.includes('nu') && !account.includes('nu')) return false;
-    if (owner === 'rocio') return holder === 'rocio' || account.includes('nu ro') || account.includes('rocio');
-    if (owner === 'edu') return holder === 'edu' || account.includes('nu edu') || account.includes('arq') || account.includes('edu');
-    return true;
+    const exact=movementCardId(row);
+    if(exact)return exact===cardId(card);
+    const issuer=norm(card.Emisor),account=norm(row['Cuenta / Tarjeta']);
+    return Boolean(issuer&&account.includes(issuer));
   }
 
   function activeCard() {
