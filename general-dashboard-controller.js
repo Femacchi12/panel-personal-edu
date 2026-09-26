@@ -294,8 +294,6 @@
 
   function schedule(force=false){if(frame&&!force)return; if(frame)cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{frame=0;run(force);});}
   document.addEventListener('panel:view-root-changed',()=>{if(activeView()==='general'&&!document.querySelector('#viewRoot [data-general-dashboard]'))schedule(false);else manageFilterBar();});
-  document.addEventListener('panel:backend-data-loaded',()=>{cache=null;schedule(false);});
-  document.addEventListener('panel:modules-ready',()=>schedule(false));
-  document.addEventListener('click',e=>{if(e.target.closest('.nav-item'))setTimeout(()=>schedule(false),0);});
+  document.addEventListener('panel:backend-data-loaded',()=>{cache=null;});
   queueMicrotask(()=>schedule(false));
 })();
