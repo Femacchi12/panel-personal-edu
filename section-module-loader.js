@@ -122,6 +122,12 @@
         const root = document.getElementById('viewRoot');
         document.dispatchEvent(new CustomEvent('panel:section-modules-ready', { detail: { view, root } }));
         document.dispatchEvent(new CustomEvent('panel:view-root-changed', { detail: { view, root, source: 'section-module-loader' } }));
+        requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(()=>{
+          if(activeView()===view&&root){
+            root.classList.remove('panel-view-settling');
+            root.style.removeProperty('min-height');
+          }
+        },50)));
       }
       return true;
     })();
@@ -193,9 +199,14 @@
     }
   }, true);
 
-  document.addEventListener('panel:view-root-changed', event => schedule(event.detail?.view || activeView()));
-  document.addEventListener('panel:modules-ready', () => schedule(activeView()));
-  queueMicrotask(() => schedule(activeView()));
+  document.addEventListener('panel:view-root-changed', event => {
+    if(window.__PANEL_APP_DATA_READY__) schedule(event.detail?.view || activeView());
+  });
+  document.addEventListener('panel:app-data-ready', () => schedule(activeView()));
+  document.addEventListener('panel:modules-ready', () => {
+    if(window.__PANEL_APP_DATA_READY__) schedule(activeView());
+  });
+  queueMicrotask(() => { if(window.__PANEL_APP_DATA_READY__) schedule(activeView()); });
 
   window.__PANEL_LOAD_SECTION_MODULES__ = loadView;
   window.__PANEL_SECTION_MODULE_STATE__ = Object.freeze({
