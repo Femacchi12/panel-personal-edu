@@ -107,21 +107,10 @@
       if(typeof loader==='function'){
         try{await loader(nextView);}catch(error){console.warn('Precarga de sección:',nextView,error);}
       }
-      const root=byId('viewRoot');
-      if(root){
-        root.style.minHeight=`${Math.max(160,root.getBoundingClientRect().height||0)}px`;
-        root.classList.add('panel-view-settling');
-      }
       state.view=nextView;
       document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x===btn));
       closeFilterMenus();
       render('navigation');
-      requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(()=>{
-        if(root&&state.view===nextView){
-          root.classList.remove('panel-view-settling');
-          root.style.removeProperty('min-height');
-        }
-      },70)));
     }));
     document.querySelectorAll('.currency-btn').forEach(btn => btn.addEventListener('click',()=>{
       state.currency = btn.dataset.currency || 'COP';
@@ -334,12 +323,15 @@
     if(byId('viewTitle'))byId('viewTitle').textContent=title;
     const root=byId('viewRoot');
     if(!root)return;
-    if(source==='data'){
-      const moduleState=window.__PANEL_SECTION_MODULE_STATE__;
-      if(moduleState?.hasView?.(state.view)&&!moduleState?.isLoaded?.(state.view)){
-        root.style.minHeight=`${Math.max(220,root.getBoundingClientRect().height||0)}px`;
-        root.classList.add('panel-view-settling');
-      }
+    const moduleState=window.__PANEL_SECTION_MODULE_STATE__;
+    const enhanced=Boolean(moduleState?.hasView?.(state.view));
+    const renderToken=(window.__PANEL_APP_RENDER_SEQ__=(Number(window.__PANEL_APP_RENDER_SEQ__)||0)+1);
+    if(enhanced){
+      root.style.minHeight=`${Math.max(180,root.getBoundingClientRect().height||0)}px`;
+      root.classList.add('panel-view-settling');
+    }else{
+      root.classList.remove('panel-view-settling');
+      root.style.removeProperty('min-height');
     }
     if(state.loadedSources===0 && state.token && state.loadErrors.length) {
       root.innerHTML=renderLoadError();
@@ -352,6 +344,14 @@
     bindDynamic();
     window.__PANEL_EMIT_VIEW_ROOT_CHANGED__?.(source);
     requestAnimationFrame(drawViewCharts);
+    if(enhanced&&moduleState?.isLoaded?.(state.view)){
+      const expectedView=state.view;
+      requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(()=>{
+        if(window.__PANEL_APP_RENDER_SEQ__!==renderToken||state.view!==expectedView)return;
+        root.classList.remove('panel-view-settling');
+        root.style.removeProperty('min-height');
+      },90)));
+    }
   }
 
   function renderLoadError() {
