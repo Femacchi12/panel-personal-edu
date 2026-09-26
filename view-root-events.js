@@ -49,7 +49,7 @@
 
     const scheduleQuietReveal = () => {
       if (quietTimer) clearTimeout(quietTimer);
-      quietTimer = setTimeout(() => reveal(root, token), 72);
+      quietTimer = setTimeout(() => reveal(root, token), 120);
     };
 
     settleObserver = new MutationObserver(mutations => {
@@ -59,7 +59,7 @@
     settleObserver.observe(root, { childList: true, subtree: true });
 
     scheduleQuietReveal();
-    maxTimer = setTimeout(() => reveal(root, token), 520);
+    maxTimer = setTimeout(() => reveal(root, token), 760);
   }
 
   function emit(source = 'app') {
