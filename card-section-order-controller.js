@@ -460,7 +460,6 @@
     if (event.target.closest('#clearFilters,#resetCurrentMonth,#clearSectionFilters')) setTimeout(resetCustomFilters, 0);
   });
   document.addEventListener('panel:view-root-changed', event => { if (event.detail?.view === 'tarjetas') schedule(); });
-  document.addEventListener('panel:section-modules-ready', event => { if (event.detail?.view === 'tarjetas') schedule(); });
   document.addEventListener('panel:card-trend-rendered', () => schedule(false));
   document.addEventListener('panel:card-limit-mode-changed', () => schedule(false));
   document.addEventListener('panel:card-filter-changed', schedule);
@@ -468,7 +467,7 @@
   document.addEventListener('panel:section-filters-changed', event => { if (event.detail?.view === 'tarjetas') schedule(); });
   document.addEventListener('panel:expense-scope-changed', event => { if (event.detail?.view === 'tarjetas') schedule(); });
   document.addEventListener('panel:backend-refresh-requested', () => { sourcePayload = null; sourceCache = null; sourcePromise = null; });
-  document.addEventListener('panel:backend-data-loaded', () => { sourcePayload = null; sourceCache = null; sourcePromise = null; schedule(); });
+  document.addEventListener('panel:backend-data-loaded', () => { sourcePayload = null; sourceCache = null; sourcePromise = null; });
 
   injectStyles();
   queueMicrotask(schedule);
