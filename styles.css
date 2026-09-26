@@ -405,3 +405,35 @@ button{color:inherit}.hidden{display:none!important}
 @media(max-width:620px){
   .credit-spend-grid{grid-template-columns:1fr}
 }
+
+
+/* Render estable: evita mostrar la vista base antes de que los módulos de sección
+   terminen de aplicar sus mejoras. */
+.view-root.panel-view-settling{
+  opacity:0;
+  pointer-events:none;
+}
+.view-root{
+  transition:opacity .08s ease;
+}
+.dashboard-initial-loading{
+  min-height:220px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  color:#7f90a8;
+  font-size:12px;
+}
+.dashboard-initial-loading span{
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:#4f8cff;
+  box-shadow:0 0 0 4px rgba(79,140,255,.12);
+}
+.dashboard-initial-loading strong{
+  font-size:11px;
+  font-weight:600;
+  color:#91a1b8;
+}
