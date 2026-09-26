@@ -345,7 +345,6 @@
     if(!root)return;
     const moduleState=window.__PANEL_SECTION_MODULE_STATE__;
     const enhanced=Boolean(moduleState?.hasView?.(state.view));
-    const renderToken=(window.__PANEL_APP_RENDER_SEQ__=(Number(window.__PANEL_APP_RENDER_SEQ__)||0)+1);
     if(enhanced){
       root.style.minHeight=`${Math.max(180,root.getBoundingClientRect().height||0)}px`;
       root.classList.add('panel-view-settling');
@@ -366,9 +365,6 @@
     bindDynamic();
     window.__PANEL_EMIT_VIEW_ROOT_CHANGED__?.(source);
     requestAnimationFrame(drawViewCharts);
-    if(enhanced&&moduleState?.isLoaded?.(state.view)){
-      window.__PANEL_SETTLE_VIEW_ROOT__?.(root);
-    }
   }
 
   function renderLoadError() {
