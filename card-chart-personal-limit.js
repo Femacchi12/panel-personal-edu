@@ -177,7 +177,8 @@
           <span>Referencia</span>
           <button type="button" data-card-limit-mode="control">Límite de control</button>
           <button type="button" data-card-limit-mode="real">Límite real</button>`;
-        header.appendChild(selector);
+        const slot=header.querySelector('.card-limit-reference-slot');
+        (slot||header).appendChild(selector);
         selector.querySelectorAll('[data-card-limit-mode]').forEach(button=>{
           button.addEventListener('click',event=>{
             event.stopPropagation();
@@ -337,8 +338,22 @@
     const style=document.createElement('style');
     style.id='cardLimitControlStyles';
     style.textContent=`
-      .card-limit-reference{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:auto;font-size:11px;color:#8fa0b6}
-      .card-limit-reference[hidden]{display:none!important}
+      .card-line-header{display:flex;align-items:flex-start;gap:16px}
+      .card-line-header .panel-title{min-width:0;flex:1 1 auto}
+      .card-line-controls{display:grid;grid-template-columns:max-content 286px;align-items:center;gap:10px;margin-left:auto;min-width:max-content}
+      .card-line-controls .chart-mode-switch{margin:0;justify-self:end}
+      .card-limit-reference-slot{width:286px;min-width:286px;display:flex;justify-content:flex-end;align-items:center}
+      .card-limit-reference{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;margin:0;font-size:11px;color:#8fa0b6;white-space:nowrap}
+      .card-limit-reference[hidden]{display:flex!important;visibility:hidden;opacity:0;pointer-events:none}
+      @media(max-width:900px){
+        .card-line-header{align-items:stretch;flex-direction:column}
+        .card-line-controls{grid-template-columns:max-content 286px;margin-left:0;align-self:flex-end}
+      }
+      @media(max-width:620px){
+        .card-line-controls{grid-template-columns:1fr;align-self:stretch}
+        .card-line-controls .chart-mode-switch{justify-self:stretch}
+        .card-limit-reference-slot{width:100%;min-width:0;justify-content:flex-start}
+      }
       .card-limit-reference>span{margin-right:2px}
       .card-limit-reference button{border:1px solid #2b3a4d;background:#111b28;color:#aeb9c8;border-radius:999px;padding:5px 9px;font:inherit;cursor:pointer}
       .card-limit-reference button.active{border-color:#26d07c;color:#e8fff3;background:#143225}
