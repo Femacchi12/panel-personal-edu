@@ -352,14 +352,12 @@
     if (event.detail?.view === 'gastos') scheduleCardOrder();
     else closeDetail();
   });
-  document.addEventListener('panel:section-modules-ready',event => { if (event.detail?.view === 'gastos') scheduleCardOrder(); });
   document.addEventListener('panel:filters-updated',() => { if (activeView() === 'gastos') resetOnContextChange(); });
   document.addEventListener('panel:payment-filters-changed',event => { if (event.detail?.view === 'gastos') resetOnContextChange(); });
   document.addEventListener('panel:expense-scope-changed',event => { if (event.detail?.view === 'gastos') resetOnContextChange(); });
   document.addEventListener('panel:backend-data-loaded',() => {
     lastPayload = null;
     rawRows = [];
-    if (activeView() === 'gastos') resetOnContextChange();
   });
   document.addEventListener('click',event => {
     if (event.target.closest?.('.currency-btn') && activeView() === 'gastos') closeDetail();
