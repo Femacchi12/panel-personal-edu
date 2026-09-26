@@ -19,7 +19,8 @@
     loadErrors: [],
     loadedSources: 0,
     totalSources: 0,
-    lastSync: null
+    lastSync: null,
+    dataFingerprint: ''
   };
 
   const viewMeta = {
@@ -74,6 +75,16 @@
     subcategory: [],
     currency: ['COP','USD','ARS'].map(v=>({value:v,label:v}))
   };
+
+  function fingerprintData(data){
+    let hash=2166136261;
+    const text=JSON.stringify(data||{});
+    for(let i=0;i<text.length;i++){
+      hash^=text.charCodeAt(i);
+      hash=Math.imul(hash,16777619);
+    }
+    return `${text.length}:${hash>>>0}`;
+  }
 
   init();
 
@@ -179,15 +190,24 @@
       }
     });
     if (state.loadedSources > 0) {
-      state.data = next;
-      window.__PANEL_APP_DATA__ = state.data;
-      window.__PANEL_APP_DATA_READY__ = true;
+      const nextFingerprint=fingerprintData(next);
+      const firstLoad=!window.__PANEL_APP_DATA_READY__;
+      const dataChanged=firstLoad||nextFingerprint!==state.dataFingerprint;
       state.lastSync = new Date();
-      hydrateFilterOptions();
       const warning = state.loadErrors.length ? ` · ${state.loadErrors.length} fuente(s) con error` : '';
       setSync('ok',`Sincronizado ${state.loadedSources}/${state.totalSources}${warning}`);
-      render('data');
-      document.dispatchEvent(new CustomEvent('panel:app-data-ready',{detail:{loadedSources:state.loadedSources,totalSources:state.totalSources,lastSync:state.lastSync}}));
+
+      if(dataChanged){
+        state.data = next;
+        state.dataFingerprint = nextFingerprint;
+        window.__PANEL_APP_DATA__ = state.data;
+        window.__PANEL_APP_DATA_READY__ = true;
+        hydrateFilterOptions();
+        render(firstLoad?'data-initial':'data-changed');
+        document.dispatchEvent(new CustomEvent('panel:app-data-ready',{detail:{loadedSources:state.loadedSources,totalSources:state.totalSources,lastSync:state.lastSync,changed:true}}));
+      }else{
+        document.dispatchEvent(new CustomEvent('panel:app-data-checked',{detail:{loadedSources:state.loadedSources,totalSources:state.totalSources,lastSync:state.lastSync,changed:false}}));
+      }
     } else {
       state.data = next;
       window.__PANEL_APP_DATA__ = state.data;
