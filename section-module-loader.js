@@ -10,6 +10,9 @@
   let hoverView = '';
 
   const GROUPS = Object.freeze({
+    general: [
+      ['general-dashboard-controller.js']
+    ],
     gastos: [
       ['finance-scope-core.js'],
       ['finance-scope-bar-controller.js','finance-scope-card-controller.js','payment-method-filters.js'],
@@ -30,7 +33,7 @@
     ],
     tarjetas: [
       ['finance-scope-core.js'],
-      ['finance-scope-bar-controller.js'],
+      ['dashboard-enhancements.js','finance-scope-bar-controller.js'],
       ['card-specific-filter.js','finance-scope-card-controller.js'],
       ['card-payment-control.js','card-chart-personal-limit.js','card-payments-installments.js'],
       ['card-section-order-controller.js'],
@@ -38,6 +41,10 @@
       ['card-finance-context-hide.js']
     ],
     deudas: [],
+    patrimonio: [
+      ['patrimonio-dashboard-v2.js'],
+      ['patrimonio-native-currency.js']
+    ],
     inversiones: [
       ['investment-dashboard-v2.js']
     ],
@@ -193,6 +200,7 @@
   window.__PANEL_LOAD_SECTION_MODULES__ = loadView;
   window.__PANEL_SECTION_MODULE_STATE__ = Object.freeze({
     isLoaded: view => loadedViews.has(view),
+    hasView: view => Object.prototype.hasOwnProperty.call(GROUPS,view),
     loadedViews
   });
 })();
