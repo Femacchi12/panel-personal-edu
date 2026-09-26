@@ -37,10 +37,11 @@
       ['card-specific-filter.js','finance-scope-card-controller.js'],
       ['card-payment-control.js','card-chart-personal-limit.js','card-payments-installments.js'],
       ['card-section-order-controller.js'],
-      ['card-detail-accordion-controller.js'],
-      ['card-finance-context-hide.js']
+      ['card-detail-accordion-controller.js']
     ],
-    deudas: [],
+    deudas: [
+      ['finance-secondary-context-controller.js']
+    ],
     patrimonio: [
       ['patrimonio-dashboard-v2.js'],
       ['patrimonio-native-currency.js']
@@ -62,6 +63,12 @@
       ['fx-sensitivity-controller.js']
     ],
     salud: [
+      ['health-dashboard-controller.js']
+    ],
+    citas: [
+      ['health-dashboard-controller.js']
+    ],
+    tratamientos: [
       ['health-dashboard-controller.js']
     ],
     documentos: [
