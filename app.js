@@ -347,12 +347,7 @@
     window.__PANEL_EMIT_VIEW_ROOT_CHANGED__?.(source);
     requestAnimationFrame(drawViewCharts);
     if(enhanced&&moduleState?.isLoaded?.(state.view)){
-      const expectedView=state.view;
-      requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(()=>{
-        if(window.__PANEL_APP_RENDER_SEQ__!==renderToken||state.view!==expectedView)return;
-        root.classList.remove('panel-view-settling');
-        root.style.removeProperty('min-height');
-      },90)));
+      window.__PANEL_SETTLE_VIEW_ROOT__?.(root);
     }
   }
 
