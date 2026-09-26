@@ -365,7 +365,7 @@
   document.addEventListener('panel:view-root-changed', event => { if (['gastos','tarjetas'].includes(event.detail?.view)) schedule(); });
   document.addEventListener('panel:filters-updated', () => { if (['gastos','tarjetas'].includes(activeView())) schedule(); });
   document.addEventListener('panel:card-filter-changed', event => { if (activeView() === 'tarjetas') { window.__PANEL_ACTIVE_CARD_ID__ = String(event.detail?.cardId || ''); expanded = false; schedule(); } });
-  document.addEventListener('panel:backend-data-loaded', () => { payload = null; rows = []; cards = []; });
+  document.addEventListener('panel:app-data-ready', () => { payload = null; rows = []; cards = []; });
   document.addEventListener('panel:expense-scope-changed', event => { if (event.detail?.view === 'tarjetas' && activeView() === 'tarjetas') { expanded = false; schedule(); } });
 
   injectStyles();
