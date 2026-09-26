@@ -388,8 +388,6 @@
   document.addEventListener('panel:view-root-changed',e=>{if(e.detail?.view==='ingresos')schedule(false);});
   document.addEventListener('panel:filters-updated',()=>{if(activeView()==='ingresos')schedule(false);});
   document.addEventListener('panel:section-filters-changed',e=>{if(activeView()==='ingresos'&&(!e.detail?.view||e.detail.view==='ingresos'))schedule(false);});
-  document.addEventListener('panel:backend-refresh-requested',()=>{cache=null;if(activeView()==='ingresos')schedule(true);});
-  document.addEventListener('panel:app-data-ready',()=>{cache=null;if(activeView()==='ingresos')schedule(false);});
-  document.addEventListener('click',e=>{if(e.target.closest('.currency-btn')&&activeView()==='ingresos')setTimeout(()=>schedule(false),0);});
+  document.addEventListener('panel:backend-refresh-requested',()=>{cache=null;});
   queueMicrotask(()=>schedule(false));
 })();
