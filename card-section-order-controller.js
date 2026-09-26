@@ -467,7 +467,7 @@
   document.addEventListener('panel:section-filters-changed', event => { if (event.detail?.view === 'tarjetas') schedule(); });
   document.addEventListener('panel:expense-scope-changed', event => { if (event.detail?.view === 'tarjetas') schedule(); });
   document.addEventListener('panel:backend-refresh-requested', () => { sourcePayload = null; sourceCache = null; sourcePromise = null; });
-  document.addEventListener('panel:backend-data-loaded', () => { sourcePayload = null; sourceCache = null; sourcePromise = null; });
+  document.addEventListener('panel:app-data-ready', () => { sourcePayload = null; sourceCache = null; sourcePromise = null; });
 
   injectStyles();
   queueMicrotask(schedule);
