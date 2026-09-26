@@ -12,7 +12,7 @@
     summary:'Resumen_Conceptos_Ingresos!A:L',
     detail:'Detalle_Ingresos!A:L',
     incomes:'Ingresos!A:T',
-    movements:'Movimientos!A:Z',
+    movements:'Movimientos!A:AA',
     investments:'Flujo_Inversiones!A:M',
     patrimonio:'Patrimonio_Inversiones!A:K',
     config:'Config!A:C'
@@ -114,7 +114,7 @@
       summary:rowsFrom(payload,RANGES.summary),
       detail:rowsFrom(payload,RANGES.detail),
       incomes:rowsFrom(payload,RANGES.incomes),
-      movements:rowsFrom(payload,RANGES.movements),
+      movements:window.FinanceScopeCore?.movementRows?window.FinanceScopeCore.movementRows(payload,FINANCE_ID):rowsFrom(payload,RANGES.movements),
       investments:rowsFrom(payload,RANGES.investments),
       patrimonio:rowsFrom(payload,RANGES.patrimonio),
       config:rowsFrom(payload,RANGES.config)
@@ -181,7 +181,9 @@
     const expenseMap=new Map();
     (data.movements||[]).forEach(row=>{
       const key=monthKey(row['Mes consumo']||row['Fecha real']||row['Fecha registrada']);
-      if(!key||norm(row.Tipo)!=='gasto'||norm(row.Estado)!=='registrado')return;
+      const actual=window.FinanceScopeCore?.isActual?window.FinanceScopeCore.isActual(row):(norm(row.Tipo)==='gasto'&&!/proyecc|proyect|programad|pendiente/.test(norm(row.Estado)));
+      const scope=window.FinanceScopeCore?.scopeOf?window.FinanceScopeCore.scopeOf(row):(norm(row['Ámbito']||row.Ambito).includes('fibrazo')?'FIBRAZO':'Personal');
+      if(!key||!actual||scope!=='Personal')return;
       expenseMap.set(key,(expenseMap.get(key)||0)+num(row['Monto COP']));
     });
 
