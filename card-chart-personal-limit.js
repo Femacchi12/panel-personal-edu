@@ -169,6 +169,21 @@
       const panel=canvas?.closest('.panel');
       const header=panel?.querySelector('.panel-header');
       if(!header) return;
+      const isTrendPanel=Boolean(header.closest('[data-card-line-panel]'));
+      let slot=header.querySelector('.card-limit-reference-slot');
+      if(isTrendPanel&&!slot){
+        let controls=header.querySelector('.card-line-controls');
+        const mode=header.querySelector('.chart-mode-switch');
+        if(!controls){
+          controls=document.createElement('div');
+          controls.className='card-line-controls';
+          if(mode){header.insertBefore(controls,mode);controls.appendChild(mode);}
+          else header.appendChild(controls);
+        }
+        slot=document.createElement('div');
+        slot.className='card-limit-reference-slot';
+        controls.appendChild(slot);
+      }
       let selector=header.querySelector('.card-limit-reference');
       if(!selector){
         selector=document.createElement('div');
@@ -177,7 +192,6 @@
           <span>Referencia</span>
           <button type="button" data-card-limit-mode="control">Límite de control</button>
           <button type="button" data-card-limit-mode="real">Límite real</button>`;
-        const slot=header.querySelector('.card-limit-reference-slot');
         (slot||header).appendChild(selector);
         selector.querySelectorAll('[data-card-limit-mode]').forEach(button=>{
           button.addEventListener('click',event=>{
@@ -191,6 +205,8 @@
             schedule(false);
           });
         });
+      } else if(slot&&selector.parentElement!==slot){
+        slot.appendChild(selector);
       }
     });
     syncSelectorState();
