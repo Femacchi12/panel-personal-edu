@@ -206,20 +206,10 @@
     orderFrame = requestAnimationFrame(() => {
       orderFrame = 0;
       applyCardOrder();
-      ensureObserver();
     });
   }
 
-  function ensureObserver() {
-    const root = document.getElementById('viewRoot');
-    if (!root || root === observedRoot) return;
-    observer?.disconnect();
-    observedRoot = root;
-    observer = new MutationObserver(mutations => {
-      if (mutations.some(m => m.type === 'childList')) scheduleCardOrder();
-    });
-    observer.observe(root,{childList:true,subtree:true});
-  }
+
 
   function closeDetail() {
     selectedKey = '';
