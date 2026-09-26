@@ -75,6 +75,7 @@
   function currentFilterState(){
     const payment=window.__PAYMENT_FILTER_STATE__?.view==='flujo'?window.__PAYMENT_FILTER_STATE__:{account:[],method:[]};
     return {
+      scope:window.FinanceScopeCore?.getScope?.('flujo') || window.__FINANCE_SCOPE_FILTER_STATE__?.flujo || 'Personal',
       categories:new Set(selectedGlobal('category')),
       accounts:new Set(payment.account||[]),
       methods:new Set(payment.method||[])
@@ -84,6 +85,13 @@
   function isReal(row){
     if(norm(row.Tipo)!=='gasto')return false;
     return window.MovementStatusCore?.isActual(row.Estado) ?? !/proyecc|proyect|programad/.test(norm(row.Estado));
+  }
+  function scopeOf(row){
+    if(window.FinanceScopeCore?.scopeOf)return window.FinanceScopeCore.scopeOf(row);
+    const explicit=norm(row['Ámbito']||row.Ambito);
+    if(explicit.includes('fibrazo'))return'FIBRAZO';
+    if(explicit.includes('personal'))return'Personal';
+    return norm(row.Observaciones).includes('ambito explicito: fibrazo')?'FIBRAZO':'Personal';
   }
   function account(row){
     const raw=String(row['Cuenta / Tarjeta']||'').trim(),n=norm(raw),holder=norm(row.Titular);
@@ -106,6 +114,7 @@
   }
   function matchesActiveFilters(row,state){
     if(!isReal(row))return false;
+    if(state.scope!=='Todos'&&scopeOf(row)!==state.scope)return false;
     if(state.categories.size&&!state.categories.has(String(row['Categoría']||'')))return false;
     if(state.accounts.size&&!state.accounts.has(account(row)))return false;
     if(state.methods.size&&!state.methods.has(method(row)))return false;
@@ -140,7 +149,7 @@
   function categoryList(flowRows,movements,months,state){
     const active=new Set(months),set=new Set();
     flowRows.forEach(r=>{const k=monthKey(r.Mes);if(norm(r.Tipo)==='categoria'&&active.has(k)&&r.Concepto)set.add(String(r.Concepto).trim());});
-    movements.forEach(r=>{const k=monthKey(r['Mes consumo']||r['Fecha real']||r['Fecha registrada']);if(isReal(r)&&active.has(k)&&r['Categoría'])set.add(String(r['Categoría']).trim());});
+    movements.forEach(r=>{const k=monthKey(r['Mes consumo']||r['Fecha real']||r['Fecha registrada']);if(matchesActiveFilters(r,state)&&active.has(k)&&r['Categoría'])set.add(String(r['Categoría']).trim());});
     if(state.categories.size)return [...set].filter(x=>state.categories.has(x));
     const known=ORIGINAL_ORDER.filter(x=>[...set].some(y=>norm(y)===norm(x)));
     const extra=[...set].filter(x=>!known.some(y=>norm(y)===norm(x))).sort((a,b)=>a.localeCompare(b,'es',{sensitivity:'base'}));
@@ -268,7 +277,7 @@
       const p=await payload(force); if(!p||activeView()!=='flujo')return;
       const root=document.getElementById('viewRoot'); if(!root)return;
       const {host,detail}=ensureHosts(root);
-      const movements=rowsFor(p,'Movimientos!A:Z');
+      const movements=window.FinanceScopeCore?.movementRows?window.FinanceScopeCore.movementRows(p,financeId):rowsFor(p,'Movimientos!A:AA');
       const regularIncome=typeof window.RegularIncomeCore?.build==='function'?window.RegularIncomeCore.build(p,financeId):null;
       const data={flowRows:rowsFor(p,'Flujo_Mensual!A:J'),movements,concepts:rowsFor(p,'Resumen_Conceptos_Ingresos!A:L'),regularIncome};
       render(host,detail,data);
@@ -294,6 +303,7 @@
     if(event.detail?.view==='flujo'&&!document.getElementById('flowMatrixV3'))schedule(false);
   });
   document.addEventListener('panel:payment-filters-changed',event=>{if(event.detail?.view==='flujo')schedule(false);});
+  document.addEventListener('panel:expense-scope-changed',event=>{if(event.detail?.view==='flujo')schedule(false);});
   document.addEventListener('panel:filters-updated',()=>{if(activeView()==='flujo')schedule(false);});
   queueMicrotask(()=>{if(activeView()==='flujo')schedule(false);});
 })();
