@@ -129,12 +129,7 @@
         const root = document.getElementById('viewRoot');
         document.dispatchEvent(new CustomEvent('panel:section-modules-ready', { detail: { view, root } }));
         document.dispatchEvent(new CustomEvent('panel:view-root-changed', { detail: { view, root, source: 'section-module-loader' } }));
-        requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(()=>{
-          if(activeView()===view&&root){
-            root.classList.remove('panel-view-settling');
-            root.style.removeProperty('min-height');
-          }
-        },50)));
+        if(root?.classList.contains('panel-view-settling')) window.__PANEL_SETTLE_VIEW_ROOT__?.(root);
       }
       return true;
     })();
@@ -145,8 +140,7 @@
       console.error(`Módulos de sección ${view}:`, error);
       if(activeView()===view){
         const root=document.getElementById('viewRoot');
-        root?.classList.remove('panel-view-settling');
-        root?.style.removeProperty('min-height');
+        window.__PANEL_REVEAL_VIEW_ROOT__?.(root);
       }
       throw error;
     } finally {
