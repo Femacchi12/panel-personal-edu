@@ -92,6 +92,7 @@
     host.querySelectorAll('[data-expense-sort]').forEach(th=>th.addEventListener('click',()=>{const col=th.dataset.expenseSort;if(sort.col===col)sort.dir=sort.dir==='asc'?'desc':'asc';else sort={col,dir:'asc'};renderTable(host,rows);}));
     host.querySelector('#expenseAdvancedSearch')?.addEventListener('input',event=>{query=event.target.value;expanded=false;renderTable(host,rows);requestAnimationFrame(()=>{const input=host.querySelector('#expenseAdvancedSearch');if(input){input.focus();input.setSelectionRange(query.length,query.length);}});});
     host.querySelector('#expenseAdvancedMore')?.addEventListener('click',()=>{expanded=!expanded;renderTable(host,rows);});
+    document.dispatchEvent(new CustomEvent('panel:expense-table-rendered',{detail:{rows:data.length,expanded}}));
   }
 
   async function run(force=false){
