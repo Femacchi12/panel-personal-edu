@@ -163,11 +163,9 @@
 
   [
     'panel:view-root-changed',
-    'panel:section-modules-ready',
     'panel:filters-updated',
     'panel:payment-filters-changed',
     'panel:expense-scope-changed',
-    'panel:backend-data-loaded',
     'panel:monthly-projection-change',
     'panel:flow-income-controller-applied'
   ].forEach(name => document.addEventListener(name, schedule));
