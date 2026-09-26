@@ -146,7 +146,7 @@
       if(activeView()!=='gastos')return;
       if(mutations.some(m=>m.type==='childList'))schedule();
     });
-    observer.observe(root,{childList:true,subtree:true});
+    observer.observe(root,{childList:true,subtree:false});
   }
 
   function schedule(){
@@ -160,6 +160,6 @@
     });
   }
 
-  ['panel:view-root-changed','panel:section-modules-ready','panel:filters-updated','panel:payment-filters-changed','panel:expense-scope-changed','panel:backend-data-loaded','panel:monthly-projection-change'].forEach(name=>document.addEventListener(name,schedule));
+  ['panel:view-root-changed','panel:expense-scope-changed','panel:monthly-projection-change'].forEach(name=>document.addEventListener(name,schedule));
   queueMicrotask(schedule);
 })();
