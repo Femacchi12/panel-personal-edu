@@ -192,6 +192,7 @@
     if (state.loadedSources > 0) {
       state.data = next;
       window.__PANEL_APP_DATA__ = state.data;
+      window.__PANEL_APP_DATA_READY__ = true;
       state.lastSync = new Date();
       hydrateFilterOptions();
       const warning = state.loadErrors.length ? ` · ${state.loadErrors.length} fuente(s) con error` : '';
@@ -333,6 +334,13 @@
     if(byId('viewTitle'))byId('viewTitle').textContent=title;
     const root=byId('viewRoot');
     if(!root)return;
+    if(source==='data'){
+      const moduleState=window.__PANEL_SECTION_MODULE_STATE__;
+      if(moduleState?.hasView?.(state.view)&&!moduleState?.isLoaded?.(state.view)){
+        root.style.minHeight=`${Math.max(220,root.getBoundingClientRect().height||0)}px`;
+        root.classList.add('panel-view-settling');
+      }
+    }
     if(state.loadedSources===0 && state.token && state.loadErrors.length) {
       root.innerHTML=renderLoadError();
       bindDynamic();
