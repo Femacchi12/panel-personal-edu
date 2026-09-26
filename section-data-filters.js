@@ -260,7 +260,7 @@
       root.classList.remove('open');
       root.querySelector('.local-trigger')?.setAttribute('aria-expanded','false');
     });
-    if(view==='inversiones'||view==='documentos'){
+    if(['inversiones','documentos','salud','citas','tratamientos'].includes(view)){
       if(view==='inversiones')document.getElementById('investmentV2ModeFilter')?.remove();
       document.dispatchEvent(new CustomEvent('panel:section-filters-changed',{detail:{view}}));
       return;
