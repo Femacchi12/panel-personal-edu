@@ -345,7 +345,7 @@
   document.addEventListener('panel:filters-updated',() => { if (activeView() === 'gastos') resetOnContextChange(); });
   document.addEventListener('panel:payment-filters-changed',event => { if (event.detail?.view === 'gastos') resetOnContextChange(); });
   document.addEventListener('panel:expense-scope-changed',event => { if (event.detail?.view === 'gastos') resetOnContextChange(); });
-  document.addEventListener('panel:backend-data-loaded',() => {
+  document.addEventListener('panel:app-data-ready',() => {
     lastPayload = null;
     rawRows = [];
   });
