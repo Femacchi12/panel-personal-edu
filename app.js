@@ -82,11 +82,13 @@
       bindUI();
       resetCurrentMonth(false);
       renderFilterOptions();
-      render();
       if (!state.token) {
+        render('init-demo');
         setSync('demo','Sesión sin acceso a Sheets');
         return;
       }
+      const root=byId('viewRoot');
+      if(root) root.innerHTML='<div class="dashboard-initial-loading"><span></span><strong>Cargando tu información…</strong></div>';
       await loadLiveData(false);
       const minutes = Math.max(1, Number(cfg.autoRefreshMinutes || 5));
       clearInterval(window.__PANEL_DATA_TIMER__);
@@ -98,11 +100,28 @@
 
   function bindUI() {
     byId('sidebarToggle')?.addEventListener('click',()=>byId('sidebar')?.classList.toggle('collapsed'));
-    document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click',()=>{
-      state.view = btn.dataset.view || 'general';
+    document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click',async ()=>{
+      const nextView=btn.dataset.view||'general';
+      if(nextView===state.view&&btn.classList.contains('active'))return;
+      const loader=window.__PANEL_LOAD_SECTION_MODULES__;
+      if(typeof loader==='function'){
+        try{await loader(nextView);}catch(error){console.warn('Precarga de sección:',nextView,error);}
+      }
+      const root=byId('viewRoot');
+      if(root){
+        root.style.minHeight=`${Math.max(160,root.getBoundingClientRect().height||0)}px`;
+        root.classList.add('panel-view-settling');
+      }
+      state.view=nextView;
       document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x===btn));
       closeFilterMenus();
       render('navigation');
+      requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(()=>{
+        if(root&&state.view===nextView){
+          root.classList.remove('panel-view-settling');
+          root.style.removeProperty('min-height');
+        }
+      },70)));
     }));
     document.querySelectorAll('.currency-btn').forEach(btn => btn.addEventListener('click',()=>{
       state.currency = btn.dataset.currency || 'COP';
