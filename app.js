@@ -110,7 +110,6 @@
   }
 
   function bindUI() {
-    byId('sidebarToggle')?.addEventListener('click',()=>byId('sidebar')?.classList.toggle('collapsed'));
     document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click',async ()=>{
       const nextView=btn.dataset.view||'general';
       if(nextView===state.view&&btn.classList.contains('active'))return;
