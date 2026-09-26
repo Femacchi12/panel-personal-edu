@@ -102,14 +102,12 @@
       state.view = btn.dataset.view || 'general';
       document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x===btn));
       closeFilterMenus();
-      render();
+      render('navigation');
     }));
     document.querySelectorAll('.currency-btn').forEach(btn => btn.addEventListener('click',()=>{
       state.currency = btn.dataset.currency || 'COP';
       document.querySelectorAll('.currency-btn').forEach(x=>x.classList.toggle('active',x===btn));
-      render();
-      const root=byId('viewRoot');
-      document.dispatchEvent(new CustomEvent('panel:view-root-changed',{detail:{view:state.view,root,source:'currency'}}));
+      render('currency');
     }));
     document.querySelectorAll('[data-filter-trigger]').forEach(btn => btn.addEventListener('click',event=>{
       event.stopPropagation();
@@ -179,14 +177,14 @@
       hydrateFilterOptions();
       const warning = state.loadErrors.length ? ` · ${state.loadErrors.length} fuente(s) con error` : '';
       setSync('ok',`Sincronizado ${state.loadedSources}/${state.totalSources}${warning}`);
-      render();
+      render('data');
       document.dispatchEvent(new CustomEvent('panel:app-data-ready',{detail:{loadedSources:state.loadedSources,totalSources:state.totalSources,lastSync:state.lastSync}}));
     } else {
       state.data = next;
       window.__PANEL_APP_DATA__ = state.data;
       const err = state.loadErrors[0]?.error || 'Google no devolvió datos';
       setSync('demo','No se pudieron leer los Sheets');
-      render();
+      render('data-error');
       if (showAlert) alert(`No se pudieron leer los Sheets.\n\n${shortError(err)}\n\nPulsa "Salir" y vuelve a ingresar con Google. Si continúa, revisaremos la habilitación de Google Sheets API.`);
     }
     if (refresh) refresh.disabled = false;
@@ -309,16 +307,24 @@
     document.dispatchEvent(new CustomEvent('panel:filters-updated',{detail:{view:state.view,filters:state.filters}}));
   }
 
-  function render() {
+  function render(source='app') {
     destroyCharts();
     const [eye,title]=viewMeta[state.view]||viewMeta.general;
     if(byId('viewEyebrow'))byId('viewEyebrow').textContent=eye;
     if(byId('viewTitle'))byId('viewTitle').textContent=title;
     const root=byId('viewRoot');
     if(!root)return;
-    if(state.loadedSources===0 && state.token && state.loadErrors.length) {root.innerHTML=renderLoadError();bindDynamic();return;}
+    if(state.loadedSources===0 && state.token && state.loadErrors.length) {
+      root.innerHTML=renderLoadError();
+      bindDynamic();
+      window.__PANEL_EMIT_VIEW_ROOT_CHANGED__?.(source);
+      return;
+    }
     const fn={general:renderGeneral,resumen:renderResumen,gastos:renderGastos,flujo:renderFlujo,tarjetas:renderTarjetas,deudas:renderDeudas,inversiones:renderInversiones,pension:renderPension,ingresos:renderIngresos,servicios:renderServicios,salud:renderSalud,citas:renderCitas,tratamientos:renderTratamientos,documentos:renderDocumentos,viajes:renderViajes}[state.view]||renderGeneral;
-    root.innerHTML=fn();bindDynamic();requestAnimationFrame(drawViewCharts);
+    root.innerHTML=fn();
+    bindDynamic();
+    window.__PANEL_EMIT_VIEW_ROOT_CHANGED__?.(source);
+    requestAnimationFrame(drawViewCharts);
   }
 
   function renderLoadError() {
