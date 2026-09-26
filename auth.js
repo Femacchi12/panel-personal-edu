@@ -115,8 +115,8 @@ async function loadDashboard() {
     }
     await loadScript("regular-income-core.js");
     await loadScript("finance-purchase-policy.js");
-    await loadScript("app.js");
     await loadScript("section-module-loader.js");
+    await loadScript("app.js");
 
     const globalModules = [
       ...(BACKEND_MODE ? ["expense-reconciliation-guard.js"] : []),
