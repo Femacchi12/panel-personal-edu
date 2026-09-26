@@ -390,7 +390,5 @@
 
   document.addEventListener('panel:view-root-changed', event => { if (event.detail?.view === 'documentos') schedule(); });
   document.addEventListener('panel:section-filters-changed', event => { if (event.detail?.view === 'documentos') schedule(); });
-  document.addEventListener('panel:backend-data-loaded', () => { if (activeView() === 'documentos') schedule(); });
-  document.addEventListener('panel:modules-ready', () => { if (activeView() === 'documentos') schedule(); });
   queueMicrotask(schedule);
 })();
