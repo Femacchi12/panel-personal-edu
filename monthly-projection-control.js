@@ -159,6 +159,7 @@
       if(programmed)programmedHost.replaceChildren(programmed);else programmedHost.replaceChildren();
       if(comparison)comparisonHost.replaceChildren(comparison);else comparisonHost.replaceChildren();
     }
+    document.dispatchEvent(new CustomEvent('panel:monthly-projection-rendered',{detail:{view:'gastos',month:stats.key}}));
   }
   function schedule(force=false){
     pendingForce=pendingForce||force;
