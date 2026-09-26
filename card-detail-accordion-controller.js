@@ -197,9 +197,6 @@
   document.addEventListener('panel:view-root-changed', event => {
     if (event.detail?.view === 'tarjetas') schedule();
   });
-  document.addEventListener('panel:section-modules-ready', event => {
-    if (event.detail?.view === 'tarjetas') schedule();
-  });
   document.addEventListener('panel:card-filter-changed', event => {
     if (activeView() !== 'tarjetas') return;
     const id = String(event.detail?.cardId || '').trim();
@@ -211,7 +208,6 @@
   document.addEventListener('panel:section-filters-changed', event => {
     if (event.detail?.view === 'tarjetas') schedule();
   });
-  document.addEventListener('panel:backend-data-loaded', schedule);
   document.addEventListener('panel:expense-scope-changed', event => {
     if (event.detail?.view === 'tarjetas') schedule();
   });
