@@ -61,10 +61,7 @@
   function schedule(){if(frame)cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{frame=0;setTimeout(run,0)})}
 
   document.addEventListener('change',e=>{if(e.target.matches('[data-p-debt-mode]')){debtMode=e.target.value||'include';lastSignature='';schedule();return}if(e.target.matches('[data-p-filter]')){lastSignature='';schedule()}},true);
-  document.addEventListener('click',e=>{if(e.target.closest('.currency-btn')){lastSignature='';setTimeout(schedule,0)}},true);
   document.addEventListener('panel:view-root-changed',()=>{lastSignature='';schedule()});
-  document.addEventListener('panel:backend-data-loaded',()=>{lastSignature='';schedule()});
-  document.addEventListener('panel:manual-refresh-complete',()=>{lastSignature='';schedule()});
-  const root=document.getElementById('viewRoot');if(root)new MutationObserver(()=>{if(view()==='patrimonio')schedule()}).observe(root,{childList:true,subtree:true});
+  document.addEventListener('panel:patrimonio-rendered',()=>{lastSignature='';schedule()});
   queueMicrotask(schedule);
 })();
