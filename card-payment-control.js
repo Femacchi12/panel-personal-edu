@@ -56,6 +56,7 @@
   }
 
   function parseDate(value) {
+    if(typeof value==='number'&&Number.isFinite(value)&&value>20000&&value<80000){const utc=new Date(Math.round((value-25569)*86400000));return new Date(utc.getUTCFullYear(),utc.getUTCMonth(),utc.getUTCDate());}
     const s = String(value || '').trim();
     const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
     if (m) return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
