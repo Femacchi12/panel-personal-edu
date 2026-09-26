@@ -342,9 +342,6 @@
   }
 
   function schedule(){if(frame)return;frame=requestAnimationFrame(()=>{frame=0;run();});}
-  document.addEventListener('panel:view-root-changed',schedule);
-  document.addEventListener('panel:backend-data-loaded',schedule);
-  document.addEventListener('panel:modules-ready',schedule);
-  document.addEventListener('click',e=>{if(e.target.closest('.nav-item'))setTimeout(schedule,0);});
+  document.addEventListener('panel:view-root-changed',event=>{if(event.detail?.view==='viajes')schedule();});
   queueMicrotask(schedule);
 })();
