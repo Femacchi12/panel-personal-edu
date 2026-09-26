@@ -29,9 +29,7 @@
     resumen: { global:['year','month','category','subcategory'], local:[] },
     gastos: { global:['year','month','category','subcategory'], local:[] },
     flujo: { global:['year','month'], local:[] },
-    tarjetas: { global:['year','month','category','subcategory'], local:[
-      filter('cardHolder','Titular',[src('Tarjetas!A:T',['Titular']),src('Movimientos!A:Z',['Titular'])])
-    ]},
+    tarjetas: { global:['year','month','category','subcategory'], local:[] },
     deudas: { global:[], local:[
       filter('debtHolder','Titular',[src('Cuotas!A:T',['Titular'])]),
       filter('debtCard','Tarjeta',[src('Cuotas!A:T',['Tarjeta'])]),
@@ -201,6 +199,9 @@
   }
 
   async function renderSectionFilters(view){
+    // Las vistas financieras administran una barra propia y persistente.
+    // El controlador genérico no debe ocultarla ni reemplazar su contenido.
+    if(['gastos','flujo','tarjetas'].includes(view)) return;
     let bar=document.getElementById('sectionFilterBar');
     const main=document.querySelector('.main');
     if(!main)return;
