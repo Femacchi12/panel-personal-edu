@@ -12,7 +12,7 @@
   const norm=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 
   const EXPENSE_POLICY=Object.freeze({
-    authoritativeRange:'Movimientos!A:Z',
+    authoritativeRange:'Movimientos!A:AA',
     summaryRanges:Object.freeze(['Flujo_Ahorro!A:W','Flujo_Mensual!A:J']),
     reconciliationStart:'2026-01',
     toleranceCop:1,
