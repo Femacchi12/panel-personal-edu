@@ -336,6 +336,8 @@
     document.dispatchEvent(new CustomEvent('panel:filters-updated',{detail:{view:state.view,filters:state.filters}}));
   }
 
+  const SPECIALIZED_CHART_VIEWS=new Set(['general','gastos','pension','ingresos','viajes']);
+
   function render(source='app') {
     destroyCharts();
     const [eye,title]=viewMeta[state.view]||viewMeta.general;
@@ -364,7 +366,7 @@
     root.innerHTML=fn();
     bindDynamic();
     window.__PANEL_EMIT_VIEW_ROOT_CHANGED__?.(source);
-    requestAnimationFrame(drawViewCharts);
+    if(!SPECIALIZED_CHART_VIEWS.has(state.view)) requestAnimationFrame(drawViewCharts);
   }
 
   function renderLoadError() {
