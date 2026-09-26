@@ -284,8 +284,5 @@
   function schedule(){if(frame)return;frame=requestAnimationFrame(()=>{frame=0;run();});}
   document.addEventListener('panel:view-root-changed',schedule);
   document.addEventListener('panel:section-filters-changed',e=>{if(['salud','citas','tratamientos'].includes(e.detail?.view))schedule();});
-  document.addEventListener('panel:app-data-ready',schedule);
-  document.addEventListener('panel:manual-refresh-complete',schedule);
-  document.addEventListener('panel:modules-ready',schedule);
   queueMicrotask(schedule);
 })();
