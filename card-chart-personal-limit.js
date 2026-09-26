@@ -63,7 +63,7 @@
     const payload=await getData(force);
     return {
       cardRows:rowsFromPayload(payload,'Tarjetas!A:T'),
-      movements:rowsFromPayload(payload,'Movimientos!A:Z')
+      movements:window.FinanceScopeCore?.movementRows?window.FinanceScopeCore.movementRows(payload,financeId):rowsFromPayload(payload,'Movimientos!A:AA')
     };
   }
 
