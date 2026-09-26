@@ -2,8 +2,6 @@
   'use strict';
 
   let frame = 0;
-  let observer = null;
-  let observedHost = null;
 
   const activeView = () => document.querySelector('.nav-item.active')?.dataset.view || '';
   const norm = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
@@ -261,16 +259,7 @@
     injectStyles();
     const host = document.getElementById('flowMatrixV3');
     if (!host) return;
-    observe(host);
     syncRows(host);
-  }
-
-  function observe(host) {
-    if (host === observedHost) return;
-    observer?.disconnect();
-    observedHost = host;
-    observer = new MutationObserver(() => schedule());
-    observer.observe(host, { childList:true, subtree:true });
   }
 
   function schedule() {
