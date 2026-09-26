@@ -6,7 +6,7 @@
   if(!financeId)return;
 
   const MONTHS=['ene','feb','mar','abr','may','jun','jul','ago','sept','oct','nov','dic'];
-  let frame=0,version=0,observer=null,observedRoot=null;
+  let frame=0,version=0;
 
   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
@@ -136,17 +136,6 @@
     stabilize(root);
     patchClose(root,stats(source,activeScope(),activeCurrency()));
     stabilize(root);
-    observe(root);
-  }
-
-  function observe(root){
-    if(root===observedRoot)return;
-    observer?.disconnect();observedRoot=root;
-    observer=new MutationObserver(mutations=>{
-      if(activeView()!=='gastos')return;
-      if(mutations.some(m=>m.type==='childList'))schedule();
-    });
-    observer.observe(root,{childList:true,subtree:false});
   }
 
   function schedule(){
@@ -160,6 +149,9 @@
     });
   }
 
-  ['panel:view-root-changed','panel:expense-scope-changed','panel:monthly-projection-change'].forEach(name=>document.addEventListener(name,schedule));
+  ['panel:view-root-changed','panel:expense-scope-changed','panel:monthly-projection-change','panel:monthly-projection-rendered'].forEach(name=>document.addEventListener(name,event=>{
+    if(event?.detail?.view&&event.detail.view!=='gastos')return;
+    schedule();
+  }));
   queueMicrotask(schedule);
 })();
