@@ -335,6 +335,8 @@
     }
     if(state.loadedSources===0 && state.token && state.loadErrors.length) {
       root.innerHTML=renderLoadError();
+      root.classList.remove('panel-view-settling');
+      root.style.removeProperty('min-height');
       bindDynamic();
       window.__PANEL_EMIT_VIEW_ROOT_CHANGED__?.(source);
       return;
