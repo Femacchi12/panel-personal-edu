@@ -437,3 +437,19 @@ button{color:inherit}.hidden{display:none!important}
   font-weight:600;
   color:#91a1b8;
 }
+
+.dashboard-section-loading{
+  min-height:180px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  color:#7f90a8;
+  font-size:11px;
+}
+.dashboard-section-loading span{
+  width:7px;height:7px;border-radius:50%;
+  background:#4f8cff;
+  box-shadow:0 0 0 4px rgba(79,140,255,.12);
+}
+.dashboard-section-loading strong{font-size:10px;font-weight:600;color:#91a1b8}
