@@ -336,6 +336,7 @@
   }
 
   const SPECIALIZED_CHART_VIEWS=new Set(['general','gastos','pension','ingresos','viajes']);
+  const FULLY_SPECIALIZED_VIEWS=new Set(['general','patrimonio','inversiones','pension','ingresos','viajes']);
 
   function render(source='app') {
     destroyCharts();
@@ -362,8 +363,12 @@
       return;
     }
     const fn={general:renderGeneral,resumen:renderResumen,gastos:renderGastos,flujo:renderFlujo,tarjetas:renderTarjetas,deudas:renderDeudas,inversiones:renderInversiones,pension:renderPension,ingresos:renderIngresos,servicios:renderServicios,salud:renderSalud,citas:renderCitas,tratamientos:renderTratamientos,documentos:renderDocumentos,viajes:renderViajes}[state.view]||renderGeneral;
-    root.innerHTML=fn();
-    bindDynamic();
+    if(FULLY_SPECIALIZED_VIEWS.has(state.view) && moduleState?.hasView?.(state.view)){
+      root.innerHTML='<div class="dashboard-section-loading"><span></span><strong>Preparando vista…</strong></div>';
+    }else{
+      root.innerHTML=fn();
+      bindDynamic();
+    }
     window.__PANEL_EMIT_VIEW_ROOT_CHANGED__?.(source);
     if(!SPECIALIZED_CHART_VIEWS.has(state.view)) requestAnimationFrame(drawViewCharts);
   }
