@@ -40,6 +40,13 @@
     const token = ++settleToken;
     root.dataset.panelSettled = '0';
 
+    const view=activeView();
+    const moduleState=window.__PANEL_SECTION_MODULE_STATE__;
+    if(moduleState?.hasView?.(view) && !moduleState?.isLoaded?.(view)){
+      maxTimer=setTimeout(()=>reveal(root,token),1400);
+      return;
+    }
+
     const scheduleQuietReveal = () => {
       if (quietTimer) clearTimeout(quietTimer);
       quietTimer = setTimeout(() => reveal(root, token), 72);
@@ -67,6 +74,13 @@
       requestAnimationFrame(() => settle(root));
     }
   }
+
+  document.addEventListener('panel:section-modules-ready',event=>{
+    if(event.detail?.view===activeView()){
+      const root=document.getElementById('viewRoot');
+      if(root?.classList.contains('panel-view-settling')) requestAnimationFrame(()=>settle(root));
+    }
+  });
 
   window.__PANEL_EMIT_VIEW_ROOT_CHANGED__ = emit;
   window.__PANEL_SETTLE_VIEW_ROOT__ = settle;
