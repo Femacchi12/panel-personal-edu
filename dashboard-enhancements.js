@@ -40,7 +40,7 @@
     }
     const direct=window.__PANEL_GET_SOURCE_VALUES__;
     if(typeof direct!=='function')throw new Error('Backend no disponible');
-    const [movementValues,cardValues]=await Promise.all([direct(financeId,'Movimientos!A:Z',force),direct(financeId,'Tarjetas!A:T',force)]);
+    const [movementValues,cardValues]=await Promise.all([direct(financeId,'Movimientos!A:AA',force),direct(financeId,'Tarjetas!A:T',force)]);
     return{movements:rowsFromValues(movementValues),cards:rowsFromValues(cardValues)};
   }
 
@@ -60,10 +60,30 @@
     return rows.filter(row=>{if(!isExpense(row)||(window.MovementStatusCore&&!window.MovementStatusCore.isActual(row.Estado))||!isCredit(row))return false;if(scope!=='Todos'&&scopeOf(row)!==scope)return false;const d=rowDate(row);if(years.size&&(!d||!years.has(String(d.getFullYear()))))return false;if(months.size&&(!d||!months.has(String(d.getMonth()+1))))return false;if(categories.size&&!categories.has(pick(row,['Categoría','Categoria'])))return false;if(subcategories.size&&!subcategories.has(pick(row,['Subcategoría','Subcategoria'])))return false;return Boolean(d);});
   }
 
-  function nickname(owner){const n=norm(owner);if(n.includes('eduardo')||n.includes('fernando'))return'edu';if(n.includes('rocio'))return'rocio';return n.split(/\s+/)[0]||'';}
+  function nickname(owner){const n=norm(owner);if(n.includes('eduardo')||n.includes('fernando')||n==='edu')return'edu';if(n.includes('rocio'))return'rocio';return n.split(/\s+/)[0]||'';}
   const cardLabel=card=>`${pick(card,['Emisor'])||'Tarjeta'}${pick(card,['Titular'])?` · ${pick(card,['Titular'])}`:''}`;
   function issuerCounts(cards){const map=new Map();cards.forEach(card=>{const issuer=norm(pick(card,['Emisor']));if(issuer)map.set(issuer,(map.get(issuer)||0)+1);});return map;}
-  function matchCardMovement(row,card,counts){const source=norm([pick(row,['Cuenta / Tarjeta','Cuenta/Tarjeta','Tarjeta','Medio de Pago','Pago']),pick(row,['Titular'])].filter(Boolean).join(' '));if(!source)return false;const issuer=norm(pick(card,['Emisor'])),product=norm(pick(card,['Producto'])),owner=norm(pick(card,['Titular'])),nick=nickname(owner),sameIssuer=counts.get(issuer)||0;if(nick&&source.includes(nick)&&(!issuer||source.includes(issuer)||!sameIssuer))return true;if(owner&&source.includes(owner))return true;if(sameIssuer===1&&issuer&&source.includes(issuer))return true;if(product&&source.includes(product)&&(sameIssuer===1||!nick||source.includes(nick)))return true;return false;}
+  function movementCardId(row){
+    const account=norm(pick(row,['Cuenta / Tarjeta','Cuenta/Tarjeta','Tarjeta','Medio de Pago','Pago']));
+    const holder=norm(pick(row,['Titular']));
+    if(account.includes('arq'))return'TC-ARQ-EDU';
+    if(account.includes('nu')&&(account.includes('rocio')||account.includes('nu ro')||holder.includes('rocio')))return'TC-NU-RO';
+    if(account.includes('nu'))return'TC-NU-EDU';
+    return'';
+  }
+  function matchCardMovement(row,card,counts){
+    const exact=movementCardId(row),cardId=String(card?.['ID tarjeta']||'').trim();
+    if(exact)return exact===cardId;
+    const source=norm([pick(row,['Cuenta / Tarjeta','Cuenta/Tarjeta','Tarjeta','Medio de Pago','Pago']),pick(row,['Titular'])].filter(Boolean).join(' '));
+    if(!source)return false;
+    const issuer=norm(pick(card,['Emisor'])),product=norm(pick(card,['Producto'])),owner=norm(pick(card,['Titular'])),nick=nickname(owner),sameIssuer=counts.get(issuer)||0;
+    if(issuer&&source.includes(issuer)){
+      if(sameIssuer<=1)return true;
+      return Boolean(nick&&source.includes(nick));
+    }
+    if(product&&source.includes(product)&&(sameIssuer===1||!nick||source.includes(nick)))return true;
+    return false;
+  }
   const cutDay=card=>{const raw=parseInt(pick(card,['Día corte','Dia corte','Corte']),10);return Number.isFinite(raw)&&raw>=1&&raw<=31?raw:1;};
   const cardRealLimit=card=>parseNumber(pick(card,['Cupo total actual','Cupo total','Límite real','Límite','Limite','Cupo']));
   const cardControlLimit=card=>{const configured=parseNumber(pick(card,['Límite personal de gasto','Límite de control']));return configured>0?configured:cardRealLimit(card);};
@@ -97,7 +117,7 @@
     return{labels,datasets,daily};
   }
 
-  function renderCardPanelSkeleton(){if(activeView()!=='tarjetas')return null;const existing=document.querySelector('[data-card-line-panel]');if(existing)return existing;const anchor=document.getElementById('cardsChart')?.closest('.panel');if(!anchor)return null;const panel=document.createElement('div');panel.className='panel card-line-panel';panel.dataset.cardLinePanel='true';panel.innerHTML=`<div class="panel-header card-line-header"><div class="panel-title"><strong>Evolución por tarjeta</strong><span>Consulta gastos o porcentaje del límite utilizado</span></div><div class="chart-mode-switch" role="group" aria-label="Métrica del gráfico"><button type="button" class="chart-mode-btn${cardMetric==='spend'?' active':''}" data-card-line-mode="spend">Gastos</button><button type="button" class="chart-mode-btn${cardMetric==='limit'?' active':''}" data-card-line-mode="limit">Límite utilizado</button></div></div><div class="card-line-status" data-card-line-status>Cargando histórico…</div><div class="chart-scroll card-line-scroll" hidden><div class="chart-inner card-line-inner" style="width:760px;min-width:100%;height:330px"><canvas id="cardTrendChart"></canvas></div></div>`;anchor.insertAdjacentElement('afterend',panel);panel.querySelectorAll('[data-card-line-mode]').forEach(btn=>btn.addEventListener('click',()=>{cardMetric=btn.dataset.cardLineMode||'spend';panel.querySelectorAll('[data-card-line-mode]').forEach(x=>x.classList.toggle('active',x===btn));schedule();}));return panel;}
+  function renderCardPanelSkeleton(){if(activeView()!=='tarjetas')return null;const existing=document.querySelector('[data-card-line-panel]');if(existing)return existing;const anchor=document.getElementById('cardsChart')?.closest('.panel');if(!anchor)return null;const panel=document.createElement('div');panel.className='panel card-line-panel';panel.dataset.cardLinePanel='true';panel.innerHTML=`<div class="panel-header card-line-header"><div class="panel-title"><strong>Evolución por tarjeta</strong><span>Consulta gastos o porcentaje del límite utilizado</span></div><div class="card-line-controls"><div class="chart-mode-switch" role="group" aria-label="Métrica del gráfico"><button type="button" class="chart-mode-btn${cardMetric==='spend'?' active':''}" data-card-line-mode="spend">Gastos</button><button type="button" class="chart-mode-btn${cardMetric==='limit'?' active':''}" data-card-line-mode="limit">Límite utilizado</button></div><div class="card-limit-reference-slot" aria-hidden="true"></div></div></div><div class="card-line-status" data-card-line-status>Cargando histórico…</div><div class="chart-scroll card-line-scroll" hidden><div class="chart-inner card-line-inner" style="width:760px;min-width:100%;height:330px"><canvas id="cardTrendChart"></canvas></div></div>`;anchor.insertAdjacentElement('afterend',panel);panel.querySelectorAll('[data-card-line-mode]').forEach(btn=>btn.addEventListener('click',()=>{cardMetric=btn.dataset.cardLineMode||'spend';panel.querySelectorAll('[data-card-line-mode]').forEach(x=>x.classList.toggle('active',x===btn));schedule();}));return panel;}
 
   async function drawCardTrend(panel=renderCardPanelSkeleton()){
     if(!panel||!window.Chart||activeView()!=='tarjetas')return;
