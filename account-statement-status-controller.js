@@ -169,8 +169,5 @@
 
   style();
   document.addEventListener('panel:view-root-changed',e=>{if(e.detail?.view==='servicios')schedule();else version++});
-  document.addEventListener('panel:backend-data-loaded',()=>{if(activeView()==='servicios')schedule()});
-  document.addEventListener('panel:manual-refresh-complete',()=>{if(activeView()==='servicios')schedule()});
-  document.addEventListener('panel:section-modules-ready',e=>{if(e.detail?.view==='servicios')schedule()});
   queueMicrotask(()=>{if(activeView()==='servicios')schedule()});
 })();
