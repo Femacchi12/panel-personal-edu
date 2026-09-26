@@ -201,7 +201,10 @@
   async function renderSectionFilters(view){
     // Las vistas financieras administran una barra propia y persistente.
     // El controlador genérico no debe ocultarla ni reemplazar su contenido.
-    if(['gastos','flujo','tarjetas'].includes(view)) return;
+    if(['gastos','flujo','tarjetas'].includes(view)){
+      window.__PANEL_ENSURE_FINANCE_SCOPE_BAR__?.(view);
+      return;
+    }
     let bar=document.getElementById('sectionFilterBar');
     const main=document.querySelector('.main');
     if(!main)return;
