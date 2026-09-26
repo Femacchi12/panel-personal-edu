@@ -1,55 +1,26 @@
 (() => {
   'use strict';
 
-  const root = document.getElementById('viewRoot');
-  if (!root || window.__PANEL_VIEW_ROOT_EVENTS__) return;
+  if (window.__PANEL_VIEW_ROOT_EVENTS__) return;
   window.__PANEL_VIEW_ROOT_EVENTS__ = true;
 
-  let frame = 0;
-  function emit() {
-    frame = 0;
-    const view = document.querySelector('.nav-item.active')?.dataset.view || '';
+  let sequence = 0;
 
-    // Módulos que reemplazan por completo viewRoot gestionan sus propias
-    // mutaciones. Ignorarlas cuando ya están estables evita recargas
-    // recursivas y lecturas innecesarias del payload central.
-    if (view === 'viajes' && (root.querySelector('.travel-dashboard') || root.querySelector('.travel-loading'))) return;
-    if (view === 'general' && (root.querySelector('[data-general-dashboard]') || root.querySelector('.general-loading'))) return;
-    if (view === 'patrimonio' && (root.querySelector('.patrimonio-v2') || root.querySelector('.patrimonio-dashboard'))) return;
-    if (view === 'inversiones' && root.querySelector('.investment-dashboard')) return;
-    if (view === 'pension' && root.querySelector('.pension-v2')) return;
-    if (view === 'ingresos' && root.querySelector('.income-savings-dashboard')) return;
+  function activeView() {
+    return document.querySelector('.nav-item.active')?.dataset.view || '';
+  }
 
-    // Salud agrega bloques derivados como hijos directos de viewRoot. Esas
-    // inserciones/remociones son parte de su propio render y no deben
-    // volver a emitir view-root-changed, porque eso crea un ciclo:
-    // Salud renderiza -> MutationObserver -> view-root-changed -> Salud renderiza.
-    if (view === 'salud' && root.querySelector('.health-enhancement')) return;
-    if ((view === 'citas' || view === 'tratamientos') && root.querySelector('.health-derived-notice')) return;
-
-    // Tarjetas monta varios módulos como hijos directos: gráfico histórico,
-    // contexto, tabla de consumos y tablas de pagos/cuotas. Esas mutaciones
-    // son renders derivados, no un cambio real de vista. Reemitir el evento
-    // aquí provocaba el ciclo que hacía que las tablas se reconstruyeran
-    // constantemente. Cuando el render base de app.js reemplaza viewRoot,
-    // estos marcadores desaparecen y el evento vuelve a emitirse normalmente.
-    if (view === 'tarjetas' && (
-      root.querySelector('[data-card-line-panel]') ||
-      root.querySelector('#cardExpenseScopePanel') ||
-      root.querySelector('#cardPaymentsInstallments') ||
-      root.querySelector('.finance-context')
-    )) return;
-
+  function emit(source = 'app') {
+    const root = document.getElementById('viewRoot');
+    if (!root) return;
+    sequence += 1;
+    root.dataset.panelRenderSequence = String(sequence);
     document.dispatchEvent(new CustomEvent('panel:view-root-changed', {
-      detail: { view, root }
+      detail: { view: activeView(), root, source, sequence }
     }));
   }
 
-  function schedule() {
-    if (frame) return;
-    frame = requestAnimationFrame(emit);
-  }
-
-  new MutationObserver(schedule).observe(root, { childList: true, subtree: false });
-  queueMicrotask(schedule);
+  // app.js es el dueño del render base. Los módulos derivados ya no generan
+  // nuevos "cambios de vista" solo por insertar/reordenar contenido.
+  window.__PANEL_EMIT_VIEW_ROOT_CHANGED__ = emit;
 })();
