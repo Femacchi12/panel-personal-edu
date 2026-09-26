@@ -108,6 +108,8 @@
       state.currency = btn.dataset.currency || 'COP';
       document.querySelectorAll('.currency-btn').forEach(x=>x.classList.toggle('active',x===btn));
       render();
+      const root=byId('viewRoot');
+      document.dispatchEvent(new CustomEvent('panel:view-root-changed',{detail:{view:state.view,root,source:'currency'}}));
     }));
     document.querySelectorAll('[data-filter-trigger]').forEach(btn => btn.addEventListener('click',event=>{
       event.stopPropagation();
