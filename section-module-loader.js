@@ -143,6 +143,11 @@
     try { return await task; }
     catch (error) {
       console.error(`Módulos de sección ${view}:`, error);
+      if(activeView()===view){
+        const root=document.getElementById('viewRoot');
+        root?.classList.remove('panel-view-settling');
+        root?.style.removeProperty('min-height');
+      }
       throw error;
     } finally {
       loadingViews.delete(view);
