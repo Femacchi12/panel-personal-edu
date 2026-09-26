@@ -386,10 +386,6 @@
   document.addEventListener('panel:backend-data-loaded', () => {
     lastPayload = null;
     rawRows = [];
-    if (activeView() === 'gastos') schedule();
   });
-  document.addEventListener('click', event => {
-    if (event.target.closest?.('.currency-btn') && activeView() === 'gastos') setTimeout(schedule,0);
-  },true);
   queueMicrotask(schedule);
 })();
