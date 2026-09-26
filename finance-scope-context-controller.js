@@ -157,6 +157,6 @@
   }
 
   function schedule(){if(frame)return;frame=requestAnimationFrame(()=>{frame=0;setTimeout(()=>render().catch(console.error),24);});}
-  ['panel:view-root-changed','panel:filters-updated','panel:payment-filters-changed','panel:expense-scope-changed','panel:backend-data-loaded','panel:section-modules-ready'].forEach(name=>document.addEventListener(name,()=>schedule()));
+  ['panel:view-root-changed','panel:filters-updated','panel:payment-filters-changed','panel:expense-scope-changed'].forEach(name=>document.addEventListener(name,()=>schedule()));
   queueMicrotask(schedule);
 })();
