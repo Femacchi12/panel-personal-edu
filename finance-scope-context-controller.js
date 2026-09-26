@@ -12,7 +12,7 @@
   const activeView=()=>document.querySelector('.nav-item.active')?.dataset.view||'';
 
   function num(value){if(typeof value==='number')return Number.isFinite(value)?value:0;let s=String(value??'').trim().replace(/[^\d,.\-]/g,'');if(!s)return 0;const c=s.lastIndexOf(','),d=s.lastIndexOf('.');if(c>=0&&d>=0)s=c>d?s.replace(/\./g,'').replace(',','.'):s.replace(/,/g,'');else if(c>=0){const p=s.split(',');s=p.length===2&&p[1].length<=2?p[0].replace(/\./g,'')+'.'+p[1]:s.replace(/,/g,'');}else if(d>=0){const p=s.split('.');if(p.length>2||(p.length===2&&p[1].length===3))s=s.replace(/\./g,'');}const n=Number(s);return Number.isFinite(n)?n:0;}
-  function parseDate(value){const s=String(value??'').trim();let m=s.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?/);if(m)return new Date(+m[1],+m[2]-1,+(m[3]||1));m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);return null;}
+  function parseDate(value){if(typeof value==='number'&&Number.isFinite(value)&&value>20000&&value<80000){const utc=new Date(Math.round((value-25569)*86400000));return new Date(utc.getUTCFullYear(),utc.getUTCMonth(),utc.getUTCDate());}const s=String(value??'').trim();let m=s.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?/);if(m)return new Date(+m[1],+m[2]-1,+(m[3]||1));m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);return null;}
   function monthKey(value){const s=norm(value);let m=s.match(/^(20\d{2})-(\d{1,2})/);if(m)return`${m[1]}-${String(+m[2]).padStart(2,'0')}`;const map={ene:1,enero:1,feb:2,febrero:2,mar:3,marzo:3,abr:4,abril:4,may:5,mayo:5,jun:6,junio:6,jul:7,julio:7,ago:8,agosto:8,sep:9,sept:9,septiembre:9,oct:10,octubre:10,nov:11,noviembre:11,dic:12,diciembre:12};m=s.match(/^(ene|enero|feb|febrero|mar|marzo|abr|abril|may|mayo|jun|junio|jul|julio|ago|agosto|sep|sept|septiembre|oct|octubre|nov|noviembre|dic|diciembre)[\s-]+(20\d{2})/);return m?`${m[2]}-${String(map[m[1]]).padStart(2,'0')}`:'';}
   function rowMonth(row){return monthKey(row['Mes consumo']||row['Mes pago']||row['Fecha real']||row['Fecha registrada']);}
   function scopeOf(row) {
@@ -72,6 +72,66 @@
     return{total:0,keys};
   }
 
+  function injectStyles(){
+    if(document.getElementById('financeScopeContextStyles'))return;
+    const style=document.createElement('style');
+    style.id='financeScopeContextStyles';
+    style.textContent=`
+      #viewRoot>.finance-context{
+        width:100%;box-sizing:border-box;margin:0 0 14px;
+        border:1px solid var(--border-soft);
+        background:linear-gradient(180deg,rgba(16,25,39,.86),rgba(8,14,23,.92));
+        border-radius:13px;padding:12px;display:grid;gap:10px;
+      }
+      #viewRoot>.finance-context .finance-context-head{
+        display:flex;align-items:flex-start;justify-content:space-between;gap:12px;min-width:0;
+      }
+      #viewRoot>.finance-context .finance-context-head>div{display:grid;gap:3px;min-width:0}
+      #viewRoot>.finance-context .finance-context-head span{
+        display:block;font-size:9px;font-weight:800;letter-spacing:.07em;color:#63a1ff;
+      }
+      #viewRoot>.finance-context .finance-context-head strong{
+        display:block;font-size:13px;line-height:1.3;color:#edf4ff;
+      }
+      #viewRoot>.finance-context .finance-context-head small{
+        display:block;font-size:10px;color:#71839a;line-height:1.4;
+      }
+      #viewRoot>.finance-context .finance-context-state{
+        flex:0 0 auto;border:1px solid var(--border);border-radius:999px;
+        padding:5px 8px;font-size:9px;font-weight:800;color:#9db7d8;white-space:nowrap;
+      }
+      #viewRoot>.finance-context .finance-context-grid{
+        display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;align-items:stretch;
+      }
+      #viewRoot>.finance-context .finance-context-item{
+        border:1px solid var(--border-soft);background:rgba(255,255,255,.025);
+        border-radius:10px;padding:10px;min-width:0;min-height:72px;
+        display:flex;flex-direction:column;justify-content:flex-start;
+      }
+      #viewRoot>.finance-context .finance-context-item span{
+        display:block;font-size:8px;text-transform:uppercase;letter-spacing:.055em;
+        color:#667b95;font-weight:800;line-height:1.25;
+      }
+      #viewRoot>.finance-context .finance-context-item strong{
+        display:block;margin-top:5px;font-size:16px;color:#eef5ff;line-height:1.15;
+        white-space:normal;overflow-wrap:anywhere;
+      }
+      #viewRoot>.finance-context .finance-context-item small{
+        display:block;margin-top:5px;font-size:9px;color:#71839a;line-height:1.35;
+        white-space:normal;overflow-wrap:anywhere;
+      }
+      @media(max-width:980px){
+        #viewRoot>.finance-context .finance-context-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      }
+      @media(max-width:560px){
+        #viewRoot>.finance-context .finance-context-grid{grid-template-columns:1fr}
+        #viewRoot>.finance-context .finance-context-head{align-items:stretch;flex-direction:column}
+        #viewRoot>.finance-context .finance-context-state{align-self:flex-start}
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   function stabilize(root,host){
     const head=[...root.children].find(node=>node.matches?.('.section-head'))||null;
     const monthly=root.querySelector(':scope > #monthlyProjectionSuite');
@@ -82,6 +142,7 @@
 
   async function render(){
     if(activeView()!=='gastos')return;
+    injectStyles();
     const root=document.getElementById('viewRoot');if(!root)return;
     const loaded=await source(),data=filtered(loaded.rows);if(activeView()!=='gastos')return;
     const total=data.reduce((s,r)=>s+num(r['Monto COP']),0);
@@ -91,7 +152,7 @@
     const income=regularIncome(loaded.payload,data),scope=window.FinanceScopeCore?.getScope?.('gastos') || window.__FINANCE_SCOPE_FILTER_STATE__?.gastos || 'Personal';
     let host=root.querySelector(':scope > .finance-context');
     if(!host){host=document.createElement('section');host.className='finance-context';root.appendChild(host);}
-    host.innerHTML=`<div class="finance-context-head"><div><span>LECTURA DEL GASTO</span><strong>Resumen del período filtrado</strong><small>Ámbito: ${esc(scope)} · los gastos FIBRAZO no entran en Personal.</small></div><div class="finance-context-state">${data.length} movimientos</div></div><div class="finance-context-grid"><div class="finance-context-item"><span>Total gastado</span><strong>${esc(money(total))}</strong><small>${esc(scope)}</small></div><div class="finance-context-item"><span>Supermercado</span><strong>${esc(money(supermarket))}</strong><small>${income.total>0?`${pct(supermarket/income.total*100)}% del ingreso regular`:'Sin base de ingreso regular'}</small></div><div class="finance-context-item"><span>Mayor gasto</span><strong>${biggest?esc(money(num(biggest['Monto COP']))):'—'}</strong><small>${esc(biggest?.['Descripción / Comercio']||'Sin movimientos')}</small></div><div class="finance-context-item"><span>Servicios</span><strong>${esc(money(services))}</strong><small>${income.total>0?`${pct(services/income.total*100)}% del ingreso regular`:'Sin base de ingreso regular'}</small></div></div>`;
+    host.innerHTML=`<div class="finance-context-head"><div><span>LECTURA DEL GASTO</span><strong>Resumen del período filtrado</strong><small>Ámbito: ${esc(scope)} · los gastos FIBRAZO no entran en Personal.</small></div><div class="finance-context-state">${data.length} movimientos</div></div><div class="finance-context-grid"><div class="finance-context-item"><span>Total gastado</span><strong>${esc(money(total))}</strong><small>${esc(scope)}</small></div><div class="finance-context-item"><span>Mayor gasto</span><strong>${biggest?esc(money(num(biggest['Monto COP']))):'—'}</strong><small>${esc(biggest?.['Descripción / Comercio']||'Sin movimientos')}</small></div><div class="finance-context-item"><span>Supermercado</span><strong>${esc(money(supermarket))}</strong><small>${income.total>0?`${pct(supermarket/income.total*100)}% del ingreso regular`:'Sin base de ingreso regular'}</small></div><div class="finance-context-item"><span>Servicios</span><strong>${esc(money(services))}</strong><small>${income.total>0?`${pct(services/income.total*100)}% del ingreso regular`:'Sin base de ingreso regular'}</small></div></div>`;
     stabilize(root,host);
   }
 
