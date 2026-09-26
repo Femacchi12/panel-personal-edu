@@ -2,7 +2,6 @@
   'use strict';
 
   let frame = 0;
-  let observer = null;
 
   function timeLabel(value) {
     const date = value ? new Date(value) : new Date();
@@ -68,16 +67,9 @@
     });
   }
 
-  function watchLegacyWrites() {
-    const text = document.getElementById('syncText');
-    if (!text || observer) return;
-    observer = new MutationObserver(() => schedule());
-    observer.observe(text, { childList: true, characterData: true, subtree: true });
-  }
-
   document.addEventListener('panel:backend-data-loaded', schedule);
   document.addEventListener('panel:manual-refresh-complete', schedule);
-  document.addEventListener('panel:modules-ready', () => { watchLegacyWrites(); schedule(); });
+  document.addEventListener('panel:modules-ready', schedule);
   document.addEventListener('panel:view-root-changed', schedule);
-  queueMicrotask(() => { watchLegacyWrites(); schedule(); });
+  queueMicrotask(schedule);
 })();
