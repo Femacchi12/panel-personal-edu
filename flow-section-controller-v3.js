@@ -334,11 +334,10 @@
     frame = requestAnimationFrame(() => { frame=0; const version=runVersion; render(version).catch(error=>console.error('Flujo mensual v3:',error)); });
   }
 
-  ['panel:view-root-changed','panel:section-modules-ready','panel:filters-updated','panel:payment-filters-changed','panel:expense-scope-changed','panel:monthly-projection-change','panel:backend-data-loaded'].forEach(name => document.addEventListener(name,event => {
+  ['panel:view-root-changed','panel:filters-updated','panel:payment-filters-changed','panel:expense-scope-changed','panel:monthly-projection-change'].forEach(name => document.addEventListener(name,event => {
     if (activeView() !== 'flujo') return;
     if ((name === 'panel:payment-filters-changed' || name === 'panel:expense-scope-changed') && event.detail?.view && event.detail.view !== 'flujo') return;
     schedule();
   }));
-  document.addEventListener('click',event => { if (activeView()==='flujo' && event.target.closest?.('.currency-btn')) setTimeout(schedule,0); },true);
   queueMicrotask(schedule);
 })();
