@@ -249,6 +249,7 @@
     let host=root.querySelector('#cardPaymentsInstallments');
     if(!host){host=document.createElement('div');host.id='cardPaymentsInstallments';host.className='card-debt-stack';root.appendChild(host);}
     host.innerHTML=`${renderPayments(cycles,selected)}${renderInstallments(purchases,projection,selected)}`;
+    document.dispatchEvent(new CustomEvent('panel:card-payments-installments-rendered',{detail:{view:'tarjetas',cardId:selected||'',host}}));
   }
 
   function scheduleRender(force=false){
