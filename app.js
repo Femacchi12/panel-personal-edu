@@ -390,6 +390,16 @@
     if(status&&(status.includes('proyecc')||status.includes('programad')||status.includes('pendiente')))return false;
     return isExpense(row);
   }
+  function movementScope(row){
+    if(window.FinanceScopeCore?.scopeOf)return window.FinanceScopeCore.scopeOf(row);
+    const explicit=norm(row?.['Ámbito']||row?.Ambito);
+    if(explicit.includes('fibrazo'))return'FIBRAZO';
+    if(explicit.includes('personal'))return'Personal';
+    return norm(row?.Observaciones).includes('ambito explicito: fibrazo')?'FIBRAZO':'Personal';
+  }
+  function personalRegisteredExpense(row){
+    return registeredExpense(row)&&movementScope(row)==='Personal';
+  }
 
   function isCreditPurchase(row){
     if(!registeredExpense(row))return false;
@@ -492,7 +502,7 @@
       const d=rowDate(row);if(!d)return;const key=periodKey(d),out=ensure(key,pick(row,['Mes'])||key);
       out['Aportes netos inversiones COP']=num(pick(row,['Aportes netos COP']));
     });
-    const actual=(state.data.movimientos||[]).filter(registeredExpense);
+    const actual=(state.data.movimientos||[]).filter(personalRegisteredExpense);
     actual.forEach(row=>{
       const d=movementDate(row);if(!d)return;const key=periodKey(d),out=ensure(key,key);
       out['Gastos reales COP']+=num(pick(row,['Monto COP']));
@@ -517,7 +527,7 @@
 
   function renderResumen(){
     const canonical=summaryCanonicalRows();
-    const expenseRows=filteredMovements().filter(registeredExpense);
+    const expenseRows=filteredMovements().filter(personalRegisteredExpense);
     const creditRows=expenseRows.filter(isCreditPurchase);
     const categoryFiltered=Boolean(state.filters.category.length||state.filters.subcategory.length);
 
@@ -676,7 +686,7 @@
   function drawGeneralCharts(){const rows=filteredMovements().filter(isExpense);const daily=aggregate(rows,r=>{const d=movementDate(r);return d?`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`:'Sin fecha';},movementAmount);makeBar('generalDailyChart',[...daily.keys()],[{label:`Gasto ${state.currency}`,data:[...daily.values()]}]);const cats=[...aggregate(rows,r=>pick(r,['Categoría','Categoria'])||'Sin categoría',movementAmount).entries()].sort((a,b)=>b[1]-a[1]).slice(0,12);makeBar('generalCategoryChart',cats.map(x=>x[0]),[{label:`Total ${state.currency}`,data:cats.map(x=>x[1])}],true);}
   function drawFinancialSummaryChart(){
     const canonical=summaryCanonicalRows();
-    const expenseRows=filteredMovements().filter(registeredExpense);
+    const expenseRows=filteredMovements().filter(personalRegisteredExpense);
     const creditRows=expenseRows.filter(isCreditPurchase);
     const categoryFiltered=Boolean(state.filters.category.length||state.filters.subcategory.length);
     const periods=unique([
