@@ -282,7 +282,7 @@
   }
 
   function schedule(){if(frame)return;frame=requestAnimationFrame(()=>{frame=0;run();});}
-  document.addEventListener('panel:view-root-changed',schedule);
+  document.addEventListener('panel:view-root-changed',e=>{if(['salud','citas','tratamientos'].includes(e.detail?.view))schedule();else version++;});
   document.addEventListener('panel:section-filters-changed',e=>{if(['salud','citas','tratamientos'].includes(e.detail?.view))schedule();});
   queueMicrotask(schedule);
 })();
