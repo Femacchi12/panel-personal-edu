@@ -278,6 +278,21 @@
     }
     return null;
   }
+  function baseSourceValuesFromPayload(payload,spreadsheetId,range){
+    const exactKey=`${spreadsheetId}|${range}`;
+    const resolved=resolveSource(payload,spreadsheetId,range);
+    const sourceError=payload?.sourceErrors?.[resolved?.key||exactKey];
+    if(sourceError)throw new Error(`Fuente no disponible: ${range} · ${sourceError}`);
+    if(!resolved)throw new Error(`Fuente no permitida: ${range}`);
+    const sourceValues=resolved.values;
+    const canonicalValues=spreadsheetId===financeId?canonicalizeExpenseSummary(sourceValues,range,payload):sourceValues;
+    return applyMovementStateFilter(canonicalValues,range);
+  }
+  async function getBaseSourceValues(spreadsheetId,range,force=false){
+    return baseSourceValuesFromPayload(await getBackendData(force),spreadsheetId,range);
+  }
+  window.__PANEL_GET_BASE_SOURCE_VALUES__=getBaseSourceValues;
+
   function sourceValuesFromPayload(payload,spreadsheetId,range){
     const exactKey=`${spreadsheetId}|${range}`;
     const resolved=resolveSource(payload,spreadsheetId,range);
