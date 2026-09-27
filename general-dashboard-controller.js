@@ -80,6 +80,7 @@
 
   function isExpense(r){return norm(r.Tipo).includes('gasto')||norm(r.Naturaleza).includes('gasto');}
   function scopeOf(r) {
+    if(window.FinanceScopeCore?.scopeOf) return window.FinanceScopeCore.scopeOf(r);
     const explicit = norm(r['Ámbito'] || r.Ambito);
     if (explicit.includes('fibrazo')) return 'FIBRAZO';
     if (explicit.includes('personal')) return 'Personal';
