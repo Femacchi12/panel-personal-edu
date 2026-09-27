@@ -228,8 +228,11 @@
     if (!id) throw new Error('Falta ID del Sheet ' + src.book);
 
     let values;
+    const getBaseSourceValues = window.__PANEL_GET_BASE_SOURCE_VALUES__;
     const getSourceValues = window.__PANEL_GET_SOURCE_VALUES__;
-    if (typeof getSourceValues === 'function') {
+    if (typeof getBaseSourceValues === 'function') {
+      values = await getBaseSourceValues(id, src.range, false);
+    } else if (typeof getSourceValues === 'function') {
       values = await getSourceValues(id, src.range, false);
     } else {
       const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent(id) + '/values/' + encodeURIComponent(src.range) + '?majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE';
