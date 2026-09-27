@@ -448,7 +448,6 @@
     if (event.detail?.view === 'flujo') schedule();
   });
   document.addEventListener('panel:flow-matrix-v3-rendered', schedule);
-  document.addEventListener('panel:flow-income-controller-applied', schedule);
   document.addEventListener('panel:payment-filters-changed', event => { if (event.detail?.view === 'flujo') schedule(); });
   document.addEventListener('panel:filters-updated', () => { if (activeView() === 'flujo') schedule(); });
   document.addEventListener('click', event => {
