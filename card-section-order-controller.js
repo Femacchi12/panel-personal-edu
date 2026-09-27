@@ -14,8 +14,6 @@
   let sourceCache = null;
   let sourcePromise = null;
   let paymentsExpanded = false;
-  let observedPaymentsHost = null;
-  let paymentsObserver = null;
   const dateCache = new WeakMap();
 
   const activeView = () => document.querySelector('.nav-item.active')?.dataset.view || '';
