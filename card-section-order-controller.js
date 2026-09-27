@@ -367,15 +367,6 @@
     apply();
   }
 
-  function observePayments(host) {
-    if (host === observedPaymentsHost) return;
-    paymentsObserver?.disconnect();
-    observedPaymentsHost = host || null;
-    if (!host) return;
-    paymentsObserver = new MutationObserver(() => schedule(false));
-    paymentsObserver.observe(host, { childList:true, subtree:false });
-  }
-
   function applyStableOrder(root, desired) {
     let cursor = root.firstElementChild;
     let changed = false;
@@ -404,7 +395,6 @@
 
     removeRedundant(root, linePanel);
     applyPaymentsAccordion(paymentsHost);
-    observePayments(paymentsHost);
 
     const priority = [sectionHead, financeContext, kpis, linePanel, creditGrid, expensePanel].filter(Boolean);
     const prioritySet = new Set([...priority, paymentsHost].filter(Boolean));
@@ -462,6 +452,7 @@
   document.addEventListener('panel:view-root-changed', event => { if (event.detail?.view === 'tarjetas') schedule(); });
   document.addEventListener('panel:card-trend-rendered', () => schedule(false));
   document.addEventListener('panel:card-limit-mode-changed', () => schedule(false));
+  document.addEventListener('panel:card-payments-installments-rendered', event => { if (event.detail?.view === 'tarjetas') schedule(false); });
   document.addEventListener('panel:card-filter-changed', schedule);
   document.addEventListener('panel:filters-updated', schedule);
   document.addEventListener('panel:section-filters-changed', event => { if (event.detail?.view === 'tarjetas') schedule(); });
