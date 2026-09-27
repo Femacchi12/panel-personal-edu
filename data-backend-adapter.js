@@ -7,6 +7,8 @@
   if(!apiBaseUrl)return;
 
   const originalFetch=window.fetch.bind(window);
+  const AUTO_REFRESH_MS=Math.max(60_000,Number(cfg.autoRefreshMinutes||5)*60_000);
+  const DATA_CACHE_MS=Math.max(55_000,AUTO_REFRESH_MS-15_000);
   let dataPromise=null,cacheUntil=0,forcedReuseUntil=0;
   const parsedRowsCache=new WeakMap();
   const norm=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
@@ -38,7 +40,7 @@
   async function startBackendRequest(forceRoute=false){
     const now=Date.now();
     dataPromise=requestBackend(forceRoute);
-    cacheUntil=now+55_000;
+    cacheUntil=now+DATA_CACHE_MS;
     try{return await dataPromise;}catch(error){resetBackendCache();throw error;}
   }
   async function getBackendData(force=false){
