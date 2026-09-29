@@ -70,8 +70,14 @@
     return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
   }
 
-  function money(value) {
-    return new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(value)||0);
+  function normalizedCurrency(value){
+    const raw=String(value||'COP').trim().toUpperCase();
+    return raw==='ARS'?'ARS':raw==='USD'?'USD':'COP';
+  }
+
+  function money(value,currency='COP') {
+    const code=normalizedCurrency(currency);
+    return new Intl.NumberFormat(code==='ARS'?'es-AR':'es-CO',{style:'currency',currency:code,minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(value)||0);
   }
 
   function cardIdFromDom(card) {
@@ -81,6 +87,15 @@
     if (brand.includes('nu') && (owner.includes('rocio') || owner.includes('rocío'))) return 'TC-NU-RO';
     if (brand.includes('nu')) return 'TC-NU-EDU';
     return '';
+  }
+
+  function cardRowFromDom(card,rows) {
+    const brand=norm(card.querySelector('.credit-brand')?.textContent);
+    const owner=norm(card.querySelector('.credit-owner')?.textContent);
+    return (rows||[]).find(row=>{
+      const issuer=norm(row.Emisor),holder=norm(row.Titular);
+      return issuer&&brand.includes(issuer)&&(!holder||owner.includes(holder)||holder.includes(owner));
+    })||null;
   }
 
   function cycleIndex(cycles,now) {
@@ -221,8 +236,10 @@
     block.className = 'card-payment-control';
 
     const paymentDate = closed?.['Fecha pago'] ? dateLabel(closed['Fecha pago']) : '—';
-    const totalDue = closed ? parseNumber(closed['Pago total']) : 0;
-    const minDue = closed ? parseNumber(closed['Pago mínimo']) : 0;
+    const cycleCurrency=normalizedCurrency(closed?.Moneda||cardRow?.Moneda||'COP');
+    const totalRaw=closed?.['Pago total']??'';
+    const minRaw=closed?.['Pago mínimo']??'';
+    const totalDue=parseNumber(totalRaw),minDue=parseNumber(minRaw);
     block.innerHTML = `
       <div class="card-payment-head"><strong>Control del último corte</strong><span class="payment-state ${state.key}">${esc(state.label)}</span></div>
       <div class="card-cycle-grid">
@@ -230,8 +247,8 @@
         <div class="card-cycle-item wide"><span>Último período facturado</span><strong>${esc(billedPeriod(closed,id))}</strong></div>
         <div class="card-cycle-item"><span>Próximo corte</span><strong>${esc(current?.cut ? dateLabel(current.cut) : '—')}</strong></div>
         <div class="card-cycle-item"><span>Próximo vencimiento</span><strong>${esc(dueDate ? dateLabel(dueDate) : 'Pendiente de confirmar')}</strong></div>
-        <div class="card-cycle-item"><span>Pago mínimo</span><strong>${closed ? esc(money(minDue)) : '—'}</strong></div>
-        <div class="card-cycle-item"><span>Pago total corte</span><strong>${closed ? esc(money(totalDue)) : '—'}</strong></div>
+        <div class="card-cycle-item"><span>Pago mínimo</span><strong>${closed&&String(minRaw).trim() ? esc(money(minDue,cycleCurrency)) : '—'}</strong></div>
+        <div class="card-cycle-item"><span>Pago total corte</span><strong>${closed&&String(totalRaw).trim() ? esc(money(totalDue,cycleCurrency)) : '—'}</strong></div>
         ${state.key==='paid' ? `<div class="card-cycle-item wide"><span>Fecha de pago</span><strong>${esc(paymentDate)}</strong></div>` : ''}
       </div>`;
     card.appendChild(block);
@@ -249,7 +266,7 @@
       cards.forEach(card=>{
         if(!card.isConnected)return;
         const id = cardIdFromDom(card);
-        const row = rowById.get(id);
+        const row = rowById.get(id)||cardRowFromDom(card,cardRows);
         if (row) enhanceCard(card,row,index,now);
       });
     } catch (error) {
