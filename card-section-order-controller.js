@@ -141,6 +141,7 @@
     const issuer = norm(card?.Emisor), owner = ownerNick(card?.Titular), account = norm(row['Cuenta / Tarjeta']), holder = ownerNick(row.Titular);
     if (issuer.includes('arq') && !account.includes('arq')) return false;
     if (issuer.includes('nu') && !account.includes('nu')) return false;
+    if (!issuer.includes('arq') && !issuer.includes('nu') && issuer && !account.includes(issuer)) return false;
     if (owner === 'rocio') return holder === 'rocio' || account.includes('nu ro') || account.includes('rocio');
     if (owner === 'edu') return holder === 'edu' || account.includes('nu edu') || account.includes('arq') || account.includes('edu');
     return true;
@@ -148,8 +149,16 @@
 
   function cardId(card) { return String(card?.['ID tarjeta'] || '').trim(); }
   function cardLabel(card) { return `${String(card?.Emisor || 'Tarjeta').trim()}${card?.Titular ? ` · ${String(card.Titular).trim()}` : ''}`; }
-  function cardLimit(card) { return parseNumber(pick(card, ['Cupo total actual','Cupo total','Límite real','Límite','Limite','Cupo'])); }
-  function cardControlLimit(card) { const configured=parseNumber(pick(card,['Límite personal de gasto','Límite de control'])); return configured>0?configured:cardLimit(card); }
+  function cardNativeCurrency(card){ const raw=String(card?.Moneda||'COP').trim().toUpperCase(); return raw==='ARS'?'ARS':raw==='USD'?'USD':'COP'; }
+  function nativeCardToCop(card,value){
+    const amount=parseNumber(value),currency=cardNativeCurrency(card);
+    const usdCop=Number(cfg.regularIncome?.usdCopReference||3150),usdArs=Number(cfg.regularIncome?.usdArsReference||1500);
+    if(currency==='ARS')return usdArs?amount*usdCop/usdArs:amount;
+    if(currency==='USD')return amount*usdCop;
+    return amount;
+  }
+  function cardLimit(card) { return nativeCardToCop(card,pick(card, ['Cupo total actual','Cupo total','Límite real','Límite','Limite','Cupo'])); }
+  function cardControlLimit(card) { const configured=nativeCardToCop(card,pick(card,['Límite personal de gasto','Límite de control'])); return configured>0?configured:cardLimit(card); }
   function cardReferenceLimit(card) { return String(window.__PANEL_CARD_LIMIT_MODE__||'control')==='real'?cardLimit(card):cardControlLimit(card); }
   function cutDay(card) { const day = parseInt(pick(card, ['Día corte','Dia corte','Corte']), 10); return Number.isFinite(day) && day >= 1 && day <= 31 ? day : 1; }
 
@@ -225,7 +234,7 @@
   function money(value, currency = activeCurrency()) {
     let amount = Number(value) || 0;
     if (currency === 'USD') amount /= Number(cfg.regularIncome?.usdCopReference || 3150);
-    else if (currency === 'ARS') amount = amount / Number(cfg.regularIncome?.usdCopReference || 3150) * 1500;
+    else if (currency === 'ARS') amount = amount / Number(cfg.regularIncome?.usdCopReference || 3150) * Number(cfg.regularIncome?.usdArsReference || 1500);
     return new Intl.NumberFormat('es-CO', { style:'currency', currency, maximumFractionDigits: currency === 'USD' ? 2 : 0 }).format(amount);
   }
 
@@ -253,8 +262,8 @@
     const activeId = String(window.__PANEL_ACTIVE_CARD_ID__ || '').trim();
     const visible = activeId ? cards.filter(card => cardId(card) === activeId) : cards;
     const total = visible.reduce((sum, card) => sum + cardLimit(card), 0);
-    const used = visible.reduce((sum, card) => sum + parseNumber(pick(card, ['Cupo usado','Utilizado','Saldo usado'])), 0);
-    const nextPayment = visible.reduce((sum, card) => sum + parseNumber(pick(card, ['Pago total próximo','Pago mínimo próximo'])), 0);
+    const used = visible.reduce((sum, card) => sum + nativeCardToCop(card,pick(card, ['Cupo usado','Utilizado','Saldo usado'])), 0);
+    const nextPayment = visible.reduce((sum, card) => sum + nativeCardToCop(card,pick(card, ['Pago total próximo','Pago mínimo próximo'])), 0);
     const grid = direct(document.getElementById('viewRoot'), '.kpi-grid');
     if (grid) {
       const byLabel = new Map([...grid.querySelectorAll('.kpi-card')].map(card => [norm(card.querySelector('.kpi-label')?.textContent), card]));
@@ -272,14 +281,16 @@
 
     document.querySelectorAll('#viewRoot .credit-card').forEach(node => {
       const brand = norm(node.querySelector('.credit-brand')?.textContent), owner = norm(node.querySelector('.credit-owner')?.textContent);
-      let id = '';
-      if (brand.includes('arq')) id = 'TC-ARQ-EDU';
-      else if (brand.includes('nu') && owner.includes('rocio')) id = 'TC-NU-RO';
-      else if (brand.includes('nu')) id = 'TC-NU-EDU';
+      const matched=cards.find(card=>{
+        const issuer=norm(card?.Emisor),holder=ownerNick(card?.Titular);
+        return issuer&&brand.includes(issuer)&&(!holder||holder===ownerNick(owner));
+      })||null;
+      const id=cardId(matched);
       node.dataset.cardId = id;
       node.hidden = Boolean(activeId && id && id !== activeId);
       node.classList.toggle('card-brand-arq', brand.includes('arq'));
       node.classList.toggle('card-brand-nu', brand.includes('nu'));
+      node.classList.toggle('card-brand-mp', brand.includes('mercado pago'));
     });
   }
 
