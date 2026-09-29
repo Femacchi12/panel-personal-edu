@@ -81,7 +81,12 @@
   function monthKey(date){ return date?`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`:''; }
   function monthLabel(date){ return date?`${MONTHS[date.getMonth()]} ${date.getFullYear()}`:'—'; }
   function dateLabel(value){const d=value instanceof Date?value:parseDate(value);return d?`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`:'—';}
-  function money(value){return new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(value)||0);}
+  const usdCop=Number(cfg.regularIncome?.usdCopReference||3150);
+  const usdArs=Number(cfg.regularIncome?.usdArsReference||1500);
+  function normalizeCurrency(value){const raw=String(value||'COP').trim().toUpperCase();return raw==='ARS'?'ARS':raw==='USD'?'USD':'COP';}
+  function toCop(value,currency='COP'){const amount=parseNumber(value),code=normalizeCurrency(currency);if(code==='ARS')return usdArs?amount*usdCop/usdArs:amount;if(code==='USD')return amount*usdCop;return amount;}
+  function nativeMoney(value,currency='COP'){const code=normalizeCurrency(currency);return new Intl.NumberFormat(code==='ARS'?'es-AR':'es-CO',{style:'currency',currency:code,minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(value)||0);}
+  function copMoney(value){return new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(value)||0);}
 
   function cardId(value,titular=''){
     const s=norm(`${value} ${titular}`);
@@ -95,6 +100,7 @@
     if(id==='TC-NU-EDU')return 'Nu · Edu';
     if(id==='TC-NU-RO')return 'Nu · Rocío';
     if(id==='TC-ARQ-EDU')return 'ARQ · Edu';
+    if(id==='TC-MP-EDU-ARG')return 'Mercado Pago · Edu';
     return id||'Tarjeta';
   }
 
@@ -149,8 +155,9 @@
       const n=Math.max(...g.rows.map(r=>r.__n),1);
       const pending=g.rows.filter(r=>r.__pendingInfo?.pending).sort((a,b)=>a.__pendingInfo.scheduled-b.__pendingInfo.scheduled||a.__cuota-b.__cuota);
       const pendingTotal=pending.reduce((s,r)=>s+r.__valor,0);
+      const pendingTotalCop=pending.reduce((s,r)=>s+toCop(r.__valor,g.moneda),0);
       const paidCount=Math.max(0,n-pending.length);
-      return {...g,n,pending,pendingTotal,paidCount,next:pending[0]||null,last:g.rows[g.rows.length-1]||null};
+      return {...g,n,pending,pendingTotal,pendingTotalCop,paidCount,next:pending[0]||null,last:g.rows[g.rows.length-1]||null};
     }).sort((a,b)=>(parseDate(b.fecha)?.getTime()||0)-(parseDate(a.fecha)?.getTime()||0));
   }
 
@@ -159,8 +166,8 @@
     purchases.forEach(p=>p.pending.forEach(r=>{
       const key=monthKey(r.__pendingInfo.scheduled);
       if(!key)return;
-      const entry=map.get(key)||{date:r.__pendingInfo.scheduled,total:0,count:0};
-      entry.total+=r.__valor;entry.count+=1;map.set(key,entry);
+      const entry=map.get(key)||{date:r.__pendingInfo.scheduled,totalCop:0,count:0};
+      entry.totalCop+=toCop(r.__valor,p.moneda);entry.count+=1;map.set(key,entry);
     }));
     return [...map.values()].sort((a,b)=>a.date-b.date);
   }
@@ -200,7 +207,7 @@
       const id=cardId(r.Tarjeta,r.Titular);
       const amount=parseNumber(r['Monto pagado real'])||parseNumber(r['Pago total']);
       const doc=String(r.Documento||'').trim();
-      return `<tr><td>${esc(dateLabel(r['Fecha pago']))}</td><td>${esc(cardLabel(id))}</td><td>${esc(r.Titular||'—')}</td><td>${esc(dateLabel(r['Fecha corte']))}</td><td class="money-cell">${esc(money(amount))}</td><td class="money-cell">${esc(money(parseNumber(r['Pago total'])))}</td><td>${doc?`<a href="${esc(doc)}" target="_blank" rel="noopener">Ver soporte</a>`:'—'}</td><td>${esc(r['Observaciones pago']||'—')}</td></tr>`;
+      return `<tr><td>${esc(dateLabel(r['Fecha pago']))}</td><td>${esc(cardLabel(id))}</td><td>${esc(r.Titular||'—')}</td><td>${esc(dateLabel(r['Fecha corte']))}</td><td class="money-cell">${esc(nativeMoney(amount,r.Moneda||'COP'))}</td><td class="money-cell">${esc(nativeMoney(parseNumber(r['Pago total']),r.Moneda||'COP'))}</td><td>${doc?`<a href="${esc(doc)}" target="_blank" rel="noopener">Ver soporte</a>`:'—'}</td><td>${esc(r['Observaciones pago']||'—')}</td></tr>`;
     }).join(''):`<tr><td colspan="8"><div class="card-debt-empty">Todavía no hay pagos con fecha confirmada en el maestro. Desde el próximo pago que registremos por chat, aparecerá aquí automáticamente. Los ciclos históricos sin fecha de pago no se marcan como pagados por inferencia.</div></td></tr>`;
     return `<div class="panel table-panel"><div class="panel-header"><div class="panel-title"><strong>Pagos realizados</strong><span>Historial de pagos efectivamente confirmados · ${selected?esc(cardLabel(selected)):'todas las tarjetas'}</span></div></div><div class="table-scroll"><table class="card-debt-table"><thead><tr><th>Fecha pago</th><th>Tarjeta</th><th>Titular</th><th>Corte</th><th>Monto pagado</th><th>Total del corte</th><th>Soporte</th><th>Observaciones</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
   }
@@ -208,26 +215,26 @@
   function renderInstallments(purchases,projection,selected){
     const visible=purchases.filter(p=>!selected||p.id===selected);
     const pending=visible.filter(p=>p.pending.length);
-    const pendingTotal=pending.reduce((s,p)=>s+p.pendingTotal,0);
+    const pendingTotal=pending.reduce((s,p)=>s+p.pendingTotalCop,0);
     const pendingCount=pending.reduce((s,p)=>s+p.pending.length,0);
     const currentMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1);
-    const currentTotal=projection.find(x=>monthKey(x.date)===monthKey(currentMonth))?.total||0;
+    const currentTotal=projection.find(x=>monthKey(x.date)===monthKey(currentMonth))?.totalCop||0;
     const futureTotal=Math.max(0,pendingTotal-currentTotal);
     const lastMonth=pending.flatMap(p=>p.pending.map(r=>r.__pendingInfo.scheduled)).sort((a,b)=>b-a)[0]||null;
 
     const rows=visible.map(p=>{
       const pendingText=p.pending.length?p.pending.map(r=>`${r.__cuota}/${p.n} · ${monthLabel(r.__pendingInfo.scheduled)}`).join('<br>'):'—';
       const next=p.next;
-      return `<tr><td>${esc(dateLabel(p.fecha))}</td><td>${esc(cardLabel(p.id))}</td><td>${esc(p.descripcion||p.comercio||'—')}</td><td class="money-cell">${esc(money(p.total))}</td><td>${p.n}</td><td>${p.paidCount}</td><td>${p.pending.length}</td><td>${pendingText}</td><td class="money-cell">${next?esc(money(next.__valor)):'—'}</td><td class="money-cell">${esc(money(p.pendingTotal))}</td><td>${esc(next?monthLabel(next.__pendingInfo.scheduled):'—')}</td><td><span class="card-debt-status ${p.pending.length?'pending':'paid'}">${p.pending.length?'Pendiente':'Pagada'}</span></td></tr>`;
+      return `<tr><td>${esc(dateLabel(p.fecha))}</td><td>${esc(cardLabel(p.id))}</td><td>${esc(p.descripcion||p.comercio||'—')}</td><td class="money-cell">${esc(nativeMoney(p.total,p.moneda))}</td><td>${p.n}</td><td>${p.paidCount}</td><td>${p.pending.length}</td><td>${pendingText}</td><td class="money-cell">${next?esc(nativeMoney(next.__valor,p.moneda)):'—'}</td><td class="money-cell">${esc(nativeMoney(p.pendingTotal,p.moneda))}</td><td>${esc(next?monthLabel(next.__pendingInfo.scheduled):'—')}</td><td><span class="card-debt-status ${p.pending.length?'pending':'paid'}">${p.pending.length?'Pendiente':'Pagada'}</span></td></tr>`;
     }).join('')||`<tr><td colspan="12"><div class="card-debt-empty">No hay compras en cuotas para la tarjeta seleccionada.</div></td></tr>`;
 
     const projVisible=installmentProjection(visible);
-    const proj=projVisible.length?`<div class="card-projection-grid">${projVisible.map(x=>`<div class="card-projection-item"><span>${esc(monthLabel(x.date))}</span><strong>${esc(money(x.total))}</strong><small>${x.count} cuota${x.count===1?'':'s'} comprometida${x.count===1?'':'s'}</small></div>`).join('')}</div>`:'<div class="card-debt-empty">Sin cuotas comprometidas en meses futuros.</div>';
+    const proj=projVisible.length?`<div class="card-projection-grid">${projVisible.map(x=>`<div class="card-projection-item"><span>${esc(monthLabel(x.date))}</span><strong>${esc(copMoney(x.totalCop))}</strong><small>${x.count} cuota${x.count===1?'':'s'} comprometida${x.count===1?'':'s'}</small></div>`).join('')}</div>`:'<div class="card-debt-empty">Sin cuotas comprometidas en meses futuros.</div>';
 
     return `<div class="card-debt-kpis">
-      <div class="card-debt-kpi"><span>Deuda pendiente en cuotas</span><strong>${esc(money(pendingTotal))}</strong><small>Cuotas del corte actual pendientes + meses futuros</small></div>
+      <div class="card-debt-kpi"><span>Deuda pendiente en cuotas</span><strong>${esc(copMoney(pendingTotal))}</strong><small>Cuotas del corte actual pendientes + meses futuros</small></div>
       <div class="card-debt-kpi"><span>Cuotas pendientes</span><strong>${pendingCount}</strong><small>${pending.length} compra${pending.length===1?'':'s'} con saldo</small></div>
-      <div class="card-debt-kpi"><span>Después del corte actual</span><strong>${esc(money(futureTotal))}</strong><small>Crédito ya comprometido en meses siguientes</small></div>
+      <div class="card-debt-kpi"><span>Después del corte actual</span><strong>${esc(copMoney(futureTotal))}</strong><small>Crédito ya comprometido en meses siguientes</small></div>
       <div class="card-debt-kpi"><span>Última cuota prevista</span><strong>${esc(lastMonth?monthLabel(lastMonth):'Sin deuda')}</strong><small>Fin del compromiso vigente</small></div>
     </div>
     <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Compromiso de cuotas por mes</strong><span>Lo que ya está reservado en crédito antes de nuevas compras</span></div></div>${proj}</div>
