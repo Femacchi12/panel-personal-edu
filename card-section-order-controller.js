@@ -376,6 +376,23 @@
     apply();
   }
 
+  function cardVisualPriority(node) {
+    const brand=norm(node?.querySelector('.credit-brand')?.textContent);
+    const owner=norm(node?.querySelector('.credit-owner')?.textContent);
+    if (brand.includes('nu') && (owner.includes('edu') || owner.includes('fernando'))) return 1;
+    if (brand.includes('nu') && owner.includes('rocio')) return 2;
+    if (brand.includes('arq')) return 3;
+    if (brand.includes('mercado pago') || brand.includes('mercadolibre') || brand.includes('mercado libre')) return 4;
+    return 99;
+  }
+
+  function orderCreditCards(grid) {
+    if (!grid) return false;
+    const cards=[...grid.children].filter(node=>node.classList?.contains('credit-card'));
+    const desired=cards.slice().sort((a,b)=>cardVisualPriority(a)-cardVisualPriority(b));
+    return applyStableOrder(grid,desired);
+  }
+
   function applyStableOrder(root, desired) {
     let cursor = root.firstElementChild;
     let changed = false;
@@ -403,6 +420,7 @@
     const paymentsHost = direct(root, '#cardPaymentsInstallments');
 
     removeRedundant(root, linePanel);
+    orderCreditCards(creditGrid);
     applyPaymentsAccordion(paymentsHost);
 
     const priority = [sectionHead, financeContext, kpis, linePanel, creditGrid, expensePanel].filter(Boolean);
