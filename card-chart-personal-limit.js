@@ -4,6 +4,7 @@
   const cfg = window.PANEL_CONFIG || {};
   const financeId = String(cfg.financeSpreadsheetId || '');
   const usdCop = Number(cfg.regularIncome?.usdCopReference || 3150);
+  const usdArs = Number(cfg.regularIncome?.usdArsReference || 1500);
   if(!financeId) return;
 
   let renderFrame = 0;
@@ -103,15 +104,23 @@
   const pad=n=>String(n).padStart(2,'0');
   const shortDate=d=>`${pad(d.getDate())}/${pad(d.getMonth()+1)}`;
 
+  function nativeToCop(value,currency){
+    const amount=parseNumber(value),code=String(currency||'COP').trim().toUpperCase();
+    if(code==='ARS')return usdArs?amount*usdCop/usdArs:amount;
+    if(code==='USD')return amount*usdCop;
+    return amount;
+  }
+
   function cardsFromRows(rows){
     return rows.map(row=>{
       const issuer=String(row.Emisor||'').trim();
       const owner=String(row.Titular||'').trim();
-      const real=parseNumber(row['Cupo total actual']||row['Cupo total']||row['Límite real']);
-      const used=parseNumber(row['Cupo usado']||row.Utilizado||row['Saldo usado']);
-      const configured=parseNumber(row['Límite personal de gasto']||row['Límite de control']);
+      const currency=String(row.Moneda||'COP').trim().toUpperCase();
+      const real=nativeToCop(row['Cupo total actual']||row['Cupo total']||row['Límite real'],currency);
+      const used=nativeToCop(row['Cupo usado']||row.Utilizado||row['Saldo usado'],currency);
+      const configured=nativeToCop(row['Límite personal de gasto']||row['Límite de control'],currency);
       const control=configured>0?configured:real;
-      return {issuer,owner,real,used,control,key:norm(`${issuer} ${owner}`)};
+      return {issuer,owner,currency,real,used,control,key:norm(`${issuer} ${owner}`)};
     }).filter(card=>card.issuer&&card.real>0);
   }
 
