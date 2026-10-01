@@ -298,7 +298,10 @@
         node.appendChild(meta);
       }
       const carryNote = reconciliation.carryRows?.length ? ` · ${reconciliation.carryRows.length} conciliado${reconciliation.carryRows.length===1?'':'s'} por contabilización bancaria` : '';
-      meta.innerHTML = `<span>Compras del ciclo ${esc(period)}</span><strong>Personal ${esc(money(personal))}</strong><strong>FIBRAZO ${esc(money(fibrazo))}</strong><small>${cardRows.length} movimiento${cardRows.length===1?'':'s'} con crédito${esc(carryNote)} · presiona la tarjeta para filtrar</small>`;
+      const adjustmentNote = Math.abs(Number(reconciliation.adjustments)||0)>1 ? ` · ajustes del ciclo ${money(reconciliation.adjustments)}` : '';
+      const difference = Number(reconciliation.difference)||0;
+      const reconNote = Math.abs(difference)<=1 ? ' · saldo conciliado' : ` · diferencia vs saldo ${money(difference)}`;
+      meta.innerHTML = `<span>Compras del ciclo ${esc(period)}</span><strong>Personal ${esc(money(personal))}</strong><strong>FIBRAZO ${esc(money(fibrazo))}</strong><small>${cardRows.length} movimiento${cardRows.length===1?'':'s'} con crédito${esc(carryNote)}${esc(adjustmentNote)}${esc(reconNote)} · presiona la tarjeta para filtrar</small>`;
     });
   }
 
