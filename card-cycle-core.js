@@ -166,12 +166,13 @@
       if(cycleCurrency==='ARS') return usdArs?amount*usdCop/usdArs:amount;
       return amount;
     };
-    const adjustments=cycle
+    const supportsBankReconciliation=issuer.includes('arq')||issuer.includes('nu');
+    const adjustments=supportsBankReconciliation&&cycle
       ? componentToCop(cycle['Cuotas del mes']) + componentToCop(cycle.Intereses) + componentToCop(cycle['Cuota manejo']) - componentToCop(cycle.Devoluciones)
       : 0;
     const baseTotal=strictTotal+adjustments;
     const initialDifference=target-baseTotal;
-    if(!(issuer.includes('arq')||issuer.includes('nu'))||!bounds?.start||target<=0||initialDifference<=1){
+    if(!supportsBankReconciliation||!bounds?.start||target<=0||initialDifference<=1){
       return {rows:strict,strictRows:strict,carryRows:[],target,strictTotal,adjustments,total:strictTotal,obligationTotal:baseTotal,difference:target-baseTotal};
     }
 
