@@ -118,10 +118,17 @@
     return null;
   }
 
+  function cycleReconciliation(card, sourceRows = rows) {
+    if (!card) return { rows: [], carryRows: [], difference: 0 };
+    if (window.CardCycleCore?.reconciledCycleRows) return window.CardCycleCore.reconciledCycleRows(sourceRows, card, cycles, new Date());
+    const basic = window.CardCycleCore?.cycleRows
+      ? window.CardCycleCore.cycleRows(sourceRows, card, cycles, new Date(), { creditOnly: true })
+      : sourceRows.filter(row => isCredit(row) && rowMatchesCard(row, card));
+    return { rows: basic, carryRows: [], difference: 0 };
+  }
+
   function cycleRowsForCard(card, sourceRows = rows) {
-    if (!card) return [];
-    if (window.CardCycleCore?.cycleRows) return window.CardCycleCore.cycleRows(sourceRows, card, cycles, new Date(), { creditOnly: true });
-    return sourceRows.filter(row => isCredit(row) && rowMatchesCard(row, card));
+    return cycleReconciliation(card, sourceRows).rows;
   }
 
   function applyCategoryFilters(sourceRows) {
@@ -275,7 +282,8 @@
         node.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); } });
       }
 
-      const cardRows = cycleRowsForCard(card, baseRows);
+      const reconciliation = cycleReconciliation(card, baseRows);
+      const cardRows = reconciliation.rows;
       const personal = cardRows.filter(row => scopeOf(row) === 'Personal').reduce((sum, row) => sum + amount(row), 0);
       const fibrazo = cardRows.filter(row => scopeOf(row) === 'FIBRAZO').reduce((sum, row) => sum + amount(row), 0);
       const bounds = cycleBounds(card);
@@ -289,7 +297,8 @@
         meta.className = 'credit-card-scope-meta';
         node.appendChild(meta);
       }
-      meta.innerHTML = `<span>Compras del ciclo ${esc(period)}</span><strong>Personal ${esc(money(personal))}</strong><strong>FIBRAZO ${esc(money(fibrazo))}</strong><small>${cardRows.length} movimiento${cardRows.length===1?'':'s'} con crédito · presiona la tarjeta para filtrar</small>`;
+      const carryNote = reconciliation.carryRows?.length ? ` · ${reconciliation.carryRows.length} conciliado${reconciliation.carryRows.length===1?'':'s'} por contabilización bancaria` : '';
+      meta.innerHTML = `<span>Compras del ciclo ${esc(period)}</span><strong>Personal ${esc(money(personal))}</strong><strong>FIBRAZO ${esc(money(fibrazo))}</strong><small>${cardRows.length} movimiento${cardRows.length===1?'':'s'} con crédito${esc(carryNote)} · presiona la tarjeta para filtrar</small>`;
     });
   }
 
@@ -339,7 +348,8 @@
     const root = document.getElementById('viewRoot'); if (!root) return;
     const allCreditRows = rows.filter(isCredit);
     const active = activeCard();
-    const creditRows = active ? applyCategoryFilters(cycleRowsForCard(active, allCreditRows)) : periodRows(allCreditRows);
+    const activeReconciliation = active ? cycleReconciliation(active, allCreditRows) : null;
+    const creditRows = active ? applyCategoryFilters(activeReconciliation.rows) : periodRows(allCreditRows);
     const visibleRows = scopedRows(creditRows, 'tarjetas');
     const personalRows = creditRows.filter(row => scopeOf(row) === 'Personal');
     const fibrazoRows = creditRows.filter(row => scopeOf(row) === 'FIBRAZO');
@@ -361,7 +371,7 @@
     tableRows = sortRows(tableRows, currency);
     const shown = expanded ? tableRows : tableRows.slice(0, COLLAPSED_ROWS);
     const hiddenCount = Math.max(0, tableRows.length - COLLAPSED_ROWS);
-    host.innerHTML = `<div class="panel-header"><div class="panel-title"><strong>Gastos realizados con tarjeta de crédito</strong><span>${active ? `Tarjeta: ${esc(cardLabel(active))} · ciclo actual · ` : 'Período filtrado · '}${esc(scopeState.tarjetas)} · ${visibleRows.length} movimientos · ${esc(money(visibleTotal, currency))}</span></div><div class="table-toolbar"><input id="cardExpenseSearch" class="search-input" placeholder="Buscar gasto…" value="${esc(query)}"></div></div>
+    host.innerHTML = `<div class="panel-header"><div class="panel-title"><strong>Gastos realizados con tarjeta de crédito</strong><span>${active ? `Tarjeta: ${esc(cardLabel(active))} · ciclo actual${activeReconciliation?.carryRows?.length ? ` + ${activeReconciliation.carryRows.length} conciliado por contabilización` : ''} · ` : 'Período filtrado · '}${esc(scopeState.tarjetas)} · ${visibleRows.length} movimientos · ${esc(money(visibleTotal, currency))}</span></div><div class="table-toolbar"><input id="cardExpenseSearch" class="search-input" placeholder="Buscar gasto…" value="${esc(query)}"></div></div>
       <div class="card-expense-summary"><div><span>Total crédito</span><strong>${esc(money(total, currency))}</strong></div><div><span>Personal</span><strong>${esc(money(personal, currency))}</strong></div><div class="fibrazo"><span>FIBRAZO</span><strong>${esc(money(fibrazo, currency))}</strong></div></div>
       <div class="table-scroll card-expense-scroll${expanded ? ' expanded' : ''}" style="--card-expense-expanded-rows:${EXPANDED_VISIBLE_ROWS}"><table class="card-expense-table"><thead><tr>${sortHeader('Fecha','date')}${sortHeader('Tarjeta','card')}${sortHeader('Titular','holder')}${sortHeader('Ámbito','scope')}${sortHeader('Categoría','category')}${sortHeader('Subcategoría','subcategory')}${sortHeader('Descripción','description')}${sortHeader('Modalidad','method')}${sortHeader('Cuotas','installments')}${sortHeader(`Monto ${currency}`,'amount')}</tr></thead><tbody>${shown.map(row => {
         const card = rowCard(row), scope = scopeOf(row), date = rowDate(row), dateText = date ? `${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}/${date.getFullYear()}` : '—';
