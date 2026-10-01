@@ -97,28 +97,46 @@
     return new Date(year,monthIndex,Math.min(Math.max(1,day),last));
   }
 
-  function cycleBounds(card,cycles=[],now=new Date()){
-    const id=cardId(card),issuer=norm(card?.Emisor);
-    const matching=(cycles||[]).filter(row=>String(row?.Tarjeta||'').trim()===id)
+  function registeredCycleRows(card,cycles=[]){
+    const id=cardId(card);
+    return (cycles||[]).filter(row=>String(row?.Tarjeta||'').trim()===id)
       .map(row=>({row,start:parseDate(row?.['Inicio ciclo']),cut:parseDate(row?.['Fecha corte'])}))
-      .filter(x=>x.cut)
-      .sort((a,b)=>a.cut-b.cut);
-    const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-    const open=matching.find(x=>x.cut>=today);
-    if(open){
-      let periodEnd=new Date(open.cut);
-      if(issuer.includes('nu')) periodEnd.setDate(periodEnd.getDate()-1);
-      return {start:open.start||null,end:periodEnd,cut:open.cut,source:'registered',cycle:open.row};
-    }
+      .filter(x=>x.start&&x.cut)
+      .sort((a,b)=>a.start-b.start||a.cut-b.cut);
+  }
+
+  function derivedCycleForDate(card,date=new Date()){
+    const ref=date instanceof Date?new Date(date.getFullYear(),date.getMonth(),date.getDate()):parseDate(date);
+    if(!ref) return null;
     const cutDay=Math.max(1,Math.min(31,Math.round(num(card?.['Día corte']||card?.['Dia corte']||card?.Corte)||1)));
-    const cut=now.getDate()<cutDay?safeDate(now.getFullYear(),now.getMonth(),cutDay):safeDate(now.getFullYear(),now.getMonth()+1,cutDay);
+    const cut=ref.getDate()<=cutDay
+      ? safeDate(ref.getFullYear(),ref.getMonth(),cutDay)
+      : safeDate(ref.getFullYear(),ref.getMonth()+1,cutDay);
     const prevCut=safeDate(cut.getFullYear(),cut.getMonth()-1,cutDay);
-    let periodStart=new Date(prevCut),periodEnd=new Date(cut);
-    if(issuer.includes('nu')){
-      periodStart.setDate(periodStart.getDate()+1);
-      periodEnd.setDate(periodEnd.getDate()-1);
-    }
-    return {start:periodStart,end:periodEnd,cut,source:'derived',cycle:null};
+    const start=new Date(prevCut);start.setDate(start.getDate()+1);
+    return {start,end:new Date(cut),cut,source:'derived',cycle:null};
+  }
+
+  function cycleForDate(card,cycles=[],date=new Date()){
+    const d=date instanceof Date?new Date(date.getFullYear(),date.getMonth(),date.getDate()):parseDate(date);
+    if(!d) return null;
+    const exact=registeredCycleRows(card,cycles)
+      .filter(x=>d>=x.start&&d<=x.cut)
+      .sort((a,b)=>b.start-a.start||b.cut-a.cut)[0];
+    if(exact) return {start:exact.start,end:new Date(exact.cut),cut:exact.cut,source:'registered',cycle:exact.row};
+    return derivedCycleForDate(card,d);
+  }
+
+  function cycleBounds(card,cycles=[],now=new Date()){
+    const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    const matching=registeredCycleRows(card,cycles);
+    const current=matching
+      .filter(x=>today>=x.start&&today<=x.cut)
+      .sort((a,b)=>b.start-a.start||b.cut-a.cut)[0];
+    if(current) return {start:current.start,end:new Date(current.cut),cut:current.cut,source:'registered',cycle:current.row};
+    const future=matching.find(x=>x.start>today);
+    if(future) return {start:future.start,end:new Date(future.cut),cut:future.cut,source:'registered',cycle:future.row};
+    return derivedCycleForDate(card,today);
   }
 
   function inCycle(row,card,cycles=[],now=new Date()){
@@ -218,6 +236,6 @@
   }
 
   window.CardCycleCore=Object.freeze({
-    norm,num,parseDate,rowDate,ownerNick,cardId,movementCardId,matchesCard,scopeOf,isActual,isCreditPurchase,cycleBounds,inCycle,cycleRows,rowCopAmount,cardUsedCop,reconciledCycleRows,dateLabel
+    norm,num,parseDate,rowDate,ownerNick,cardId,movementCardId,matchesCard,scopeOf,isActual,isCreditPurchase,cycleForDate,cycleBounds,inCycle,cycleRows,rowCopAmount,cardUsedCop,reconciledCycleRows,dateLabel
   });
 })();
