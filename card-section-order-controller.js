@@ -95,6 +95,7 @@
   }
 
   function rowDate(row) {
+    if(window.CardCycleCore?.rowDate) return window.CardCycleCore.rowDate(row);
     if (dateCache.has(row)) return dateCache.get(row);
     const date = parseDate(pick(row, ['Fecha real','Fecha registrada','Fecha','Mes consumo']));
     dateCache.set(row, date);
@@ -119,8 +120,9 @@
   }
 
   function isCreditPurchase(row) {
+    if(window.CardCycleCore?.isCreditPurchase) return window.CardCycleCore.isCreditPurchase(row);
     if (!isActualExpense(row)) return false;
-    if (typeof window.FinancePurchasePolicy?.isCreditPurchase === 'function') return window.FinancePurchasePolicy.isCreditPurchase(row);
+    if (typeof window.FinancePurchasePolicy?.isFinancedPurchase === 'function') return window.FinancePurchasePolicy.isFinancedPurchase(row);
     const explicit = norm(row['Modalidad de pago']);
     const account = norm(row['Cuenta / Tarjeta']);
     const installments = parseNumber(row.Cuotas);
@@ -192,8 +194,11 @@
     return daily ? `${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}` : `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
   }
 
-  function cycleKey(date, cut) {
-    const year = date.getFullYear(), month = date.getMonth(), endMonth = date.getDate() <= cut ? month : month + 1;
+  function cycleKey(date, cut, card) {
+    const year = date.getFullYear(), month = date.getMonth();
+    const isNu = norm(card?.Emisor).includes('nu');
+    const sameCycle = isNu ? date.getDate() < cut : date.getDate() <= cut;
+    const endMonth = sameCycle ? month : month + 1;
     const last = new Date(year, endMonth + 1, 0).getDate();
     const end = new Date(year, endMonth, Math.min(cut, last));
     return `${end.getFullYear()}-${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}`;
@@ -211,7 +216,7 @@
         const cut = cutDay(card), limit = cardReferenceLimit(card), running = new Map(), points = new Map();
         dated.forEach(item => {
           if (!rowMatchesCard(item.row, card)) return;
-          const cycle = cycleKey(item.date, cut);
+          const cycle = cycleKey(item.date, cut, card);
           const next = (running.get(cycle) || 0) + displayAmount(item.row, 'COP');
           running.set(cycle, next);
           points.set(periodLabel(item.date, daily), limit ? next / limit * 100 : 0);
