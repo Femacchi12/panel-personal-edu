@@ -63,7 +63,7 @@
     if (sourcePromise) return sourcePromise;
     sourcePromise = (async () => {
       const getData = window.__PANEL_GET_BACKEND_DATA__;
-      if (typeof getData !== 'function') return { movements: [], cards: [] };
+      if (typeof getData !== 'function') return { movements: [], cards: [], cycles: [] };
       const payload = await getData(force);
       if (payload === sourcePayload && sourceCache) return sourceCache;
       const wide = rowsFromPayload(payload, 'Movimientos!A:AA');
@@ -71,7 +71,8 @@
       sourcePayload = payload;
       sourceCache = {
         movements: window.FinanceScopeCore?.movementRows ? window.FinanceScopeCore.movementRows(payload,financeId) : (wide.length ? wide : legacy),
-        cards: rowsFromPayload(payload, 'Tarjetas!A:T')
+        cards: rowsFromPayload(payload, 'Tarjetas!A:T'),
+        cycles: rowsFromPayload(payload, 'Pagos_Tarjetas!A:T')
       };
       return sourceCache;
     })();
@@ -194,17 +195,7 @@
     return daily ? `${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}` : `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
   }
 
-  function cycleKey(date, cut, card) {
-    const year = date.getFullYear(), month = date.getMonth();
-    const isNu = norm(card?.Emisor).includes('nu');
-    const sameCycle = isNu ? date.getDate() < cut : date.getDate() <= cut;
-    const endMonth = sameCycle ? month : month + 1;
-    const last = new Date(year, endMonth + 1, 0).getDate();
-    const end = new Date(year, endMonth, Math.min(cut, last));
-    return `${end.getFullYear()}-${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}`;
-  }
-
-  function buildTrendSeries(rows, cards, metric, currency) {
+  function buildTrendSeries(rows, cards, metric, currency, cycles = []) {
     const activeId = String(window.__PANEL_ACTIVE_CARD_ID__ || '').trim();
     if (activeId) cards = cards.filter(card => cardId(card) === activeId);
     const daily = selectedGlobal('month').length === 1;
@@ -213,10 +204,14 @@
     const datasets = cards.map((card, index) => {
       let data;
       if (metric === 'limit') {
-        const cut = cutDay(card), limit = cardReferenceLimit(card), running = new Map(), points = new Map();
+        const limit = cardReferenceLimit(card), running = new Map(), points = new Map();
         dated.forEach(item => {
           if (!rowMatchesCard(item.row, card)) return;
-          const cycle = cycleKey(item.date, cut, card);
+          const bounds = window.CardCycleCore?.cycleForDate?.(card, cycles, item.date);
+          const cycleEnd = bounds?.cut || bounds?.end;
+          const cycle = cycleEnd
+            ? `${cycleEnd.getFullYear()}-${String(cycleEnd.getMonth()+1).padStart(2,'0')}-${String(cycleEnd.getDate()).padStart(2,'0')}`
+            : periodLabel(item.date, false);
           const next = (running.get(cycle) || 0) + displayAmount(item.row, 'COP');
           running.set(cycle, next);
           points.set(periodLabel(item.date, daily), limit ? next / limit * 100 : 0);
@@ -249,10 +244,10 @@
     const canvas = document.getElementById('cardTrendChart');
     const chart = canvas ? Chart.getChart(canvas) : null;
     if (!chart) return;
-    const { movements, cards } = await loadSources(false);
+    const { movements, cards, cycles } = await loadSources(false);
     if (activeView() !== 'tarjetas' || !canvas.isConnected) return;
     const metric = document.querySelector('[data-card-line-mode].active')?.dataset.cardLineMode || 'spend';
-    const built = buildTrendSeries(filteredCreditRows(movements), cards, metric, activeCurrency());
+    const built = buildTrendSeries(filteredCreditRows(movements), cards, metric, activeCurrency(), cycles);
     chart.data.labels = built.labels;
     chart.data.datasets = built.datasets;
     chart.update('none');
