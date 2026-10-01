@@ -45,14 +45,14 @@
     {key:'movimientos', book:'finance', range:'Movimientos!A:AA', parser:'rows'},
     {key:'flujo', book:'finance', range:'Flujo_Mensual!A:J', parser:'smart'},
     {key:'tarjetas', book:'finance', range:'Tarjetas!A:T', parser:'smart'},
-    {key:'cuotas', book:'finance', range:'Cuotas!A:T', parser:'smart'},
+    {key:'cuotas', book:'finance', range:'Cuotas!A:AB', parser:'smart'},
     {key:'pension', book:'finance', range:'Pensiones_Cesantias!A:T', parser:'smart'},
     {key:'ingresos', book:'finance', range:'Resumen_Ingresos!A:H', parser:'smart'},
     {key:'ingresosConceptos', book:'finance', range:'Resumen_Conceptos_Ingresos!A:L', parser:'smart'},
     {key:'ahorro', book:'finance', range:'Flujo_Ahorro!A:W', parser:'smart'},
     {key:'flujoInversiones', book:'finance', range:'Flujo_Inversiones!A:M', parser:'smart'},
-    {key:'resumenFinanciero', book:'finance', range:'Resumen_Financiero!A:V', parser:'smart', optional:true},
-    {key:'creditoMensual', book:'finance', range:'Credito_Mensual!A:J', parser:'smart', optional:true},
+    {key:'resumenFinanciero', book:'finance', range:'Resumen_Financiero!A:W', parser:'smart', optional:true},
+    {key:'creditoMensual', book:'finance', range:'Credito_Mensual!A:L', parser:'smart', optional:true},
     {key:'configFinanzas', book:'finance', range:'Config!A:C', parser:'smart'},
     {key:'servicios', book:'finance', range:'Servicios!A:O', parser:'smart'},
     {key:'referenciasPersonales', book:'finance', range:'Referencias_Personales!A:N', parser:'smart'},
@@ -571,7 +571,8 @@
       : new Map([
           ['ARQ Edu',copToDisplay(sum(canonical,r=>num(pick(r,['ARQ Edu crédito COP']))))],
           ['Nu Edu',copToDisplay(sum(canonical,r=>num(pick(r,['Nu Edu crédito COP']))))],
-          ['Nu Ro',copToDisplay(sum(canonical,r=>num(pick(r,['Nu Ro crédito COP']))))]
+          ['Nu Ro',copToDisplay(sum(canonical,r=>num(pick(r,['Nu Ro crédito COP']))))],
+          ['Mercado Pago',copToDisplay(sum(canonical,r=>num(pick(r,['Mercado Pago crédito COP']))))]
         ].filter(([,value])=>value>0));
 
     const incomeEntries=[
@@ -605,7 +606,7 @@
       <div class="kpi-grid">
         ${kpi('Ingresos líquidos',money(liquid),`Consolidado ${money(consolidated)}`,'green')}
         ${kpi('Gastos totales',money(expenses),expenseMeta)}
-        ${kpi('Gastos con crédito',money(credit),expenses?`${formatNumber(credit/expenses*100,1)}% del gasto visible`:'—','gold')}
+        ${kpi('Gastos con crédito',money(credit),'Compras 1 pago + cuotas imputadas al período','gold')}
         ${kpi('Aportes a inversiones',money(investments),'Capital neto; no incluye valorización','blue')}
         ${kpi('Ahorro antes de invertir',money(saving),balanceMeta,saving>=0?'green':'red')}
         ${kpi('Saldo post inversión',money(post),'Ingreso − gastos − inversión',post>=0?'blue':'red')}
@@ -613,7 +614,7 @@
       <div class="financial-summary-breakdowns">
         <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Ingresos desagregados</strong><span>Los ajustes negativos reconcilian ingreso consolidado con ingreso líquido.</span></div></div>${breakdownRows(incomeEntries,liquid)}</div>
         <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Gastos desagregados</strong><span>Por categoría ${categoryFiltered?'· filtros activos':''}</span></div></div>${breakdownRows(expenseByCat,expenses)}</div>
-        <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Crédito desagregado</strong><span>Compras reales; excluye pagos, manejo e intereses.</span></div></div>${breakdownRows(creditByCard,credit)}</div>
+        <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Crédito desagregado</strong><span>Crédito imputado al período · compras 1 pago + cuotas; excluye pagos, manejo e intereses.</span></div></div>${breakdownRows(creditByCard,credit)}</div>
       </div>
       ${chartPanel('Evolución financiera','Ingreso líquido, gastos, crédito, inversiones y saldo post inversión','financialSummaryChart',Math.max(760,12*90))}
       <div class="panel table-panel"><div class="panel-header"><div class="panel-title"><strong>Resumen por año</strong><span>Control anual reconciliado contra Resumen_Financiero del Sheet Finanzas.</span></div></div><div class="table-scroll expanded"><table><thead><tr><th>Año</th><th>Nómina COP</th><th>Fibrazo LLC</th><th>Otros</th><th>Ajustes</th><th>Ingreso líquido</th><th>Gastos</th><th>Crédito</th><th>Inversiones</th><th>Ahorro pre inv.</th><th>Post inversión</th></tr></thead><tbody>${yearTable.map(x=>`<tr><td><strong>${x.year}</strong></td><td>${money(x.sal)}</td><td>${money(x.usd)}</td><td>${money(x.oth)}</td><td>${money(-x.adj)}</td><td><strong>${money(x.inc)}</strong></td><td>${money(x.exp)}</td><td>${money(x.cr)}</td><td>${money(x.inv)}</td><td class="${x.saving>=0?'positive':'negative'}">${money(x.saving)}</td><td class="${x.post>=0?'positive':'negative'}"><strong>${money(x.post)}</strong></td></tr>`).join('')}</tbody></table></div></div>`;
