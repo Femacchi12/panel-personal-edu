@@ -34,6 +34,7 @@
     tarjetas: [
       ['finance-scope-core.js'],
       ['card-cycle-core.js'],
+      ['card-monthly-allocation-core.js'],
       ['dashboard-enhancements.js','finance-scope-bar-controller.js'],
       ['card-specific-filter.js','finance-scope-card-controller.js'],
       ['card-payment-control.js','card-chart-personal-limit.js','card-payments-installments.js'],
