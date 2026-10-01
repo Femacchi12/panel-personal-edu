@@ -13,6 +13,7 @@
   let payload = null;
   let rows = [];
   let cards = [];
+  let cycles = [];
   let frame = 0;
   let query = '';
   let expanded = false;
@@ -58,6 +59,7 @@
   }
 
   function rowDate(row) {
+    if (window.CardCycleCore?.rowDate) return window.CardCycleCore.rowDate(row);
     if (dateCache.has(row)) return dateCache.get(row);
     const date = parseDate(row['Fecha real'] || row['Fecha registrada'] || row['Mes consumo']);
     dateCache.set(row, date); return date;
@@ -80,6 +82,7 @@
   }
 
   function isCredit(row) {
+    if (window.CardCycleCore?.isCreditPurchase) return window.CardCycleCore.isCreditPurchase(row);
     if (!isActualExpense(row)) return false;
     const explicit = String(row['Modalidad de pago'] || '').trim();
     const account = norm(row['Cuenta / Tarjeta']);
@@ -92,7 +95,7 @@
     return !/cuota de manejo|interes|pago de tarjeta|pago tarjeta/.test(description);
   }
 
-  function cardId(card) { return String(card?.['ID tarjeta'] || '').trim(); }
+  function cardId(card) { return window.CardCycleCore?.cardId ? window.CardCycleCore.cardId(card) : String(card?.['ID tarjeta'] || '').trim(); }
   function ownerNick(value) { const text = norm(value); if (text.includes('rocio')) return 'rocio'; if (text.includes('edu') || text.includes('fernando')) return 'edu'; return text; }
   function movementCardId(row) {
     const account=norm(row?.['Cuenta / Tarjeta']),holder=ownerNick(row?.Titular);
@@ -102,6 +105,7 @@
     return'';
   }
   function rowMatchesCard(row, card) {
+    if (window.CardCycleCore?.matchesCard) return window.CardCycleCore.matchesCard(row, card);
     if (!card) return true;
     const exact=movementCardId(row);
     if(exact)return exact===cardId(card);
@@ -109,6 +113,26 @@
     return Boolean(issuer&&account.includes(issuer));
   }
 
+  function cycleBounds(card) {
+    if (window.CardCycleCore?.cycleBounds) return window.CardCycleCore.cycleBounds(card, cycles, new Date());
+    return null;
+  }
+
+  function cycleRowsForCard(card, sourceRows = rows) {
+    if (!card) return [];
+    if (window.CardCycleCore?.cycleRows) return window.CardCycleCore.cycleRows(sourceRows, card, cycles, new Date(), { creditOnly: true });
+    return sourceRows.filter(row => isCredit(row) && rowMatchesCard(row, card));
+  }
+
+  function applyCategoryFilters(sourceRows) {
+    const categories = new Set(selectedGlobal('category'));
+    const subcategories = new Set(selectedGlobal('subcategory'));
+    return sourceRows.filter(row => {
+      if (categories.size && !categories.has(String(row['Categoría'] || ''))) return false;
+      if (subcategories.size && !subcategories.has(String(row['Subcategoría'] || ''))) return false;
+      return true;
+    });
+  }
   function activeCard() {
     const id = String(window.__PANEL_ACTIVE_CARD_ID__ || '').trim();
     return cards.find(card => cardId(card) === id) || null;
@@ -160,6 +184,7 @@
       rows = wide.length ? wide : legacy;
     }
     cards = typeof cached === 'function' ? cached(next, financeId, 'Tarjetas!A:T') : parseRows(next?.sources?.[`${financeId}|Tarjetas!A:T`] || []);
+    cycles = typeof cached === 'function' ? cached(next, financeId, 'Pagos_Tarjetas!A:T') : parseRows(next?.sources?.[`${financeId}|Pagos_Tarjetas!A:T`] || []);
   }
 
   function injectStyles() {
@@ -236,20 +261,35 @@
   function wireCreditCards(baseRows) {
     const nodes = [...document.querySelectorAll('#viewRoot .credit-card')];
     nodes.forEach(node => {
-      if (node.dataset.scopeCardWired === '1') return;
       const brand = norm(node.querySelector('.credit-brand')?.textContent), owner = norm(node.querySelector('.credit-owner')?.textContent);
       const card = cards.find(item => brand.includes(norm(item.Emisor)) && (!owner || owner.includes(ownerNick(item.Titular)) || ownerNick(item.Titular).includes(owner)));
       if (!card) return;
-      node.dataset.scopeCardWired = '1'; node.classList.add('card-selectable'); node.tabIndex = 0; node.title = 'Presiona para filtrar esta tarjeta';
-      const activate = () => selectCard(cardId(card));
-      node.addEventListener('click', activate);
-      node.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); } });
-      const cardRows = baseRows.filter(row => rowMatchesCard(row, card));
+
+      if (node.dataset.scopeCardWired !== '1') {
+        node.dataset.scopeCardWired = '1';
+        node.classList.add('card-selectable');
+        node.tabIndex = 0;
+        node.title = 'Presiona para filtrar esta tarjeta';
+        const activate = () => selectCard(cardId(card));
+        node.addEventListener('click', activate);
+        node.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); } });
+      }
+
+      const cardRows = cycleRowsForCard(card, baseRows);
       const personal = cardRows.filter(row => scopeOf(row) === 'Personal').reduce((sum, row) => sum + amount(row), 0);
       const fibrazo = cardRows.filter(row => scopeOf(row) === 'FIBRAZO').reduce((sum, row) => sum + amount(row), 0);
-      const meta = document.createElement('div'); meta.className = 'credit-card-scope-meta';
-      meta.innerHTML = `<span>Compras del período</span><strong>Personal ${esc(money(personal))}</strong><strong>FIBRAZO ${esc(money(fibrazo))}</strong><small>Presiona la tarjeta para aplicar su filtro</small>`;
-      node.appendChild(meta);
+      const bounds = cycleBounds(card);
+      const period = bounds?.start && bounds?.end
+        ? `${String(bounds.start.getDate()).padStart(2,'0')}/${String(bounds.start.getMonth()+1).padStart(2,'0')}–${String(bounds.end.getDate()).padStart(2,'0')}/${String(bounds.end.getMonth()+1).padStart(2,'0')}`
+        : 'ciclo actual';
+
+      let meta = node.querySelector('.credit-card-scope-meta');
+      if (!meta) {
+        meta = document.createElement('div');
+        meta.className = 'credit-card-scope-meta';
+        node.appendChild(meta);
+      }
+      meta.innerHTML = `<span>Compras del ciclo ${esc(period)}</span><strong>Personal ${esc(money(personal))}</strong><strong>FIBRAZO ${esc(money(fibrazo))}</strong><small>${cardRows.length} movimiento${cardRows.length===1?'':'s'} con crédito · presiona la tarjeta para filtrar</small>`;
     });
   }
 
@@ -297,7 +337,9 @@
   function renderCardExpensePanel() {
     if (activeView() !== 'tarjetas') return;
     const root = document.getElementById('viewRoot'); if (!root) return;
-    const creditRows = periodRows(rows.filter(isCredit));
+    const allCreditRows = rows.filter(isCredit);
+    const active = activeCard();
+    const creditRows = active ? applyCategoryFilters(cycleRowsForCard(active, allCreditRows)) : periodRows(allCreditRows);
     const visibleRows = scopedRows(creditRows, 'tarjetas');
     const personalRows = creditRows.filter(row => scopeOf(row) === 'Personal');
     const fibrazoRows = creditRows.filter(row => scopeOf(row) === 'FIBRAZO');
@@ -319,9 +361,7 @@
     tableRows = sortRows(tableRows, currency);
     const shown = expanded ? tableRows : tableRows.slice(0, COLLAPSED_ROWS);
     const hiddenCount = Math.max(0, tableRows.length - COLLAPSED_ROWS);
-    const active = activeCard();
-
-    host.innerHTML = `<div class="panel-header"><div class="panel-title"><strong>Gastos realizados con tarjeta de crédito</strong><span>${active ? `Tarjeta: ${esc(cardLabel(active))} · ` : ''}${esc(scopeState.tarjetas)} · ${visibleRows.length} movimientos · ${esc(money(visibleTotal, currency))}</span></div><div class="table-toolbar"><input id="cardExpenseSearch" class="search-input" placeholder="Buscar gasto…" value="${esc(query)}"></div></div>
+    host.innerHTML = `<div class="panel-header"><div class="panel-title"><strong>Gastos realizados con tarjeta de crédito</strong><span>${active ? `Tarjeta: ${esc(cardLabel(active))} · ciclo actual · ` : 'Período filtrado · '}${esc(scopeState.tarjetas)} · ${visibleRows.length} movimientos · ${esc(money(visibleTotal, currency))}</span></div><div class="table-toolbar"><input id="cardExpenseSearch" class="search-input" placeholder="Buscar gasto…" value="${esc(query)}"></div></div>
       <div class="card-expense-summary"><div><span>Total crédito</span><strong>${esc(money(total, currency))}</strong></div><div><span>Personal</span><strong>${esc(money(personal, currency))}</strong></div><div class="fibrazo"><span>FIBRAZO</span><strong>${esc(money(fibrazo, currency))}</strong></div></div>
       <div class="table-scroll card-expense-scroll${expanded ? ' expanded' : ''}" style="--card-expense-expanded-rows:${EXPANDED_VISIBLE_ROWS}"><table class="card-expense-table"><thead><tr>${sortHeader('Fecha','date')}${sortHeader('Tarjeta','card')}${sortHeader('Titular','holder')}${sortHeader('Ámbito','scope')}${sortHeader('Categoría','category')}${sortHeader('Subcategoría','subcategory')}${sortHeader('Descripción','description')}${sortHeader('Modalidad','method')}${sortHeader('Cuotas','installments')}${sortHeader(`Monto ${currency}`,'amount')}</tr></thead><tbody>${shown.map(row => {
         const card = rowCard(row), scope = scopeOf(row), date = rowDate(row), dateText = date ? `${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}/${date.getFullYear()}` : '—';
@@ -345,7 +385,7 @@
       header.addEventListener('click', applySort);
       header.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); applySort(); } });
     });
-    wireCreditCards(creditRows);
+    wireCreditCards(allCreditRows);
   }
 
   async function run() {
@@ -365,7 +405,7 @@
   document.addEventListener('panel:view-root-changed', event => { if (['gastos','tarjetas'].includes(event.detail?.view)) schedule(); });
   document.addEventListener('panel:filters-updated', () => { if (['gastos','tarjetas'].includes(activeView())) schedule(); });
   document.addEventListener('panel:card-filter-changed', event => { if (activeView() === 'tarjetas') { window.__PANEL_ACTIVE_CARD_ID__ = String(event.detail?.cardId || ''); expanded = false; schedule(); } });
-  document.addEventListener('panel:app-data-ready', () => { payload = null; rows = []; cards = []; });
+  document.addEventListener('panel:app-data-ready', () => { payload = null; rows = []; cards = []; cycles = []; });
   document.addEventListener('panel:expense-scope-changed', event => { if (event.detail?.view === 'tarjetas' && activeView() === 'tarjetas') { expanded = false; schedule(); } });
 
   injectStyles();
