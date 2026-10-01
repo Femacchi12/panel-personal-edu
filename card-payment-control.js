@@ -81,8 +81,11 @@
   }
 
   function cardIdFromDom(card) {
+    const explicit=String(card?.dataset?.cardId||'').trim();
+    if(explicit) return explicit;
     const brand = norm(card.querySelector('.credit-brand')?.textContent);
     const owner = norm(card.querySelector('.credit-owner')?.textContent);
+    if (brand.includes('mercado pago') || brand.includes('mercadolibre') || brand.includes('mercado libre')) return 'TC-MP-EDU-ARG';
     if (brand.includes('arq')) return 'TC-ARQ-EDU';
     if (brand.includes('nu') && (owner.includes('rocio') || owner.includes('rocío'))) return 'TC-NU-RO';
     if (brand.includes('nu')) return 'TC-NU-EDU';
