@@ -125,12 +125,70 @@
     return (rows||[]).filter(row=>(!creditOnly||isCreditPurchase(row))&&inCycle(row,card,cycles,now));
   }
 
+  function rowCopAmount(row){
+    const direct=num(row?.['Monto COP']);
+    if(direct) return direct;
+    const original=num(row?.['Monto original']);
+    const currency=String(row?.['Moneda original']||'COP').trim().toUpperCase();
+    const cfg=window.PANEL_CONFIG||{},usdCop=Number(cfg.regularIncome?.usdCopReference||3150),usdArs=Number(cfg.regularIncome?.usdArsReference||1500);
+    if(currency==='USD') return original*usdCop;
+    if(currency==='ARS') return usdArs?original*usdCop/usdArs:original;
+    return original;
+  }
+
+  function cardUsedCop(card){
+    const used=num(card?.['Cupo usado']||card?.Utilizado||card?.['Saldo usado']);
+    const currency=String(card?.Moneda||'COP').trim().toUpperCase();
+    const cfg=window.PANEL_CONFIG||{},usdCop=Number(cfg.regularIncome?.usdCopReference||3150),usdArs=Number(cfg.regularIncome?.usdArsReference||1500);
+    if(currency==='USD') return used*usdCop;
+    if(currency==='ARS') return usdArs?used*usdCop/usdArs:used;
+    return used;
+  }
+
+  function reconciledCycleRows(rows,card,cycles=[],now=new Date()){
+    const strict=cycleRows(rows,card,cycles,now,{creditOnly:true});
+    const issuer=norm(card?.Emisor);
+    const bounds=cycleBounds(card,cycles,now);
+    const target=cardUsedCop(card);
+    const strictTotal=strict.reduce((sum,row)=>sum+rowCopAmount(row),0);
+    let difference=target-strictTotal;
+    if(!issuer.includes('arq')||!bounds?.start||target<=0||Math.abs(difference)<=1){
+      return {rows:strict,strictRows:strict,carryRows:[],target,strictTotal,total:strictTotal,difference};
+    }
+
+    const from=new Date(bounds.start.getFullYear(),bounds.start.getMonth(),bounds.start.getDate()-3);
+    const to=new Date(bounds.start.getFullYear(),bounds.start.getMonth(),bounds.start.getDate()-1);
+    const candidates=(rows||[]).filter(row=>{
+      if(!isCreditPurchase(row)||!matchesCard(row,card)) return false;
+      const d=rowDate(row);
+      return d&&d>=from&&d<=to;
+    }).sort((a,b)=>(rowDate(b)?.getTime()||0)-(rowDate(a)?.getTime()||0));
+
+    let chosen=[];
+    for(const row of candidates){
+      const amount=rowCopAmount(row);
+      if(Math.abs(difference-amount)<=1){chosen=[row];difference-=amount;break;}
+    }
+
+    if(!chosen.length&&candidates.length>1){
+      outer:for(let i=0;i<candidates.length;i++){
+        for(let j=i+1;j<candidates.length;j++){
+          const amount=rowCopAmount(candidates[i])+rowCopAmount(candidates[j]);
+          if(Math.abs(difference-amount)<=1){chosen=[candidates[i],candidates[j]];difference-=amount;break outer;}
+        }
+      }
+    }
+
+    const merged=[...strict,...chosen].sort((a,b)=>(rowDate(a)?.getTime()||0)-(rowDate(b)?.getTime()||0));
+    const total=merged.reduce((sum,row)=>sum+rowCopAmount(row),0);
+    return {rows:merged,strictRows:strict,carryRows:chosen,target,strictTotal,total,difference:target-total};
+  }
   function dateLabel(value){
     const d=value instanceof Date?value:parseDate(value);
     return d?`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`:'—';
   }
 
   window.CardCycleCore=Object.freeze({
-    norm,num,parseDate,rowDate,ownerNick,cardId,movementCardId,matchesCard,scopeOf,isActual,isCreditPurchase,cycleBounds,inCycle,cycleRows,dateLabel
+    norm,num,parseDate,rowDate,ownerNick,cardId,movementCardId,matchesCard,scopeOf,isActual,isCreditPurchase,cycleBounds,inCycle,cycleRows,rowCopAmount,cardUsedCop,reconciledCycleRows,dateLabel
   });
 })();
