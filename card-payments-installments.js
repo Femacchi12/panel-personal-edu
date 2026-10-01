@@ -106,7 +106,11 @@
 
   function isPaid(row){
     const p=norm(row?.Pagado);
-    return ['si','sí','pagado','pago','yes','true'].includes(p)||!!parseDate(row?.['Fecha pago'])||parseNumber(row?.['Monto pagado real'])>0;
+    if(p.includes('parcial')) return false;
+    if(['si','sí','pagado','pago','yes','true'].includes(p)) return true;
+    const paid=parseNumber(row?.['Monto pagado real']);
+    const total=parseNumber(row?.['Pago total']);
+    return paid>0&&total>0&&paid>=total-0.01;
   }
 
   function latestClosedCycleMap(cycles,now){
