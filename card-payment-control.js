@@ -122,7 +122,6 @@
       const cut = parseDate(nextOpen['Fecha corte']);
       if(!start||!cut) return null;
       const end = new Date(cut);
-      if (id.startsWith('TC-NU-')) end.setDate(end.getDate()-1);
       return {start,end,cut,source:'registered'};
     }
 
@@ -135,7 +134,7 @@
       else nextCut = new Date(now.getFullYear(),now.getMonth()+1,cutDay);
       const previousCut = new Date(nextCut.getFullYear(),nextCut.getMonth()-1,cutDay);
       const start = new Date(previousCut); start.setDate(start.getDate()+1);
-      const end = new Date(nextCut); end.setDate(end.getDate()-1);
+      const end = new Date(nextCut);
       return {start,end,cut:nextCut,source:'derived'};
     }
 
@@ -147,14 +146,12 @@
     return null;
   }
 
-  function billedPeriod(cycle,id) {
+  function billedPeriod(cycle) {
     if (!cycle) return '—';
     const start = parseDate(cycle['Inicio ciclo']);
     const cut = parseDate(cycle['Fecha corte']);
     if (!start || !cut) return '—';
-    let end = new Date(cut);
-    if (id.startsWith('TC-NU-')) end.setDate(end.getDate()-1);
-    return `${dateLabel(start)} – ${dateLabel(end)}`;
+    return `${dateLabel(start)} – ${dateLabel(cut)}`;
   }
 
   function currentPeriodLabel(period,id) {
@@ -213,12 +210,14 @@
     document.head.appendChild(style);
   }
 
-  function enhanceCard(card,cardRow,index,now) {
+  function enhanceCard(card,cardRow,index,now,cycles) {
     const id = String(cardRow['ID tarjeta'] || '');
     const indexed=index.get(id)||{};
     const closed = indexed.closed||null;
     const open = indexed.open||null;
-    const current = deriveCurrentPeriod(cardRow,closed,open,now);
+    const current = window.CardCycleCore?.cycleBounds
+      ? window.CardCycleCore.cycleBounds(cardRow,cycles,now)
+      : deriveCurrentPeriod(cardRow,closed,open,now);
     const dueDate = dueDateFor(cardRow,closed,open,current,now);
     const state = paymentState(closed);
     const stats = [...card.querySelectorAll('.credit-stat')];
@@ -249,7 +248,7 @@
       <div class="card-payment-head"><strong>Control del último corte</strong><span class="payment-state ${state.key}">${esc(state.label)}</span></div>
       <div class="card-cycle-grid">
         <div class="card-cycle-item wide"><span>Período actual</span><strong>${esc(currentPeriodLabel(current,id))}</strong></div>
-        <div class="card-cycle-item wide"><span>Último período facturado</span><strong>${esc(billedPeriod(closed,id))}</strong></div>
+        <div class="card-cycle-item wide"><span>Último período facturado</span><strong>${esc(billedPeriod(closed))}</strong></div>
         <div class="card-cycle-item"><span>Próximo corte</span><strong>${esc(current?.cut ? dateLabel(current.cut) : '—')}</strong></div>
         <div class="card-cycle-item"><span>Próximo vencimiento</span><strong>${esc(dueDate ? dateLabel(dueDate) : 'Pendiente de confirmar')}</strong></div>
         <div class="card-cycle-item"><span>Pago mínimo</span><strong>${closed&&String(minRaw).trim() ? esc(money(minDue,cycleCurrency)) : '—'}</strong></div>
@@ -272,7 +271,7 @@
         if(!card.isConnected)return;
         const id = cardIdFromDom(card);
         const row = rowById.get(id)||cardRowFromDom(card,cardRows);
-        if (row) enhanceCard(card,row,index,now);
+        if (row) enhanceCard(card,row,index,now,cycles);
       });
     } catch (error) {
       if(version===renderVersion)console.error('No se pudo cargar el control de pagos de tarjetas:',error);
