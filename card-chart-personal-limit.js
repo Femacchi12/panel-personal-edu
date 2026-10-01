@@ -146,23 +146,31 @@
     const arqCard=(cardRows||[]).find(card=>String(card?.['ID tarjeta']||'').trim()==='TC-ARQ-EDU')
       || (cardRows||[]).find(card=>norm(card?.Emisor).includes('arq'));
     if(!arqCard) return null;
+
+    const reconciliation=window.CardCycleCore?.reconciledCycleRows
+      ? window.CardCycleCore.reconciledCycleRows(rows,arqCard,cycles,new Date())
+      : null;
     const bounds=window.CardCycleCore?.cycleBounds
       ? window.CardCycleCore.cycleBounds(arqCard,cycles,new Date())
       : currentCycle(Number(arqCard?.['Día corte']||6));
     const start=bounds?.start,end=bounds?.end;
+    const source=reconciliation?.rows || (rows||[]);
     const sums={COP:0,USD:0,equivalent:0,personal:0,fibrazo:0,count:0};
 
-    (rows||[]).forEach(row=>{
-      const credit=window.CardCycleCore?.isCreditPurchase
-        ? window.CardCycleCore.isCreditPurchase(row)
-        : norm(row['Modalidad de pago'])==='credito';
-      if(!credit) return;
-      const match=window.CardCycleCore?.matchesCard
-        ? window.CardCycleCore.matchesCard(row,arqCard)
-        : norm(row['Cuenta / Tarjeta']).includes('arq');
-      if(!match) return;
-      const movementDate=window.CardCycleCore?.rowDate?window.CardCycleCore.rowDate(row):parseDate(row['Fecha real']||row['Fecha registrada']);
-      if(!movementDate||!start||!end||movementDate<start||movementDate>end) return;
+    source.forEach(row=>{
+      if(!reconciliation){
+        const credit=window.CardCycleCore?.isCreditPurchase
+          ? window.CardCycleCore.isCreditPurchase(row)
+          : norm(row['Modalidad de pago'])==='credito';
+        if(!credit) return;
+        const match=window.CardCycleCore?.matchesCard
+          ? window.CardCycleCore.matchesCard(row,arqCard)
+          : norm(row['Cuenta / Tarjeta']).includes('arq');
+        if(!match) return;
+        const movementDate=window.CardCycleCore?.rowDate?window.CardCycleCore.rowDate(row):parseDate(row['Fecha real']||row['Fecha registrada']);
+        if(!movementDate||!start||!end||movementDate<start||movementDate>end) return;
+      }
+
       const currency=String(row['Moneda original']||'').trim().toUpperCase();
       if(currency!=='COP'&&currency!=='USD') return;
       const original=parseNumber(row['Monto original']);
@@ -181,6 +189,8 @@
       personal:sums.personal,
       fibrazo:sums.fibrazo,
       count:sums.count,
+      carryCount:reconciliation?.carryRows?.length||0,
+      difference:reconciliation?.difference??0,
       start,end
     };
   }
@@ -302,7 +312,7 @@
           <div class="card-debt-title">Compras a crédito del ciclo ${shortDate(debt.start)}–${shortDate(debt.end)}</div>
           <div class="card-debt-row"><span>Consumos en COP</span><strong>${money(debt.cop)}</strong></div>
           <div class="card-debt-row"><span>Consumos en USD</span><strong>${usdMoney(debt.usd)}</strong></div>
-          <div class="card-debt-note">${debt.count} movimientos · equivalente registrado ${money(debt.equivalent)} · saldo/cupo bancario ${money(card.used)}${Math.abs(delta)>1?` · diferencia ${money(delta)}`:''}</div>`;
+          <div class="card-debt-note">${debt.count} movimientos${debt.carryCount?` · ${debt.carryCount} conciliado por contabilización`:''} · equivalente registrado ${money(debt.equivalent)} · saldo/cupo bancario ${money(card.used)}${Math.abs(delta)>1?` · diferencia ${money(delta)}`:''}</div>`;
       }
 
       const pct=card.used/card.control*100;
