@@ -98,21 +98,27 @@
   }
 
   function cycleBounds(card,cycles=[],now=new Date()){
-    const id=cardId(card);
+    const id=cardId(card),issuer=norm(card?.Emisor);
     const matching=(cycles||[]).filter(row=>String(row?.Tarjeta||'').trim()===id)
       .map(row=>({row,start:parseDate(row?.['Inicio ciclo']),cut:parseDate(row?.['Fecha corte'])}))
       .filter(x=>x.cut)
       .sort((a,b)=>a.cut-b.cut);
-    const open=matching.find(x=>x.cut>=new Date(now.getFullYear(),now.getMonth(),now.getDate()));
+    const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    const open=matching.find(x=>x.cut>=today);
     if(open){
-      return {start:open.start||null,end:open.cut,cut:open.cut,source:'registered',cycle:open.row};
+      let periodEnd=new Date(open.cut);
+      if(issuer.includes('nu')) periodEnd.setDate(periodEnd.getDate()-1);
+      return {start:open.start||null,end:periodEnd,cut:open.cut,source:'registered',cycle:open.row};
     }
     const cutDay=Math.max(1,Math.min(31,Math.round(num(card?.['Día corte']||card?.['Dia corte']||card?.Corte)||1)));
-    let end=now.getDate()<=cutDay?safeDate(now.getFullYear(),now.getMonth(),cutDay):safeDate(now.getFullYear(),now.getMonth()+1,cutDay);
-    const issuer=norm(card?.Emisor);
-    let start=safeDate(end.getFullYear(),end.getMonth()-1,cutDay);
-    if(issuer.includes('nu')) start=new Date(start.getFullYear(),start.getMonth(),start.getDate()+1);
-    return {start,end,cut:end,source:'derived',cycle:null};
+    const cut=now.getDate()<cutDay?safeDate(now.getFullYear(),now.getMonth(),cutDay):safeDate(now.getFullYear(),now.getMonth()+1,cutDay);
+    const prevCut=safeDate(cut.getFullYear(),cut.getMonth()-1,cutDay);
+    let periodStart=new Date(prevCut),periodEnd=new Date(cut);
+    if(issuer.includes('nu')){
+      periodStart.setDate(periodStart.getDate()+1);
+      periodEnd.setDate(periodEnd.getDate()-1);
+    }
+    return {start:periodStart,end:periodEnd,cut,source:'derived',cycle:null};
   }
 
   function inCycle(row,card,cycles=[],now=new Date()){
@@ -151,38 +157,46 @@
     const bounds=cycleBounds(card,cycles,now);
     const target=cardUsedCop(card);
     const strictTotal=strict.reduce((sum,row)=>sum+rowCopAmount(row),0);
-    let difference=target-strictTotal;
-    if(!issuer.includes('arq')||!bounds?.start||target<=0||Math.abs(difference)<=1){
-      return {rows:strict,strictRows:strict,carryRows:[],target,strictTotal,total:strictTotal,difference};
+    const initialDifference=target-strictTotal;
+    if(!(issuer.includes('arq')||issuer.includes('nu'))||!bounds?.start||target<=0||initialDifference<=1){
+      return {rows:strict,strictRows:strict,carryRows:[],target,strictTotal,total:strictTotal,difference:initialDifference};
     }
 
-    const from=new Date(bounds.start.getFullYear(),bounds.start.getMonth(),bounds.start.getDate()-3);
-    const to=new Date(bounds.start.getFullYear(),bounds.start.getMonth(),bounds.start.getDate()-1);
+    const from=new Date(bounds.start);from.setDate(from.getDate()-3);
+    const to=new Date(bounds.start);to.setDate(to.getDate()-1);
     const candidates=(rows||[]).filter(row=>{
       if(!isCreditPurchase(row)||!matchesCard(row,card)) return false;
       const d=rowDate(row);
       return d&&d>=from&&d<=to;
     }).sort((a,b)=>(rowDate(b)?.getTime()||0)-(rowDate(a)?.getTime()||0));
 
-    let chosen=[];
-    for(const row of candidates){
-      const amount=rowCopAmount(row);
-      if(Math.abs(difference-amount)<=1){chosen=[row];difference-=amount;break;}
-    }
-
-    if(!chosen.length&&candidates.length>1){
-      outer:for(let i=0;i<candidates.length;i++){
-        for(let j=i+1;j<candidates.length;j++){
-          const amount=rowCopAmount(candidates[i])+rowCopAmount(candidates[j]);
-          if(Math.abs(difference-amount)<=1){chosen=[candidates[i],candidates[j]];difference-=amount;break outer;}
+    const solutions=[];
+    candidates.forEach(row=>{
+      if(Math.abs(rowCopAmount(row)-initialDifference)<=1) solutions.push([row]);
+    });
+    for(let i=0;i<candidates.length;i++){
+      for(let j=i+1;j<candidates.length;j++){
+        if(Math.abs(rowCopAmount(candidates[i])+rowCopAmount(candidates[j])-initialDifference)<=1){
+          solutions.push([candidates[i],candidates[j]]);
         }
       }
     }
 
+    const unique=new Map();
+    solutions.forEach(solution=>{
+      const key=solution.map(row=>String(row?.ID||row?.['Descripción / Comercio']||rowDate(row)?.getTime()||'')).sort().join('|');
+      unique.set(key,solution);
+    });
+    const chosen=unique.size===1?[...unique.values()][0]:[];
     const merged=[...strict,...chosen].sort((a,b)=>(rowDate(a)?.getTime()||0)-(rowDate(b)?.getTime()||0));
     const total=merged.reduce((sum,row)=>sum+rowCopAmount(row),0);
-    return {rows:merged,strictRows:strict,carryRows:chosen,target,strictTotal,total,difference:target-total};
+    return {
+      rows:merged,strictRows:strict,carryRows:chosen,target,strictTotal,total,
+      difference:target-total,
+      reconciliationStatus:chosen.length?'exact-late-posting':(unique.size>1?'ambiguous':'unmatched')
+    };
   }
+
   function dateLabel(value){
     const d=value instanceof Date?value:parseDate(value);
     return d?`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`:'—';
