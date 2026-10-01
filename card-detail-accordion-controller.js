@@ -152,7 +152,7 @@
         gap:9px!important;
       }
       #viewRoot .credit-card.card-details-accordion>.credit-top>.credit-owner{margin-left:0}
-      #viewRoot .credit-card.card-details-collapsed>:not(.credit-top):not(.credit-amount):not(.credit-sub):not(.usage-track){display:none!important}
+      #viewRoot .credit-card.card-details-collapsed>:not(.credit-top):not(.credit-amount):not(.credit-sub):not(.credit-minimum):not(.usage-track){display:none!important}
       #viewRoot .credit-card .credit-card-details-toggle{
         position:relative;
         z-index:4;
