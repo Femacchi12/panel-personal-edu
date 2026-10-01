@@ -11,6 +11,7 @@
   let renderFrame = 0;
   let requestVersion = 0;
   let pendingForce = false;
+  let showPaidInstallmentHistory = false;
 
   const MONTHS = ['ene','feb','mar','abr','may','jun','jul','ago','sept','oct','nov','dic'];
   const norm = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
@@ -192,6 +193,10 @@
       .card-debt-status.pending{color:#ffcb68;border-color:rgba(246,200,68,.22);background:rgba(246,200,68,.08)}
       .card-debt-status.paid{color:#7ee6af;border-color:rgba(38,208,124,.22);background:rgba(38,208,124,.08)}
       .card-debt-empty{padding:22px;color:#718098;font-size:11px;line-height:1.55;text-align:center}
+      .card-installment-history-footer{display:flex;justify-content:flex-start;align-items:center;padding:12px 0 2px}
+      .card-installment-history-toggle{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:252px;border:1px solid #2d68aa;background:linear-gradient(180deg,#173f72,#12345e);color:#f2f7ff;border-radius:999px;padding:10px 18px;font-size:10px;font-weight:800;cursor:pointer;box-shadow:0 6px 18px rgba(23,105,255,.12);transition:transform .15s ease,border-color .15s ease,background .15s ease}
+      .card-installment-history-toggle:hover,.card-installment-history-toggle:focus-visible{transform:translateY(-1px);border-color:#5a98df;background:linear-gradient(180deg,#1d4d89,#173e70);outline:none}
+      .card-installment-history-toggle .history-count{color:#b9d6ff;font-weight:700}
       .card-projection-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;padding:0 14px 14px}
       .card-projection-item{border:1px solid var(--border-soft);border-radius:10px;background:rgba(255,255,255,.02);padding:10px}
       .card-projection-item span{display:block;color:#70819a;font-size:9px;text-transform:uppercase;font-weight:700}
@@ -226,11 +231,18 @@
     const futureTotal=Math.max(0,pendingTotal-currentTotal);
     const lastMonth=pending.flatMap(p=>p.pending.map(r=>r.__pendingInfo.scheduled)).sort((a,b)=>b-a)[0]||null;
 
-    const rows=visible.map(p=>{
+    const paidHistory=visible.filter(p=>!p.pending.length);
+    const displayPurchases=showPaidInstallmentHistory?[...pending,...paidHistory]:pending;
+    const rows=displayPurchases.map(p=>{
       const pendingText=p.pending.length?p.pending.map(r=>`${r.__cuota}/${p.n} · ${monthLabel(r.__pendingInfo.scheduled)}`).join('<br>'):'—';
       const next=p.next;
       return `<tr><td>${esc(dateLabel(p.fecha))}</td><td>${esc(cardLabel(p.id))}</td><td>${esc(p.descripcion||p.comercio||'—')}</td><td class="money-cell">${esc(nativeMoney(p.total,p.moneda))}</td><td>${p.n}</td><td>${p.paidCount}</td><td>${p.pending.length}</td><td>${pendingText}</td><td class="money-cell">${next?esc(nativeMoney(next.__valor,p.moneda)):'—'}</td><td class="money-cell">${esc(nativeMoney(p.pendingTotal,p.moneda))}</td><td>${esc(next?monthLabel(next.__pendingInfo.scheduled):'—')}</td><td><span class="card-debt-status ${p.pending.length?'pending':'paid'}">${p.pending.length?'Pendiente':'Pagada'}</span></td></tr>`;
-    }).join('')||`<tr><td colspan="12"><div class="card-debt-empty">No hay compras en cuotas para la tarjeta seleccionada.</div></td></tr>`;
+    }).join('')||`<tr><td colspan="12"><div class="card-debt-empty">${visible.length?'No hay compras en cuotas pendientes. Puedes abrir el historial para ver las compras ya pagadas.':'No hay compras en cuotas para la tarjeta seleccionada.'}</div></td></tr>`;
+    const hiddenCount=paidHistory.length;
+    const historyButton=hiddenCount?showPaidInstallmentHistory
+      ? `<div class="card-installment-history-footer"><button type="button" class="card-installment-history-toggle" id="cardInstallmentHistoryToggle">Mostrar solo pendientes <span class="history-count">(${pending.length} pendiente${pending.length===1?'':'s'})</span> ⌃</button></div>`
+      : `<div class="card-installment-history-footer"><button type="button" class="card-installment-history-toggle" id="cardInstallmentHistoryToggle">Ver ${hiddenCount} fila${hiddenCount===1?'':'s'} más <span class="history-count">(${visible.length} total)</span> ⌄</button></div>`
+      : '';
 
     const projVisible=installmentProjection(visible);
     const proj=projVisible.length?`<div class="card-projection-grid">${projVisible.map(x=>`<div class="card-projection-item"><span>${esc(monthLabel(x.date))}</span><strong>${esc(copMoney(x.totalCop))}</strong><small>${x.count} cuota${x.count===1?'':'s'} comprometida${x.count===1?'':'s'}</small></div>`).join('')}</div>`:'<div class="card-debt-empty">Sin cuotas comprometidas en meses futuros.</div>';
@@ -242,7 +254,7 @@
       <div class="card-debt-kpi"><span>Última cuota prevista</span><strong>${esc(lastMonth?monthLabel(lastMonth):'Sin deuda')}</strong><small>Fin del compromiso vigente</small></div>
     </div>
     <div class="panel"><div class="panel-header"><div class="panel-title"><strong>Compromiso de cuotas por mes</strong><span>Lo que ya está reservado en crédito antes de nuevas compras</span></div></div>${proj}</div>
-    <div class="panel table-panel"><div class="panel-header"><div class="panel-title"><strong>Compras en cuotas</strong><span>Histórico completo y saldo pendiente por compra · ${selected?esc(cardLabel(selected)):'todas las tarjetas'}</span></div></div><div class="table-scroll"><table class="card-debt-table"><thead><tr><th>Fecha compra</th><th>Tarjeta</th><th>Compra</th><th>Total compra</th><th>Cuotas</th><th>Pagadas</th><th>Pendientes</th><th>Cuotas pendientes</th><th>Próxima cuota</th><th>Saldo pendiente</th><th>Próximo mes</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    <div class="panel table-panel"><div class="panel-header"><div class="panel-title"><strong>Compras en cuotas</strong><span>Pendientes visibles · historial pagado bajo demanda · ${selected?esc(cardLabel(selected)):'todas las tarjetas'}</span></div></div><div class="table-scroll"><table class="card-debt-table"><thead><tr><th>Fecha compra</th><th>Tarjeta</th><th>Compra</th><th>Total compra</th><th>Cuotas</th><th>Pagadas</th><th>Pendientes</th><th>Cuotas pendientes</th><th>Próxima cuota</th><th>Saldo pendiente</th><th>Próximo mes</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table></div>${historyButton}</div>`;
   }
 
   async function render(force=false){
@@ -260,6 +272,10 @@
     let host=root.querySelector('#cardPaymentsInstallments');
     if(!host){host=document.createElement('div');host.id='cardPaymentsInstallments';host.className='card-debt-stack';root.appendChild(host);}
     host.innerHTML=`${renderPayments(cycles,selected)}${renderInstallments(purchases,projection,selected)}`;
+    host.querySelector('#cardInstallmentHistoryToggle')?.addEventListener('click',()=>{
+      showPaidInstallmentHistory=!showPaidInstallmentHistory;
+      scheduleRender(false);
+    });
     document.dispatchEvent(new CustomEvent('panel:card-payments-installments-rendered',{detail:{view:'tarjetas',cardId:selected||'',host}}));
   }
 
@@ -276,9 +292,9 @@
   document.addEventListener('panel:view-root-changed',event=>{
     if(event.detail?.view==='tarjetas')scheduleRender(false);else requestVersion++;
   });
-  document.addEventListener('panel:card-filter-changed',()=>scheduleRender(false));
+  document.addEventListener('panel:card-filter-changed',()=>{showPaidInstallmentHistory=false;scheduleRender(false);});
   document.addEventListener('panel:section-filters-changed',event=>{
-    if(event.detail?.view==='tarjetas')scheduleRender(false);
+    if(event.detail?.view==='tarjetas'){showPaidInstallmentHistory=false;scheduleRender(false);}
   });
 
   queueMicrotask(()=>scheduleRender(false));
