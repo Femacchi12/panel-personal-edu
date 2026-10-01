@@ -120,7 +120,10 @@
     if (nextOpen) {
       const start = parseDate(nextOpen['Inicio ciclo']);
       const cut = parseDate(nextOpen['Fecha corte']);
-      return {start, end:cut, cut, source:'registered'};
+      if(!start||!cut) return null;
+      const end = new Date(cut);
+      if (id.startsWith('TC-NU-')) end.setDate(end.getDate()-1);
+      return {start,end,cut,source:'registered'};
     }
 
     const cutDay = Number(cardRow?.['Día corte'] || 0);
@@ -130,7 +133,8 @@
       let nextCut;
       if (now.getDate() < cutDay) nextCut = new Date(now.getFullYear(),now.getMonth(),cutDay);
       else nextCut = new Date(now.getFullYear(),now.getMonth()+1,cutDay);
-      const start = new Date(nextCut.getFullYear(),nextCut.getMonth()-1,cutDay);
+      const previousCut = new Date(nextCut.getFullYear(),nextCut.getMonth()-1,cutDay);
+      const start = new Date(previousCut); start.setDate(start.getDate()+1);
       const end = new Date(nextCut); end.setDate(end.getDate()-1);
       return {start,end,cut:nextCut,source:'derived'};
     }
@@ -155,9 +159,7 @@
 
   function currentPeriodLabel(period,id) {
     if (!period?.start || !period?.end) return '—';
-    let end = new Date(period.end);
-    if (period.source === 'registered' && id.startsWith('TC-NU-')) end.setDate(end.getDate()-1);
-    return `${dateLabel(period.start)} – ${dateLabel(end)}`;
+    return `${dateLabel(period.start)} – ${dateLabel(period.end)}`;
   }
 
   function dueDateFor(cardRow,closed,open,current,now=new Date()) {
