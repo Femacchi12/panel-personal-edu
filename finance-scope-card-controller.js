@@ -14,6 +14,7 @@
   let rows = [];
   let cards = [];
   let cycles = [];
+  let installments = [];
   let frame = 0;
   let query = '';
   let expanded = false;
@@ -105,8 +106,10 @@
     return'';
   }
   function rowMatchesCard(row, card) {
-    if (window.CardCycleCore?.matchesCard) return window.CardCycleCore.matchesCard(row, card);
     if (!card) return true;
+    const allocatedId=String(row?.__cardId||'').trim();
+    if(allocatedId) return allocatedId===cardId(card);
+    if (window.CardCycleCore?.matchesCard) return window.CardCycleCore.matchesCard(row, card);
     const exact=movementCardId(row);
     if(exact)return exact===cardId(card);
     const issuer=norm(card.Emisor),account=norm(row['Cuenta / Tarjeta']);
@@ -192,6 +195,7 @@
     }
     cards = typeof cached === 'function' ? cached(next, financeId, 'Tarjetas!A:T') : parseRows(next?.sources?.[`${financeId}|Tarjetas!A:T`] || []);
     cycles = typeof cached === 'function' ? cached(next, financeId, 'Pagos_Tarjetas!A:T') : parseRows(next?.sources?.[`${financeId}|Pagos_Tarjetas!A:T`] || []);
+    installments = typeof cached === 'function' ? cached(next, financeId, 'Cuotas!A:AB') : parseRows(next?.sources?.[`${financeId}|Cuotas!A:AB`] || []);
   }
 
   function injectStyles() {
@@ -306,20 +310,32 @@
   }
 
   function rowCard(row) {
+    const allocatedId=String(row?.__cardId||'').trim();
+    if(allocatedId) return cards.find(card=>cardId(card)===allocatedId)||null;
     return cards.find(card => rowMatchesCard(row, card)) || null;
+  }
+
+  function purchaseDate(row) {
+    const direct=row?.__purchaseDate instanceof Date?row.__purchaseDate:parseDate(row?.['Fecha compra original']);
+    return direct||rowDate(row);
+  }
+
+  function allocationLabel(row) {
+    return String(row?.__allocationLabel||row?.['Modalidad de pago']||'Crédito').trim()||'Crédito';
   }
 
   function sortValue(row, key, currency) {
     const card = rowCard(row);
     switch (key) {
       case 'date': return rowDate(row)?.getTime() || 0;
+      case 'purchaseDate': return purchaseDate(row)?.getTime() || 0;
       case 'card': return norm(card ? cardLabel(card) : row['Cuenta / Tarjeta'] || '');
       case 'holder': return norm(row.Titular || '');
       case 'scope': return norm(scopeOf(row));
       case 'category': return norm(row['Categoría'] || '');
       case 'subcategory': return norm(row['Subcategoría'] || '');
       case 'description': return norm(row['Descripción / Comercio'] || '');
-      case 'method': return norm(row['Modalidad de pago'] || 'Crédito');
+      case 'allocation': return norm(allocationLabel(row));
       case 'installments': return num(row.Cuotas);
       case 'amount': return amount(row, currency);
       default: return '';
@@ -327,7 +343,7 @@
   }
 
   function sortRows(sourceRows, currency) {
-    const numericKeys = new Set(['date','installments','amount']);
+    const numericKeys = new Set(['date','purchaseDate','installments','amount']);
     return sourceRows.slice().sort((a, b) => {
       const av = sortValue(a, sortKey, currency);
       const bv = sortValue(b, sortKey, currency);
@@ -349,10 +365,13 @@
   function renderCardExpensePanel() {
     if (activeView() !== 'tarjetas') return;
     const root = document.getElementById('viewRoot'); if (!root) return;
-    const allCreditRows = rows.filter(isCredit);
-    const active = activeCard();
-    const activeReconciliation = active ? cycleReconciliation(active, allCreditRows) : null;
-    const creditRows = active ? applyCategoryFilters(activeReconciliation.rows) : periodRows(allCreditRows);
+
+    const rawCreditRows = rows.filter(isCredit);
+    const allocations = window.CardMonthlyAllocationCore?.build
+      ? window.CardMonthlyAllocationCore.build({movements:rows,installments,cards,cycles})
+      : rawCreditRows.map(row=>({...row,__cardId:movementCardId(row),__allocationLabel:'1 pago',__purchaseDate:rowDate(row)}));
+
+    const creditRows = periodRows(allocations);
     const visibleRows = scopedRows(creditRows, 'tarjetas');
     const personalRows = creditRows.filter(row => scopeOf(row) === 'Personal');
     const fibrazoRows = creditRows.filter(row => scopeOf(row) === 'FIBRAZO');
@@ -360,6 +379,7 @@
     const personal = personalRows.reduce((sum, row) => sum + amount(row), 0);
     const fibrazo = fibrazoRows.reduce((sum, row) => sum + amount(row), 0);
     const visibleTotal = visibleRows.reduce((sum, row) => sum + amount(row), 0);
+    const active=activeCard();
 
     const old = root.querySelector('.credit-spend-panel'); if (old) old.hidden = true;
     let host = root.querySelector('#cardExpenseScopePanel');
@@ -374,12 +394,17 @@
     tableRows = sortRows(tableRows, currency);
     const shown = expanded ? tableRows : tableRows.slice(0, COLLAPSED_ROWS);
     const hiddenCount = Math.max(0, tableRows.length - COLLAPSED_ROWS);
-    host.innerHTML = `<div class="panel-header"><div class="panel-title"><strong>Gastos realizados con tarjeta de crédito</strong><span>${active ? `Tarjeta: ${esc(cardLabel(active))} · ciclo actual${activeReconciliation?.carryRows?.length ? ` + ${activeReconciliation.carryRows.length} conciliado por contabilización` : ''} · ` : 'Período filtrado · '}${esc(scopeState.tarjetas)} · ${visibleRows.length} movimientos · ${esc(money(visibleTotal, currency))}</span></div><div class="table-toolbar"><input id="cardExpenseSearch" class="search-input" placeholder="Buscar gasto…" value="${esc(query)}"></div></div>
-      <div class="card-expense-summary"><div><span>Total crédito</span><strong>${esc(money(total, currency))}</strong></div><div><span>Personal</span><strong>${esc(money(personal, currency))}</strong></div><div class="fibrazo"><span>FIBRAZO</span><strong>${esc(money(fibrazo, currency))}</strong></div></div>
-      <div class="table-scroll card-expense-scroll${expanded ? ' expanded' : ''}" style="--card-expense-expanded-rows:${EXPANDED_VISIBLE_ROWS}"><table class="card-expense-table"><thead><tr>${sortHeader('Fecha','date')}${sortHeader('Tarjeta','card')}${sortHeader('Titular','holder')}${sortHeader('Ámbito','scope')}${sortHeader('Categoría','category')}${sortHeader('Subcategoría','subcategory')}${sortHeader('Descripción','description')}${sortHeader('Modalidad','method')}${sortHeader('Cuotas','installments')}${sortHeader(`Monto ${currency}`,'amount')}</tr></thead><tbody>${shown.map(row => {
-        const card = rowCard(row), scope = scopeOf(row), date = rowDate(row), dateText = date ? `${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}/${date.getFullYear()}` : '—';
-        return `<tr><td>${esc(dateText)}</td><td>${card ? `<button type="button" class="card-select-link" data-card-select="${esc(cardId(card))}">${esc(cardLabel(card))}</button>` : esc(row['Cuenta / Tarjeta'] || '—')}</td><td>${esc(row.Titular || '—')}</td><td><span class="scope-badge ${scope === 'FIBRAZO' ? 'fibrazo' : 'personal'}">${esc(scope)}</span></td><td>${esc(row['Categoría'] || '—')}</td><td>${esc(row['Subcategoría'] || '—')}</td><td>${esc(row['Descripción / Comercio'] || '—')}</td><td>${esc(row['Modalidad de pago'] || 'Crédito')}</td><td>${esc(row.Cuotas || '—')}</td><td><strong>${esc(money(amount(row, currency), currency))}</strong></td></tr>`;
-      }).join('') || `<tr><td colspan="10"><div class="empty-state"><strong>Sin gastos con crédito para los filtros</strong></div></td></tr>`}</tbody></table></div>
+    const periodText=selectedGlobal('month').length||selectedGlobal('year').length?'Período filtrado':'Histórico visible';
+    host.innerHTML = `<div class="panel-header"><div class="panel-title"><strong>Gastos con tarjeta imputados al período</strong><span>${active ? `Tarjeta: ${esc(cardLabel(active))} · ` : ''}${periodText} · ${esc(scopeState.tarjetas)} · ${visibleRows.length} imputaciones · ${esc(money(visibleTotal, currency))}</span></div><div class="table-toolbar"><input id="cardExpenseSearch" class="search-input" placeholder="Buscar gasto…" value="${esc(query)}"></div></div>
+      <div class="card-expense-summary"><div><span>Total imputado</span><strong>${esc(money(total, currency))}</strong></div><div><span>Personal</span><strong>${esc(money(personal, currency))}</strong></div><div class="fibrazo"><span>FIBRAZO</span><strong>${esc(money(fibrazo, currency))}</strong></div></div>
+      <div class="table-scroll card-expense-scroll${expanded ? ' expanded' : ''}" style="--card-expense-expanded-rows:${EXPANDED_VISIBLE_ROWS}"><table class="card-expense-table"><thead><tr>${sortHeader('Período','date')}${sortHeader('Fecha compra','purchaseDate')}${sortHeader('Tarjeta','card')}${sortHeader('Titular','holder')}${sortHeader('Ámbito','scope')}${sortHeader('Categoría','category')}${sortHeader('Subcategoría','subcategory')}${sortHeader('Descripción','description')}${sortHeader('Imputación','allocation')}${sortHeader(`Monto ${currency}`,'amount')}</tr></thead><tbody>${shown.map(row => {
+        const card = rowCard(row), scope = scopeOf(row), allocationDate = rowDate(row), bought=purchaseDate(row);
+        const period=allocationDate ? `${String(allocationDate.getMonth()+1).padStart(2,'0')}/${allocationDate.getFullYear()}` : '—';
+        const purchaseText=bought ? `${String(bought.getDate()).padStart(2,'0')}/${String(bought.getMonth()+1).padStart(2,'0')}/${bought.getFullYear()}` : '—';
+        const status=String(row.__allocationStatus||'').trim();
+        const allocation=`${allocationLabel(row)}${status&&norm(status)!=='registrado' ? ` · ${status}` : ''}`;
+        return `<tr><td><strong>${esc(period)}</strong></td><td>${esc(purchaseText)}</td><td>${card ? `<button type="button" class="card-select-link" data-card-select="${esc(cardId(card))}">${esc(cardLabel(card))}</button>` : esc(row['Cuenta / Tarjeta'] || '—')}</td><td>${esc(row.Titular || '—')}</td><td><span class="scope-badge ${scope === 'FIBRAZO' ? 'fibrazo' : 'personal'}">${esc(scope)}</span></td><td>${esc(row['Categoría'] || 'Sin clasificar')}</td><td>${esc(row['Subcategoría'] || '—')}</td><td>${esc(row['Descripción / Comercio'] || '—')}</td><td>${esc(allocation)}</td><td><strong>${esc(money(amount(row, currency), currency))}</strong></td></tr>`;
+      }).join('') || `<tr><td colspan="10"><div class="empty-state"><strong>Sin gastos imputados al período para los filtros</strong></div></td></tr>`}</tbody></table></div>
       ${tableRows.length > COLLAPSED_ROWS ? `<div class="card-expense-footer"><button type="button" class="card-expense-more" id="cardExpenseMore">${expanded ? `Ver menos <span class="rows-hidden">· ocultar ${hiddenCount} fila${hiddenCount === 1 ? '' : 's'}</span> ⌃` : `Ver ${hiddenCount} fila${hiddenCount === 1 ? '' : 's'} más <span class="rows-hidden">(${tableRows.length} total)</span> ⌄`}</button></div>` : ''}`;
 
     host.querySelector('#cardExpenseSearch')?.addEventListener('input', event => { query = event.target.value; expanded = false; renderCardExpensePanel(); requestAnimationFrame(() => { const input = document.getElementById('cardExpenseSearch'); input?.focus(); input?.setSelectionRange(query.length, query.length); }); });
@@ -391,14 +416,16 @@
         if (sortKey === key) sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
         else {
           sortKey = key;
-          sortDirection = ['date','amount','installments'].includes(key) ? 'desc' : 'asc';
+          sortDirection = ['date','purchaseDate','amount','installments'].includes(key) ? 'desc' : 'asc';
         }
         renderCardExpensePanel();
       };
       header.addEventListener('click', applySort);
       header.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); applySort(); } });
     });
-    wireCreditCards(allCreditRows);
+
+    // Las tarjetas superiores siguen mostrando deuda/ciclo bancario actual, no imputación mensual.
+    wireCreditCards(rawCreditRows);
   }
 
   async function run() {
@@ -418,7 +445,7 @@
   document.addEventListener('panel:view-root-changed', event => { if (['gastos','tarjetas'].includes(event.detail?.view)) schedule(); });
   document.addEventListener('panel:filters-updated', () => { if (['gastos','tarjetas'].includes(activeView())) schedule(); });
   document.addEventListener('panel:card-filter-changed', event => { if (activeView() === 'tarjetas') { window.__PANEL_ACTIVE_CARD_ID__ = String(event.detail?.cardId || ''); expanded = false; schedule(); } });
-  document.addEventListener('panel:app-data-ready', () => { payload = null; rows = []; cards = []; cycles = []; });
+  document.addEventListener('panel:app-data-ready', () => { payload = null; rows = []; cards = []; cycles = []; installments = []; });
   document.addEventListener('panel:expense-scope-changed', event => { if (event.detail?.view === 'tarjetas' && activeView() === 'tarjetas') { expanded = false; schedule(); } });
 
   injectStyles();
