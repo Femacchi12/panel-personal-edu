@@ -37,7 +37,7 @@
     const payload=await getData(force);
     return {
       cycles:rowsFromPayload(payload,'Pagos_Tarjetas!A:T'),
-      installments:rowsFromPayload(payload,'Cuotas!A:T')
+      installments:rowsFromPayload(payload,'Cuotas!A:AB')
     };
   }
 
