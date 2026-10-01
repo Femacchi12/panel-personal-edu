@@ -60,11 +60,12 @@
 
   async function loadData(force=false){
     const getData=window.__PANEL_GET_BACKEND_DATA__;
-    if(typeof getData!=='function') return {cardRows:[],movements:[]};
+    if(typeof getData!=='function') return {cardRows:[],movements:[],cycles:[]};
     const payload=await getData(force);
     return {
       cardRows:rowsFromPayload(payload,'Tarjetas!A:T'),
-      movements:window.FinanceScopeCore?.movementRows?window.FinanceScopeCore.movementRows(payload,financeId):rowsFromPayload(payload,'Movimientos!A:AA')
+      movements:window.FinanceScopeCore?.movementRows?window.FinanceScopeCore.movementRows(payload,financeId):rowsFromPayload(payload,'Movimientos!A:AA'),
+      cycles:rowsFromPayload(payload,'Pagos_Tarjetas!A:T')
     };
   }
 
@@ -141,28 +142,44 @@
       || null;
   }
 
-  function buildArqDebt(rows){
-    const {start,end}=currentCycle(6);
-    const sums={COP:0,USD:0};
+  function buildArqDebt(rows,cardRows,cycles){
+    const arqCard=(cardRows||[]).find(card=>String(card?.['ID tarjeta']||'').trim()==='TC-ARQ-EDU')
+      || (cardRows||[]).find(card=>norm(card?.Emisor).includes('arq'));
+    const bounds=window.CardCycleCore?.cycleBounds
+      ? window.CardCycleCore.cycleBounds(arqCard,cycles,new Date())
+      : currentCycle(Number(arqCard?.['Día corte']||6));
+    const start=bounds?.start,end=bounds?.end;
+    const sums={COP:0,USD:0,equivalent:0,personal:0,fibrazo:0,count:0};
 
     (rows||[]).forEach(row=>{
-      if(norm(row.Tipo)!=='gasto') return;
-      if(!norm(row['Cuenta / Tarjeta']).includes('arq')) return;
-      const isActual=window.MovementStatusCore?.isActual
-        ? window.MovementStatusCore.isActual(row.Estado)
-        : !/proyecc|proyect|programad/.test(norm(row.Estado));
-      if(!isActual) return;
-      const movementDate=parseDate(row['Fecha real']||row['Fecha registrada']);
-      if(!movementDate||movementDate<start||movementDate>end) return;
+      const credit=window.CardCycleCore?.isCreditPurchase
+        ? window.CardCycleCore.isCreditPurchase(row)
+        : norm(row['Modalidad de pago'])==='credito';
+      if(!credit) return;
+      const match=window.CardCycleCore?.matchesCard
+        ? window.CardCycleCore.matchesCard(row,arqCard)
+        : norm(row['Cuenta / Tarjeta']).includes('arq');
+      if(!match) return;
+      const movementDate=window.CardCycleCore?.rowDate?window.CardCycleCore.rowDate(row):parseDate(row['Fecha real']||row['Fecha registrada']);
+      if(!movementDate||!start||!end||movementDate<start||movementDate>end) return;
       const currency=String(row['Moneda original']||'').trim().toUpperCase();
       if(currency!=='COP'&&currency!=='USD') return;
-      sums[currency]+=parseNumber(row['Monto original']);
+      const original=parseNumber(row['Monto original']);
+      sums[currency]+=original;
+      const copValue=parseNumber(row['Monto COP'])||nativeToCop(original,currency);
+      sums.equivalent+=copValue;
+      const scope=window.CardCycleCore?.scopeOf?window.CardCycleCore.scopeOf(row):(norm(row['Ámbito']).includes('fibrazo')?'FIBRAZO':'Personal');
+      if(scope==='FIBRAZO') sums.fibrazo+=copValue; else sums.personal+=copValue;
+      sums.count++;
     });
 
     return {
       cop:sums.COP,
       usd:sums.USD,
-      equivalent:sums.COP+sums.USD*usdCop,
+      equivalent:sums.equivalent,
+      personal:sums.personal,
+      fibrazo:sums.fibrazo,
+      count:sums.count,
       start,end
     };
   }
@@ -279,11 +296,12 @@
           if(bottom) cardEl.insertBefore(debtBlock,bottom);
           else cardEl.appendChild(debtBlock);
         }
+        const delta=card.used-debt.equivalent;
         debtBlock.innerHTML=`
-          <div class="card-debt-title">Movimientos registrados del ciclo ${shortDate(debt.start)}–${shortDate(debt.end)}</div>
+          <div class="card-debt-title">Compras a crédito del ciclo ${shortDate(debt.start)}–${shortDate(debt.end)}</div>
           <div class="card-debt-row"><span>Consumos en COP</span><strong>${money(debt.cop)}</strong></div>
           <div class="card-debt-row"><span>Consumos en USD</span><strong>${usdMoney(debt.usd)}</strong></div>
-          <div class="card-debt-note">Detalle de Movimientos · el saldo/cupo actual se toma de Tarjetas: ${money(card.used)}</div>`;
+          <div class="card-debt-note">${debt.count} movimientos · equivalente registrado ${money(debt.equivalent)} · saldo/cupo bancario ${money(card.used)}${Math.abs(delta)>1?` · diferencia ${money(delta)}`:''}</div>`;
       }
 
       const pct=card.used/card.control*100;
@@ -324,11 +342,11 @@
   async function applyAll(force=false){
     if(activeView()!=='tarjetas'||!window.Chart) return;
     const version=++requestVersion;
-    const {cardRows,movements}=await loadData(force);
+    const {cardRows,movements,cycles}=await loadData(force);
     if(version!==requestVersion||activeView()!=='tarjetas') return;
     const cards=cardsFromRows(cardRows);
     if(!cards.length) return;
-    const debt=buildArqDebt(movements);
+    const debt=buildArqDebt(movements,cardRows,cycles);
     normalizeCardTableHeaders();
     ensureSelectors();
     enhanceCards(cards,debt);
