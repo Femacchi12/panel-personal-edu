@@ -63,6 +63,7 @@
     num,
     method,
     isFinancedPurchase,
+    isCreditPurchase:isFinancedPurchase,
     installmentCount
   });
 })();
