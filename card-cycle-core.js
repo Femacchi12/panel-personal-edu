@@ -157,9 +157,22 @@
     const bounds=cycleBounds(card,cycles,now);
     const target=cardUsedCop(card);
     const strictTotal=strict.reduce((sum,row)=>sum+rowCopAmount(row),0);
-    const initialDifference=target-strictTotal;
+    const cycle=bounds?.cycle||null;
+    const cycleCurrency=String(cycle?.Moneda||card?.Moneda||'COP').trim().toUpperCase();
+    const cfg=window.PANEL_CONFIG||{},usdCop=Number(cfg.regularIncome?.usdCopReference||3150),usdArs=Number(cfg.regularIncome?.usdArsReference||1500);
+    const componentToCop=value=>{
+      const amount=num(value);
+      if(cycleCurrency==='USD') return amount*usdCop;
+      if(cycleCurrency==='ARS') return usdArs?amount*usdCop/usdArs:amount;
+      return amount;
+    };
+    const adjustments=cycle
+      ? componentToCop(cycle['Cuotas del mes']) + componentToCop(cycle.Intereses) + componentToCop(cycle['Cuota manejo']) - componentToCop(cycle.Devoluciones)
+      : 0;
+    const baseTotal=strictTotal+adjustments;
+    const initialDifference=target-baseTotal;
     if(!(issuer.includes('arq')||issuer.includes('nu'))||!bounds?.start||target<=0||initialDifference<=1){
-      return {rows:strict,strictRows:strict,carryRows:[],target,strictTotal,total:strictTotal,difference:initialDifference};
+      return {rows:strict,strictRows:strict,carryRows:[],target,strictTotal,adjustments,total:strictTotal,obligationTotal:baseTotal,difference:target-baseTotal};
     }
 
     const from=new Date(bounds.start);from.setDate(from.getDate()-3);
@@ -190,9 +203,10 @@
     const chosen=unique.size===1?[...unique.values()][0]:[];
     const merged=[...strict,...chosen].sort((a,b)=>(rowDate(a)?.getTime()||0)-(rowDate(b)?.getTime()||0));
     const total=merged.reduce((sum,row)=>sum+rowCopAmount(row),0);
+    const obligationTotal=total+adjustments;
     return {
-      rows:merged,strictRows:strict,carryRows:chosen,target,strictTotal,total,
-      difference:target-total,
+      rows:merged,strictRows:strict,carryRows:chosen,target,strictTotal,adjustments,total,obligationTotal,
+      difference:target-obligationTotal,
       reconciliationStatus:chosen.length?'exact-late-posting':(unique.size>1?'ambiguous':'unmatched')
     };
   }
