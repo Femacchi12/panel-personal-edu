@@ -103,7 +103,7 @@
   }).format(Number(value)||0)}`;
 
   const pad=n=>String(n).padStart(2,'0');
-  const shortDate=d=>`${pad(d.getDate())}/${pad(d.getMonth()+1)}`;
+  const shortDate=d=>d instanceof Date&&!Number.isNaN(d.getTime())?`${pad(d.getDate())}/${pad(d.getMonth()+1)}`:'—';
 
   function nativeToCop(value,currency){
     const amount=parseNumber(value),code=String(currency||'COP').trim().toUpperCase();
@@ -145,6 +145,7 @@
   function buildArqDebt(rows,cardRows,cycles){
     const arqCard=(cardRows||[]).find(card=>String(card?.['ID tarjeta']||'').trim()==='TC-ARQ-EDU')
       || (cardRows||[]).find(card=>norm(card?.Emisor).includes('arq'));
+    if(!arqCard) return null;
     const bounds=window.CardCycleCore?.cycleBounds
       ? window.CardCycleCore.cycleBounds(arqCard,cycles,new Date())
       : currentCycle(Number(arqCard?.['Día corte']||6));
