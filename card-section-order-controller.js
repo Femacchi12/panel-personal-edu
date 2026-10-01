@@ -138,6 +138,7 @@
   }
 
   function rowMatchesCard(row, card) {
+    if(window.CardCycleCore?.matchesCard) return window.CardCycleCore.matchesCard(row,card);
     const issuer = norm(card?.Emisor), owner = ownerNick(card?.Titular), account = norm(row['Cuenta / Tarjeta']), holder = ownerNick(row.Titular);
     if (issuer.includes('arq') && !account.includes('arq')) return false;
     if (issuer.includes('nu') && !account.includes('nu')) return false;
