@@ -63,7 +63,7 @@
     if (sourcePromise) return sourcePromise;
     sourcePromise = (async () => {
       const getData = window.__PANEL_GET_BACKEND_DATA__;
-      if (typeof getData !== 'function') return { movements: [], cards: [], cycles: [] };
+      if (typeof getData !== 'function') return { movements: [], cards: [], cycles: [], installments: [] };
       const payload = await getData(force);
       if (payload === sourcePayload && sourceCache) return sourceCache;
       const wide = rowsFromPayload(payload, 'Movimientos!A:AA');
@@ -72,7 +72,8 @@
       sourceCache = {
         movements: window.FinanceScopeCore?.movementRows ? window.FinanceScopeCore.movementRows(payload,financeId) : (wide.length ? wide : legacy),
         cards: rowsFromPayload(payload, 'Tarjetas!A:T'),
-        cycles: rowsFromPayload(payload, 'Pagos_Tarjetas!A:T')
+        cycles: rowsFromPayload(payload, 'Pagos_Tarjetas!A:T'),
+        installments: rowsFromPayload(payload, 'Cuotas!A:AB')
       };
       return sourceCache;
     })();
@@ -141,6 +142,8 @@
   }
 
   function rowMatchesCard(row, card) {
+    const allocatedId=String(row?.__cardId||'').trim();
+    if(allocatedId) return allocatedId===cardId(card);
     if(window.CardCycleCore?.matchesCard) return window.CardCycleCore.matchesCard(row,card);
     const issuer = norm(card?.Emisor), owner = ownerNick(card?.Titular), account = norm(row['Cuenta / Tarjeta']), holder = ownerNick(row.Titular);
     if (issuer.includes('arq') && !account.includes('arq')) return false;
@@ -244,16 +247,19 @@
     const canvas = document.getElementById('cardTrendChart');
     const chart = canvas ? Chart.getChart(canvas) : null;
     if (!chart) return;
-    const { movements, cards, cycles } = await loadSources(false);
+    const { movements, cards, cycles, installments } = await loadSources(false);
     if (activeView() !== 'tarjetas' || !canvas.isConnected) return;
     const metric = document.querySelector('[data-card-line-mode].active')?.dataset.cardLineMode || 'spend';
-    const built = buildTrendSeries(filteredCreditRows(movements), cards, metric, activeCurrency(), cycles);
+    const allocationRows = metric === 'spend' && window.CardMonthlyAllocationCore?.build
+      ? window.CardMonthlyAllocationCore.build({movements,installments,cards,cycles})
+      : movements;
+    const built = buildTrendSeries(filteredCreditRows(allocationRows), cards, metric, activeCurrency(), cycles);
     chart.data.labels = built.labels;
     chart.data.datasets = built.datasets;
     chart.update('none');
     const scope = window.__FINANCE_SCOPE_FILTER_STATE__?.tarjetas || 'Todos';
     const subtitle = canvas.closest('.panel')?.querySelector('.panel-title span');
-    if (subtitle) { const ref=String(window.__PANEL_CARD_LIMIT_MODE__||'control')==='real'?'límite real':'límite de control'; subtitle.textContent = `Compras con crédito · ${scope} · ${metric === 'limit' ? `porcentaje del ${ref} utilizado` : 'gasto del período'}`; }
+    if (subtitle) { const ref=String(window.__PANEL_CARD_LIMIT_MODE__||'control')==='real'?'límite real':'límite de control'; subtitle.textContent = `Crédito · ${scope} · ${metric === 'limit' ? `porcentaje del ${ref} utilizado` : '1 pago + cuotas imputadas al período'}`; }
   }
 
   async function syncCardSummary() {
