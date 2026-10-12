@@ -121,7 +121,8 @@ async function loadDashboard() {
     const globalModules = [
       ...(BACKEND_MODE ? ["expense-reconciliation-guard.js"] : []),
       "sync-status-controller.js",
-      "table-date-behavior.js"
+      "table-date-behavior.js",
+      "pending-alert-controller.js"
     ];
     await Promise.all(globalModules.map(loadScript));
     document.dispatchEvent(new CustomEvent('panel:modules-ready'));
