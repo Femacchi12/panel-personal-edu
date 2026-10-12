@@ -21,6 +21,7 @@
   <link rel="stylesheet" href="general-dashboard.css?v=20260903-1105" />
   <link rel="stylesheet" href="responsive-layout.css?v=20260903-1105" />
   <link rel="stylesheet" href="dashboard-visual-standard.css?v=20260903-1105" />
+  <link rel="stylesheet" href="pending-alert.css?v=20261012-pending-alert-v1" />
   <link rel="stylesheet" href="flow-matrix-layout-fix.css?v=20260903-1105" />
   <link rel="stylesheet" href="patrimonio-dashboard.css?v=20260903-patrimonio-pension-v1" />
 </head>
@@ -87,6 +88,11 @@
         <h1 id="viewTitle">Visión general</h1>
       </div>
       <div class="topbar-actions">
+        <button id="pendingAlertButton" class="pending-alert-button" type="button" aria-expanded="false" aria-controls="pendingAlertPanel" aria-label="Abrir pendientes">
+          <span class="pending-alert-emoji" aria-hidden="true">⚠️</span>
+          <span class="pending-alert-label">Pendientes</span>
+          <span id="pendingAlertCount" class="pending-alert-count">0</span>
+        </button>
         <div class="currency-switch" role="group" aria-label="Moneda principal">
           <button class="currency-btn active" data-currency="COP">COP</button>
           <button class="currency-btn" data-currency="USD">USD</button>
@@ -135,6 +141,27 @@
     </main>
   </div>
 
+  <div id="pendingAlertBackdrop" class="pending-alert-backdrop" hidden></div>
+  <aside id="pendingAlertPanel" class="pending-alert-panel" aria-hidden="true" aria-label="Pendientes del dashboard">
+    <div class="pending-alert-panel-head">
+      <div class="pending-alert-panel-title">
+        <span aria-hidden="true">⚠️</span>
+        <div>
+          <strong>Pendientes</strong>
+          <small id="pendingAlertSummary">Cargando pendientes…</small>
+        </div>
+      </div>
+      <button id="pendingAlertClose" class="pending-alert-close" type="button" aria-label="Cerrar pendientes">×</button>
+    </div>
+    <div id="pendingAlertList" class="pending-alert-list">
+      <div class="pending-alert-empty"><span>…</span><strong>Cargando</strong><p>Sincronizando pendientes activos.</p></div>
+    </div>
+    <div class="pending-alert-panel-foot">
+      <span>Se muestran únicamente pendientes activos sincronizados desde la documentación.</span>
+      <button id="pendingAlertOpenMatrix" class="pending-alert-matrix" type="button">Abrir matriz ↗</button>
+    </div>
+  </aside>
+
   <template id="emptyStateTemplate">
     <div class="empty-state"><strong>Sin información para mostrar</strong><span>Los datos aparecerán cuando estén disponibles en el Sheet.</span></div>
   </template>
@@ -148,6 +175,6 @@
   <script src="movement-status-core.js?v=20260927-dashboard-architecture-v4"></script>
   <script src="view-root-events.js?v=20260927-dashboard-architecture-v4"></script>
   <script src="section-data-filters.js?v=20260927-dashboard-architecture-v4"></script>
-  <script type="module" src="auth.js?v=20261001-card-architecture-v8"></script>
+  <script type="module" src="auth.js?v=20261012-pending-alert-v1"></script>
 </body>
 </html>
