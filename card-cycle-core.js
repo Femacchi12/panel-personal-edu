@@ -109,11 +109,22 @@
     const ref=date instanceof Date?new Date(date.getFullYear(),date.getMonth(),date.getDate()):parseDate(date);
     if(!ref) return null;
     const cutDay=Math.max(1,Math.min(31,Math.round(num(card?.['Día corte']||card?.['Dia corte']||card?.Corte)||1)));
-    const cut=ref.getDate()<=cutDay
-      ? safeDate(ref.getFullYear(),ref.getMonth(),cutDay)
-      : safeDate(ref.getFullYear(),ref.getMonth()+1,cutDay);
-    const prevCut=safeDate(cut.getFullYear(),cut.getMonth()-1,cutDay);
-    const start=new Date(prevCut);start.setDate(start.getDate()+1);
+    const isNu=norm(card?.Emisor).includes('nu');
+    let cut,start;
+    if(isNu){
+      // Nu's statement day starts the new period: day 15 means 15..14.
+      const statement=ref.getDate()<cutDay
+        ? safeDate(ref.getFullYear(),ref.getMonth(),cutDay)
+        : safeDate(ref.getFullYear(),ref.getMonth()+1,cutDay);
+      cut=new Date(statement);cut.setDate(cut.getDate()-1);
+      start=safeDate(statement.getFullYear(),statement.getMonth()-1,cutDay);
+    }else{
+      cut=ref.getDate()<=cutDay
+        ? safeDate(ref.getFullYear(),ref.getMonth(),cutDay)
+        : safeDate(ref.getFullYear(),ref.getMonth()+1,cutDay);
+      const prevCut=safeDate(cut.getFullYear(),cut.getMonth()-1,cutDay);
+      start=new Date(prevCut);start.setDate(start.getDate()+1);
+    }
     return {start,end:new Date(cut),cut,source:'derived',cycle:null};
   }
 
