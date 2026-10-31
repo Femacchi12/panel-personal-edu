@@ -70,6 +70,16 @@
     return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
   }
 
+  function snapshotFreshness(value,now=new Date()) {
+    const date=parseDate(value);
+    if(!date)return {tone:'stale',label:'Saldo bancario sin fecha'};
+    const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    const age=Math.max(0,Math.floor((today-date)/86400000));
+    if(age<=2)return {tone:'fresh',label:`Saldo bancario actualizado ${dateLabel(date)}`};
+    if(age<=15)return {tone:'warning',label:`Saldo bancario de hace ${age} días · ${dateLabel(date)}`};
+    return {tone:'stale',label:`Saldo bancario desactualizado · hace ${age} días`};
+  }
+
   function normalizedCurrency(value){
     const raw=String(value||'COP').trim().toUpperCase();
     return raw==='ARS'?'ARS':raw==='USD'?'USD':'COP';
@@ -129,13 +139,12 @@
     if (!cutDay) return null;
 
     if (id.startsWith('TC-NU-')) {
-      let nextCut;
-      if (now.getDate() < cutDay) nextCut = new Date(now.getFullYear(),now.getMonth(),cutDay);
-      else nextCut = new Date(now.getFullYear(),now.getMonth()+1,cutDay);
-      const previousCut = new Date(nextCut.getFullYear(),nextCut.getMonth()-1,cutDay);
-      const start = new Date(previousCut); start.setDate(start.getDate()+1);
-      const end = new Date(nextCut);
-      return {start,end,cut:nextCut,source:'derived'};
+      const statement = now.getDate() < cutDay
+        ? safeDate(now.getFullYear(),now.getMonth(),cutDay)
+        : safeDate(now.getFullYear(),now.getMonth()+1,cutDay);
+      const start = safeDate(statement.getFullYear(),statement.getMonth()-1,cutDay);
+      const end = new Date(statement); end.setDate(end.getDate()-1);
+      return {start,end,cut:end,source:'derived'};
     }
 
     if (lastClosed) {
@@ -205,6 +214,9 @@
       .card-cycle-item span{display:block;color:#667a94;font-size:8px;text-transform:uppercase;letter-spacing:.05em;font-weight:700}
       .card-cycle-item strong{display:block;margin-top:4px;color:#dce6f3;font-size:10px;white-space:normal;line-height:1.35}
       .card-cycle-item.wide{grid-column:1/-1}
+      .card-snapshot-status{display:flex;align-items:center;gap:7px;font-size:9px;line-height:1.35;color:#8ea1b9}
+      .card-snapshot-status:before{content:"";width:7px;height:7px;border-radius:50%;background:#7a8ba5;flex:0 0 auto}
+      .card-snapshot-status.fresh:before{background:#26d07c}.card-snapshot-status.warning:before{background:#f6c844}.card-snapshot-status.stale{color:#ff9aaa}.card-snapshot-status.stale:before{background:#ff667a}
       @media(max-width:720px){.card-cycle-grid{grid-template-columns:1fr}}
     `;
     document.head.appendChild(style);
@@ -244,8 +256,10 @@
     const totalRaw=closed?.['Pago total']??'';
     const minRaw=closed?.['Pago mínimo']??'';
     const totalDue=parseNumber(totalRaw),minDue=parseNumber(minRaw);
+    const freshness=snapshotFreshness(cardRow?.['Fecha actualización'],now);
     block.innerHTML = `
       <div class="card-payment-head"><strong>Control del último corte</strong><span class="payment-state ${state.key}">${esc(state.label)}</span></div>
+      <div class="card-snapshot-status ${freshness.tone}">${esc(freshness.label)} · disponible = cupo total − usado</div>
       <div class="card-cycle-grid">
         <div class="card-cycle-item wide"><span>Período actual</span><strong>${esc(currentPeriodLabel(current,id))}</strong></div>
         <div class="card-cycle-item wide"><span>Último período facturado</span><strong>${esc(billedPeriod(closed))}</strong></div>
