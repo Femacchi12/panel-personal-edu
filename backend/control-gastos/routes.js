@@ -9,8 +9,14 @@ function createRouter(opts = {}) {
   const router = express.Router();
   const store = opts.store || getStore(opts.storeOpts);
   const emulator = /^(127\.0\.0\.1|localhost):\d+$/.test(String(process.env.FIRESTORE_EMULATOR_HOST || ""));
-  const queue = emulator && process.env.GCLOUD_PROJECT === "demo-control-gastos-local" &&
-    process.env.CONTROL_GASTOS_LOCAL_QUEUE === "1" && !service.productionWriteEnabled() ? opts.queue : null;
+  const localQueue = emulator && process.env.GCLOUD_PROJECT === "demo-control-gastos-local" &&
+    process.env.CONTROL_GASTOS_LOCAL_QUEUE === "1" && !service.productionWriteEnabled();
+  // Cola operativa en entornos reales: SOLO encolado (PENDING). El consumidor
+  // secuencial NO corre en Cloud Run (exclusividad multi-instancia sin demostrar);
+  // se ejecuta localmente con identidad autorizada. Requiere flag explícito.
+  const queueEnabled = !localQueue && String(process.env.CONTROL_GASTOS_QUEUE_ENABLED || "") === "1" &&
+    !service.productionWriteEnabled();
+  const queue = localQueue || queueEnabled ? opts.queue : null;
   const requireAuthorizedUser = opts.requireAuthorizedUser; // Firebase auth middleware (dashboard allowlist)
 
   const asyncH = fn => (req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
@@ -62,7 +68,7 @@ function createRouter(opts = {}) {
   // Fail closed until the durable queue is integrated end-to-end. Do not fall
   // back to the legacy simulated-apply path, which can mutate pending state.
   router.post("/pendings/:id/apply", requireFirebaseUser, requireArWrite, asyncH(async (req,res)=>{
-    const r=await service.enqueuePendingResolution(store, queue, req.params.id, req.body||{}, req.user, req);
+    const r=await service.enqueuePendingResolution(store, queue, req.params.id, req.body||{}, req.user, req, { allowReal: queueEnabled });
     res.status(r.status||200).json(r);
   }));
   router.get("/operations/:id", requireFirebaseUser, requireArWrite, asyncH(async (req,res)=>{

@@ -67,7 +67,11 @@ function mountControlGastos(app, requireAuthorizedUser) {
       /^(127\.0\.0\.1|localhost):\d+$/.test(String(process.env.FIRESTORE_EMULATOR_HOST || "")) &&
       storeType === "firestore" && !service.productionWriteEnabled()
       ? new DurableQueue(store.db, "cg_local_test") : null;
-    const router = createRouter({ store, requireAuthorizedUser, queue:localQueue });
+    // Cola operativa real (solo encolado; el consumidor corre localmente):
+    const queueEnabled = !localQueue && String(process.env.CONTROL_GASTOS_QUEUE_ENABLED || "") === "1" &&
+      storeType === "firestore" && !service.productionWriteEnabled();
+    const realQueue = queueEnabled ? new DurableQueue(store.db, process.env.CONTROL_GASTOS_FIRESTORE_PREFIX || "control_gastos") : null;
+    const router = createRouter({ store, requireAuthorizedUser, queue: localQueue || realQueue });
     // Auth enforced per-route inside router (Firebase AR user and/or device sync token with limited scope)
     app.use("/api/control-gastos", router);
     console.log(`Control de gastos API mounted at /api/control-gastos (store=${storeType}, db=${process.env.CONTROL_GASTOS_FIRESTORE_DATABASE || "(default)"}, production_writes=${service.productionWriteEnabled()}).`);
