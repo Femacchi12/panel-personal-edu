@@ -88,3 +88,22 @@ test("pending financial apply fails closed without the isolated queue", async ()
     assert.equal((await store.getPendings())[0].estado_sincronizacion, undefined);
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
+
+test("mountControlGastos boots safely with production-like env (memory store, no writer, no fixtures)", async () => {
+  await withEnv({ GCLOUD_PROJECT: "panel-personal-cg-preprod", CONTROL_GASTOS_STORE: "memory", CONTROL_GASTOS_PRODUCTION_WRITE_ENABLED: "false" }, async () => {
+    const { mountControlGastos } = require("./index");
+    const app = express(); app.use(express.json());
+    const authUser = (req, res, next) => { req.user = { email: auth.AR_EMAIL }; next(); };
+    mountControlGastos(app, authUser);
+    const server = await new Promise(resolve => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.address().port}/api/control-gastos/status`);
+      const status = await res.json();
+      assert.equal(res.status, 200);
+      assert.equal(status.fixtures, false);
+      assert.equal(status.production_write_enabled, false);
+      assert.equal(status.apply_financiero_enabled, false);
+      assert.equal(status.counts.pendings, 0, "no synthetic data in a production-like boot");
+    } finally { await new Promise(resolve => server.close(resolve)); }
+  });
+});
