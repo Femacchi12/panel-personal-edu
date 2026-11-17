@@ -512,7 +512,14 @@ async function ingestSync(store, body, user, meta = {}){
   // merge strategy (simple, idempotent by ids/keys) - safe for offline catchup
   if (Array.isArray(incoming.pendings)) {
     const byKey = new Map((st.pendings||[]).map(p=>[String(p.id||p.message_key), p]));
-    for (const p of incoming.pendings) { const k=String(p.id||p.message_key); if(!k) continue; if(!byKey.has(k)) byKey.set(k,p); else byKey.set(k,{...byKey.get(k), ...p, _merged_at: nowIso()}); }
+    for (const p of incoming.pendings) { const k=String(p.id||p.message_key); if(!k) continue; if(!byKey.has(k)) byKey.set(k,p); else {
+      const prev = byKey.get(k);
+      const next = { ...prev, ...p };
+      // La revision guardada en el Dashboard prevalece sobre el estado local:
+      // la sync diaria no debe regresar decisiones ya tomadas por el usuario.
+      if (prev?.revision) { next.revision = prev.revision; if (prev.estado_validacion === "en_revision") next.estado_validacion = prev.estado_validacion; }
+      byKey.set(k, { ...next, _merged_at: nowIso() });
+    } }
     st.pendings = Array.from(byKey.values());
   }
   if (incoming.closures && typeof incoming.closures==='object') st.closures = { ...(st.closures||{}), ...incoming.closures };
