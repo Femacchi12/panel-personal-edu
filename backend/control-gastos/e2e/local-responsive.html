@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Responsive check · Control de gastos E2E</title>
+  <style>
+    body { margin:0; background:#0b0f16; color:#e6edf7; font:13px/1.4 Inter, system-ui, sans-serif; }
+    .row { display:flex; gap:18px; padding:14px; align-items:flex-start; flex-wrap:wrap; }
+    .frame { background:#121826; border:1px solid #22304a; border-radius:10px; padding:10px; }
+    iframe { border:0; display:block; background:#05070c; }
+    .label { margin-bottom:6px; font-weight:700; }
+    .metric { margin-top:6px; color:#9fb3d1; white-space:pre-line; }
+  </style>
+</head>
+<body>
+  <div class="row" id="row"></div>
+  <script>
+    // Same-origin harness: measure real horizontal overflow of the module
+    // inside a viewport of the requested width (desktop / 390 / 360 px).
+    const widths = [1280, 390, 360];
+    const row = document.getElementById('row');
+    window.__RESULT__ = {};
+
+    Promise.all(widths.map(width => new Promise(resolve => {
+      const box = document.createElement('div');
+      box.className = 'frame';
+      box.innerHTML = '<div class="label">' + width + ' px</div>' +
+        '<iframe src="/local-e2e" width="' + width + '" height="900"></iframe>' +
+        '<div class="metric" id="m' + width + '">cargando…</div>';
+      row.appendChild(box);
+      const frame = box.querySelector('iframe');
+      const metric = box.querySelector('.metric');
+      frame.addEventListener('load', () => {
+        setTimeout(() => {
+          try {
+            const doc = frame.contentDocument;
+            const de = doc.documentElement;
+            const overflow = Math.max(0, de.scrollWidth - de.clientWidth);
+            const bad = [...doc.querySelectorAll('body *')]
+              .filter(el => el.getBoundingClientRect().right > de.clientWidth + 1)
+              .slice(0, 5)
+              .map(el => (el.tagName + '.' + (el.className || '')).slice(0, 60));
+            const text = 'overflow=' + overflow + 'px · clientWidth=' + de.clientWidth +
+              (bad.length ? '\nfuera: ' + bad.join(' | ') : '\nsin elementos fuera del ancho');
+            metric.textContent = text;
+            window.__RESULT__[width] = { overflow, clientWidth: de.clientWidth, offenders: bad };
+            resolve();
+          } catch (e) {
+            metric.textContent = 'error: ' + e.message;
+            window.__RESULT__[width] = { error: String(e.message) };
+            resolve();
+          }
+        }, 2500);
+      });
+    }))).then(() => { window.__RESPONSIVE_DONE__ = true; });
+  </script>
+</body>
+</html>

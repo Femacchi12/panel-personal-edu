@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const admin = require('firebase-admin');
 const { google } = require('googleapis');
 
@@ -237,4 +237,13 @@ app.post('/api/settings/savings-target', requireAuthorizedUser, async (req, res)
   }
 });
 
+// Control de gastos (estado operativo, pruebas/dev). No modifica Finanzas Edu.
+try {
+  const { mountControlGastos } = require('./control-gastos');
+  mountControlGastos(app, requireAuthorizedUser);
+} catch (e) {
+  console.error('Control de gastos module not mounted:', e && e.message ? e.message : e);
+}
+
 app.listen(PORT, '0.0.0.0', () => { console.log(`Panel Personal Edu backend listening on ${PORT}`); });
+
