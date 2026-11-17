@@ -12,11 +12,13 @@ function createRouter(opts = {}) {
   const localQueue = emulator && process.env.GCLOUD_PROJECT === "demo-control-gastos-local" &&
     process.env.CONTROL_GASTOS_LOCAL_QUEUE === "1" && !service.productionWriteEnabled();
   // Cola operativa en entornos reales: SOLO encolado (PENDING). El consumidor
-  // secuencial NO corre en Cloud Run (exclusividad multi-instancia sin demostrar);
-  // se ejecuta localmente con identidad autorizada. Requiere flag explícito.
-  const queueEnabled = !localQueue && String(process.env.CONTROL_GASTOS_QUEUE_ENABLED || "") === "1" &&
-    !service.productionWriteEnabled();
+  // secuencial corre en un endpoint con lease de exclusividad (una ejecución
+  // del escritor por destino a la vez), autenticado y con destino TEST forzado.
+  const testConsumer = String(process.env.CONTROL_GASTOS_TEST_CONSUMER || "") === "1";
+  const queueEnabled = (!localQueue && String(process.env.CONTROL_GASTOS_QUEUE_ENABLED || "") === "1" &&
+    !service.productionWriteEnabled()) || testConsumer;
   const queue = localQueue || queueEnabled ? opts.queue : null;
+  const consumer = queueEnabled && testConsumer ? opts.consumer || null : null;
   const requireAuthorizedUser = opts.requireAuthorizedUser; // Firebase auth middleware (dashboard allowlist)
 
   const asyncH = fn => (req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
@@ -100,6 +102,32 @@ function createRouter(opts = {}) {
 
   // Sync ingest (Hermes local -> cloud operational state). Alcance: solo operativo. Acepta Firebase AR o device access token sync.
   router.post("/sync", requireSyncAuth, asyncH(async (req,res)=>{ const r=await service.ingestSync(store, req.body||{}, req.user, { authType: req.syncAuth ? "device_sync" : "firebase_user" }); res.status(r.status||200).json(r); }));
+
+  // Consumidor secuencial del destino TEST (preprod). Exclusividad por lease
+  // transaccional: dos ejecuciones simultaneas -> una queda fuera. Auth: sync
+  // (Firebase AR o token de dispositivo). Solo corre si CONTROL_GASTOS_TEST_CONSUMER=1
+  // y el escritor se configuro con destino TEST forzado; nunca toca el canónico.
+  router.post("/consumer/run", requireSyncAuth, asyncH(async (req,res)=>{
+    if (!consumer) return res.status(503).json({ ok:false, error:"consumer_not_configured" });
+    const holder = (req.syncAuth && req.user?.deviceId) ? `device:${req.user.deviceId}` : `fb:${req.user?.email}`;
+    const lease = await consumer.queue.acquireConsumerLease(holder, Number(process.env.CONTROL_GASTOS_CONSUMER_LEASE_MS || 120000));
+    if (!lease.ok) return res.status(409).json({ ok:false, error:"consumer_busy", reason: lease.reason, holder: lease.holder });
+    const maxOps = Math.min(Number(req.body?.maxOps) || 20, 20);
+    const results = [];
+    try {
+      for (let i = 0; i < maxOps; i++) {
+        const r = await consumer.writer.runOne();
+        results.push(r);
+        if (!r.ok || r.status === "COMMITTED" || r.status === "ALREADY_REGISTERED" || r.status === "UNCERTAIN" || r.status === "NEEDS_INFORMATION" || r.status === "CONFIRMED_FAILED" || r.reason === "empty") {
+          if (r.reason === "empty") break;
+        }
+      }
+    } finally {
+      await consumer.queue.releaseConsumerLease(holder).catch(()=>{});
+    }
+    const blocked = await consumer.queue.getDestinationState().catch(()=>null);
+    res.json({ ok:true, holder, processed: results.length, results, destinationBlocked: blocked ? !!blocked.blocked : null });
+  }));
   // Guarda la decision de revision (estado operativo, sin registro contable). AR-only.
   router.post("/pendings/:id/review", requireFirebaseUser, requireArWrite, asyncH(async (req,res)=>{
     const r=await service.savePendingReview(store, req.params.id, req.body||{}, req.user);

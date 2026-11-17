@@ -36,6 +36,23 @@ test("private KV store contract is identical in Memory and Firestore stores", as
   assert.ok(raw.data().value && raw.data().updated_at);
 });
 
+test("consumer lease grants exclusive runs (preprod consumer)", async () => {
+  const q = new DurableQueue(db, `test_${crypto.randomBytes(6).toString("hex")}`);
+  const a = await q.acquireConsumerLease("device:A", 60000);
+  assert.equal(a.ok, true);
+  const b = await q.acquireConsumerLease("device:B", 60000);
+  assert.equal(b.ok, false);
+  assert.equal(b.reason, "consumer_busy");
+  const a2 = await q.acquireConsumerLease("device:A", 60000);
+  assert.equal(a2.ok, true, "el mismo holder puede re-adquirir");
+  await q.releaseConsumerLease("device:B");
+  const a3 = await q.acquireConsumerLease("device:A", 60000);
+  assert.equal(a3.ok, true);
+  await q.releaseConsumerLease("device:A");
+  const c = await q.acquireConsumerLease("device:C", 60000);
+  assert.equal(c.ok, true, "tras liberar el holder correcto, otro puede tomar el lease");
+});
+
 test("persistent queue orders, deduplicates and never steals a claim", async () => {
   const q = new DurableQueue(db, `test_${crypto.randomBytes(6).toString("hex")}`);
   const row = Array(27).fill("");
