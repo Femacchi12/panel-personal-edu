@@ -10,7 +10,7 @@
     pendings: [], selectedPendingId: null,
     closures: [], selectedDate: null,
     corrections: { proposals: [], applied: [] }, audits: [],
-    preview: null, applyResult: null, operation: null, correctionOperation: null, syncInitialResult: null,
+    preview: null, applyResult: null, operation: null, correctionOperation: null, syncInitialResult: null, reviewResult: null,
     form: {}, correctionForm: { row_num: '', mov_id: '', reason: '', changes: {}, before: {} },
     stale: false, offline: false, busy: false
   };
@@ -108,21 +108,22 @@
   function getSelectedClosure(){ return state.closures.find(c=>String(c.date)===String(state.selectedDate)) || null; }
 
   function initFormFromPending(p){
-    const d = p?.datos_interpretados || {}; const f = p?.fila_simulada || {};
+    const d = p?.datos_interpretados || {}; const f = p?.fila_simulada || {}; const rev = p?.revision?.input || {};
+    const pick = (a, b, c) => norm(a ?? b ?? c ?? '');
     state.form = {
-      fecha_real: norm(d.fecha_real || f['Fecha real']),
-      concepto: norm(d.concepto || f['Descripción / Comercio']),
-      comercio: norm(d.concepto || f['Descripción / Comercio']),
-      descripcion: norm(d.texto_original || f['Descripción original']),
-      importe: d.importe ?? f['Monto original'] ?? '',
-      moneda: norm(d.moneda || f['Moneda original'] || 'COP'),
-      titular: norm(d.titular || f['Titular']),
-      categoria: norm(d.categoria || f['Categoría']),
-      subcategoria: norm(d.subcategoria || f['Subcategoría']),
-      cuenta: norm(d.cuenta_tarjeta || f['Cuenta / Tarjeta']),
-      medio_pago: norm(d.modalidad_pago || f['Modalidad de pago']),
-      mes_pago: norm(d.mes_pago || f['Mes pago']),
-      notas: norm(p?.notas_revision || ''),
+      fecha_real: pick(rev.fecha_real, d.fecha_real, f['Fecha real']),
+      concepto: pick(rev.concepto, d.concepto, f['Descripción / Comercio']),
+      comercio: pick(rev.concepto, d.concepto, f['Descripción / Comercio']),
+      descripcion: pick(rev.descripcion, d.texto_original, f['Descripción original']),
+      importe: rev.importe ?? d.importe ?? f['Monto original'] ?? '',
+      moneda: pick(rev.moneda, d.moneda, f['Moneda original']) || 'COP',
+      titular: pick(rev.titular, d.titular, f['Titular']),
+      categoria: pick(rev.categoria, d.categoria, f['Categoría']),
+      subcategoria: pick(rev.subcategoria, d.subcategoria, f['Subcategoría']),
+      cuenta: pick(rev.cuenta, d.cuenta_tarjeta, f['Cuenta / Tarjeta']),
+      medio_pago: pick(rev.medio_pago, d.modalidad_pago, f['Modalidad de pago']),
+      mes_pago: pick(rev.mes_pago, d.mes_pago, f['Mes pago']),
+      notas: norm(p?.revision?.aclaracion ?? p?.notas_revision ?? ''),
       resolucion: '',
       aclaracion: ''
     };
@@ -213,7 +214,21 @@
 
   function renderPendingList(){
     const items=state.pendings||[];
-    const stateLabels={ pendiente_validacion:'Pendiente de validación', simulado:'Simulado por el piloto (no registrado)', registrado:'Registrado', pendiente_revision:'Pendiente de revisión' };
+    const stateLabels={ pendiente_validacion:'Pendiente de validación', simulado:'Simulado por el piloto (no registrado)', registrado:'Registrado', pendiente_revision:'Pendiente de revisión', en_revision:'En revisión' };
+    const cleanConcept = t => norm(t).replace(/^\[owner reply\]\s*/i, '').replace(/\s{2,}/g, ' ') || 'Movimiento pendiente';
+    const simplifyWarning = t => {
+      const s = norm(t);
+      const rules = [
+        [/no se identific[oó] persona/i, 'Falta definir: titular (Edu, Rocío o Pía)'],
+        [/categor[ií]a\/subcategor[ií]a no determinada/i, 'Falta definir: categoría y subcategoría oficiales'],
+        [/posible pago\/saldo de compra previamente contabilizada/i, 'Posible duplicado o saldo: confirmar antes de registrar'],
+        [/titular y cuenta nu espec[ií]fica no identificados/i, 'Falta definir: titular y cuenta (Nu)'],
+        [/categor[ií]a oficial a confirmar/i, 'Confirmar categoría oficial según Manual/Matriz'],
+        [/requiere confirmaci[oó]n antes de registrar/i, 'Requiere confirmación antes de registrar']
+      ];
+      for (const [re, msg] of rules) if (re.test(s)) return msg;
+      return s;
+    };
     if(!items.length){
       const st=state.status||{};
       const detail = st.fixtures
@@ -229,10 +244,11 @@
     }
     return `<div class="cg-list">${items.map(p=>{
       const d=p.datos_interpretados||{}; const sel=String(p.id)===String(state.selectedPendingId);
-      const motivos=(p.motivo_ambiguedad||[]).map(m=>`<span class="cg-pill">${esc(m)}</span>`).join('');
+      const motivos=(p.motivo_ambiguedad||[]).map(m=>`<span class="cg-pill">${esc(simplifyWarning(m))}</span>`).join('');
+      const saved = p.revision?.input ? ' · Revisión guardada' : '';
       return `<div class="cg-item ${sel?'selected':''}" data-cg-pending="${esc(p.id)}">
-        <h4>${esc(d.concepto||p.texto_relevante||'Movimiento pendiente')}</h4>
-        <div class="cg-muted">${esc(d.fecha_real||'')} · ${esc(d.moneda||'')} ${esc(d.importe??'')} · ${esc(d.titular||'(titular pendiente)')} · ${esc(d.cuenta_tarjeta||'(cuenta pendiente)')}</div>
+        <h4>${esc(cleanConcept(d.concepto||p.texto_relevante))}</h4>
+        <div class="cg-muted">${esc(d.fecha_real||'')} · ${esc(d.moneda||'')} ${esc(d.importe??'')} · ${esc(d.titular||'(titular pendiente)')} · ${esc(d.cuenta_tarjeta||'(cuenta pendiente)')}${saved}</div>
         <div>${motivos}</div>
         <div class="cg-muted" style="margin-top:6px">Estado: ${esc(stateLabels[p.estado_sincronizacion]||p.estado_sincronizacion||'pendiente')} · Origen: ${esc(p.message_key||'')}</div>
       </div>`;
@@ -251,7 +267,7 @@
     const byCat=cats.subcategorias_por_categoria||{}; const subs=byCat[norm(f.categoria)]||cats.subcategorias||[];
     const modalities=(cats.modalidades_por_cuenta||{})[norm(f.cuenta)]||cats.medios_pago||[];
     const v=computeValidation(); const preview=state.preview;
-    const motivos=(p.motivo_ambiguedad||[]).map(m=>`<li>${esc(m)}</li>`).join('');
+    const motivos=(p.motivo_ambiguedad||[]).map(m=>`<li>${esc(simplifyWarning(m))}</li>`).join('');
     const diffRows = preview?.comparison?.diff ? Object.entries(preview.comparison.diff).map(([k,val])=>`<tr><th>${esc(k)}</th><td class="old">${esc(val.antes)}</td><td class="new">${esc(val.despues)}</td></tr>`).join('') : '';
     const canApply = !!preview && preview.canApply && !state.busy && !state.operation;
     return `
@@ -295,9 +311,12 @@
         ${v.warns.length? `<div class="cg-notice warn" style="margin-top:10px"><strong>Revisar:</strong><ul style="margin:6px 0 0 18px">${v.warns.map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>`:''}
         <div class="cg-actions" style="margin-top:12px">
           <button class="cg-btn" data-cg-action="preview-pending" ${state.busy?'disabled':''}>Previsualizar Antes/Después</button>
+          <button class="cg-btn" data-cg-action="save-review" ${state.busy?'disabled':''}>Guardar revisión (sin registrar)</button>
           <button class="cg-btn primary" data-cg-action="apply-pending" ${(!canApply)?'disabled':''}>Aplicar</button>
           <span class="cg-muted">${!canApply ? 'Aplica solo con validación OK y confirmación.' : 'Se pedirá confirmación antes de ejecutar.'}</span>
         </div>
+        ${p.revision?.at ? `<div class="cg-notice" style="margin-top:10px"><strong>Revisión guardada:</strong> ${esc(p.revision.at)}${p.revision.by?` · ${esc(p.revision.by)}`:''} · Decisiones conservadas como estado de revisión (no registradas en Movimientos).${p.revision.registrada===false?'':''}</div>`:''}
+        ${state.reviewResult ? `<div class="cg-notice ${state.reviewResult.ok?'ok':'err'}" style="margin-top:8px"><strong>Guardar revisión:</strong> ${esc(state.reviewResult.note || state.reviewResult.error || 'OK')}</div>`:''}
         ${preview ? `<div style="margin-top:12px"><h4>Antes / Después (propuesta)</h4>
           ${diffRows? `<table class="cg-diff"><thead><tr><th>Campo</th><th>Antes</th><th>Después</th></tr></thead><tbody>${diffRows}</tbody></table>` : '<div class="cg-muted">Sin diferencias detectadas.</div>'}
           <div class="cg-notice" style="margin-top:8px"><strong>Operación propuesta:</strong> ${esc(preview.operacion_propuesta||'')} · <strong>Confirmación requerida:</strong> Sí · <strong>Escritura productiva Movimientos:</strong> NO (etapa de prueba aislada)</div>
@@ -456,6 +475,23 @@
       try { const result = await api(`/api/control-gastos/pendings/${encodeURIComponent(p.id)}/apply`, {method:'POST', body: JSON.stringify({...state.form, approved:true, confirm:true, idempotencyKey: `ui:${p.id}:${stableHash(state.form)}`})}); state.operation={operationId:result.operationId,status:result.operationStatus,type:'insert'}; state.applyResult=null; }
       catch(e){ state.applyResult = e.data || {ok:false, error:e.message}; render(); }
       finally{ setBusy(false); }
+    });
+    root.querySelector('[data-cg-action="save-review"]')?.addEventListener('click', async ()=>{
+      if (state.busy) return;
+      const p=getSelectedPending(); if(!p) return; readPendingForm(root); setBusy(true);
+      try {
+        const f=state.form;
+        const result = await api(`/api/control-gastos/pendings/${encodeURIComponent(p.id)}/review`, {method:'POST', body: JSON.stringify({
+          fecha_real:f.fecha_real, concepto:f.concepto, descripcion:f.descripcion, importe:f.importe, moneda:f.moneda,
+          titular:f.titular, categoria:f.categoria, subcategoria:f.subcategoria, cuenta:f.cuenta, medio_pago:f.medio_pago,
+          mes_pago:f.mes_pago, notas:f.notas
+        })});
+        state.reviewResult = { ok:true, note:`Guardado ${result.revision?.at || ''}. Antes/Después calculado y auditado (sin registro contable).` };
+        await loadAll(true); render();
+      } catch(e){
+        state.reviewResult = e.data || { ok:false, error:e.message };
+        render();
+      } finally { setBusy(false); }
     });
     root.querySelector('[data-cg-action="check-operation"]')?.addEventListener('click', async (e)=>{
       if (state.busy) return; setBusy(true);

@@ -125,6 +125,43 @@ test("initial sync payload is AR-only, private-sourced, served once and maps pil
   });
 });
 
+test("saved review keeps originals intact, validates catalogs, audits and never registers", async () => {
+  await withEnv({ GCLOUD_PROJECT: "panel-personal-cg-preprod", CONTROL_GASTOS_STORE: "firestore", CONTROL_GASTOS_SEED_TEST: "0" }, async () => {
+    const pend = { id: "pend_rev_1", message_key: "KEY:rev1", estado_sincronizacion: "pendiente_validacion", estado_validacion: "pendiente",
+      datos_interpretados: { fecha_real: "2026-11-14", concepto: "[owner reply] D", texto_original: "D1 $32.700", importe: 32700, moneda: "COP" },
+      motivo_ambiguedad: ["No se identificó persona (Edu/Rocío/Pía)"] };
+    const store = new MemoryStore({ pendings: [pend] });
+    const app = express(); app.use(express.json());
+    const authUser = (req, res, next) => { if (req.headers.authorization !== "Bearer synthetic") return res.sendStatus(401); req.user = { email: auth.AR_EMAIL }; next(); };
+    app.use("/api/control-gastos", createRouter({ store, requireAuthorizedUser: authUser }));
+    const server = await new Promise(resolve => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
+    try {
+      const call = (path, body) => fetch(`http://127.0.0.1:${server.address().port}/api/control-gastos${path}`, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer synthetic" }, body: JSON.stringify(body || {}) });
+      // Campos inválidos: rechaza sin mutar
+      const bad = await (await call("/pendings/pend_rev_1/review", { categoria: "No existe" })).json();
+      assert.equal(bad.error, "invalid");
+      // Guardado correcto
+      const ok = await (await call("/pendings/pend_rev_1/review", { titular: "Edu", categoria: "Supermercado", subcategoria: "Otros", cuenta: "Efectivo", medio_pago: "Efectivo", concepto: "D (compra supermercado)", notas: "Confirmado por WhatsApp" })).json();
+      assert.equal(ok.ok, true);
+      const saved = (await store.getPendings())[0];
+      // Originales intactos
+      assert.equal(saved.datos_interpretados.concepto, "[owner reply] D");
+      assert.equal(saved.datos_interpretados.importe, 32700);
+      assert.equal(saved.estado_sincronizacion, "pendiente_validacion");
+      // Decision guardada como revision con Antes/Despues
+      assert.equal(saved.estado_validacion, "en_revision");
+      assert.equal(saved.revision.registrada, false);
+      assert.equal(saved.revision.input.titular, "Edu");
+      assert.equal(saved.revision.comparison.diff.titular.despues, "Edu");
+      const audits = await store.listAudits(5);
+      assert.ok(audits.some(a => a.type === "pending_review_saved"));
+      // Importe invalido: rechazado
+      const badAmount = await (await call("/pendings/pend_rev_1/review", { importe: -5 })).json();
+      assert.equal(badAmount.error, "invalid");
+    } finally { await new Promise(resolve => server.close(resolve)); }
+  });
+});
+
 test("mountControlGastos boots safely with production-like env (memory store, no writer, no fixtures)", async () => {
   await withEnv({ GCLOUD_PROJECT: "panel-personal-cg-preprod", CONTROL_GASTOS_STORE: "memory", CONTROL_GASTOS_PRODUCTION_WRITE_ENABLED: "false" }, async () => {
     const { mountControlGastos } = require("./index");

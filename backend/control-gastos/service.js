@@ -460,6 +460,48 @@ async function buildInitialSyncPayload(st, store){
   };
 }
 
+// Guarda la decision de revision de un pendiente como estado operativo
+// (sin registrar movimientos financieros). Valida contra los catalogos
+// oficiales, calcula Antes/Despues y deja auditoria. Los datos originales
+// del pendiente se conservan intactos en `datos_interpretados`; la decision
+// vive en `revision` y prefiere el frontend al abrir la ficha.
+async function savePendingReview(store, id, body, user){
+  if (!isWriteAuthorized(user)) return { ok:false, status:403, error:"forbidden" };
+  const item = await store.getPendingById(id);
+  if (!item) return { ok:false, status:404, error:"not_found" };
+  const d = item.datos_interpretados || {};
+  const before = {
+    fecha_real: d.fecha_real || "", concepto: d.concepto || "", descripcion: d.texto_original || "",
+    importe: d.importe ?? "", moneda: d.moneda || "", categoria: d.categoria || "", subcategoria: d.subcategoria || "",
+    titular: d.titular || "", cuenta: d.cuenta_tarjeta || "", medio_pago: d.modalidad_pago || "", mes_pago: d.mes_pago || ""
+  };
+  const input = normalizeResolutionInput(body);
+  const fields = ["fecha_real","concepto","descripcion","importe","moneda","titular","categoria","subcategoria","cuenta","medio_pago","mes_pago","notas"];
+  const cleaned = {};
+  fields.forEach(f => { const val = input[f]; if (val !== undefined && val !== null && String(val).trim() !== "") cleaned[f] = val; });
+  const merged = { ...before, ...cleaned };
+  const v = validatePendingResolution({ ...merged, concepto: merged.concepto || merged.comercio });
+  if (!v.ok) return { ok:false, status:400, error:"invalid", validation:v };
+  if (cleaned.importe != null) {
+    const amounts = recalcAmounts(merged.moneda || "COP", merged.importe);
+    if (amounts.monto_cop == null) return { ok:false, status:400, error:"invalid_amount_or_currency" };
+  }
+  const comparison = buildBeforeAfter(before, merged);
+  const revision = {
+    at: nowIso(),
+    by: user?.email || null,
+    input: cleaned,
+    amounts: recalcAmounts(merged.moneda || "COP", merged.importe),
+    comparison,
+    aclaracion: norm(input.notas) || null,
+    estado_validacion: "en_revision",
+    registrada: false // nunca se registro en Movimientos; solo decision de revision
+  };
+  await store.upsertPending({ id: item.id, message_key: item.message_key, revision, estado_validacion: "en_revision", updated_at: nowIso() });
+  await store.addAudit({ type:"pending_review_saved", pending_id:item.id, message_key:item.message_key, by:user?.email, fields:Object.keys(cleaned) });
+  return { ok:true, revision, pending: await store.getPendingById(id) };
+}
+
 async function ingestSync(store, body, user, meta = {}){
   // authenticated sync from local Hermes agent. Ingest operational state only; no direct Movimientos writes here.
   // Accepts AR firebase user OR device sync token (scope sync_operational) - both resolved to authorized context by routes.
@@ -687,5 +729,5 @@ module.exports = {
   listCorrections, proposeCorrection, applyCorrection, enqueueCorrection,
   ingestSync, getStatus, runTestProbe, isWriteAuthorized, CATALOGS, FINANCE_SS,
   configureControlledWrites, getWriteTarget, productionWriteEnabled, buildMovimientoRow, MovimientosWriter, enqueuePendingResolution,
-  fixturesEnabled, buildInitialSyncPayload
+  fixturesEnabled, buildInitialSyncPayload, savePendingReview
 };
