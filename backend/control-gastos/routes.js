@@ -94,6 +94,13 @@ function createRouter(opts = {}) {
 
   // Sync ingest (Hermes local -> cloud operational state). Alcance: solo operativo. Acepta Firebase AR o device access token sync.
   router.post("/sync", requireSyncAuth, asyncH(async (req,res)=>{ const r=await service.ingestSync(store, req.body||{}, req.user, { authType: req.syncAuth ? "device_sync" : "firebase_user" }); res.status(r.status||200).json(r); }));
+  // Payload de la sincronizacion operativa inicial (5 historicos; solo lectura).
+  // AR-only. Niega doble ejecucion si ya existen pendientes en el store.
+  router.get("/sync/initial-payload", requireFirebaseUser, requireArWrite, asyncH(async (req,res)=>{
+    const st=await store.getState();
+    const r=await service.buildInitialSyncPayload(st, store);
+    res.status(r.status||200).json(r);
+  }));
 
   // Audits (read, authorized user)
   router.get("/audits", requireFirebaseUser, asyncH(async (req,res)=> res.json({ ok:true, items: await store.listAudits(Number(req.query.limit||200)) })));

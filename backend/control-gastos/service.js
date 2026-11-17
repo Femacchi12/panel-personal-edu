@@ -429,6 +429,37 @@ async function applyCorrection(store, proposalId, body, user, req){
   return result;
 }
 
+// Payload de la sincronizacion operativa inicial: los 5 pendientes historicos
+// reales de Hermes. Fuente PRIVADA: documento sembrado en el propio store
+// operativo (control_gastos_prod_private) desde la cola local del piloto;
+// nunca en el repositorio publico. Ejecucion unica: se niega si ya hay
+// pendientes o si la sincronizacion ya se concreto.
+async function buildInitialSyncPayload(st, store){
+  if ((st.pendings || []).length > 0) return { ok:false, status:409, error:"pendings_already_present" };
+  if (st.syncState?.status === "sincronizado") return { ok:false, status:409, error:"already_synced" };
+  const staged = await store.getPrivate("initial_sync").catch(() => null);
+  if (!staged?.pendings?.length) return { ok:false, status:404, error:"initial_payload_not_seeded" };
+  const pendings = staged.pendings.map(x => ({
+    ...x,
+    estado_sincronizacion: "pendiente_validacion",
+    estado_piloto_original: x.estado_piloto_original || x.estado_sincronizacion,
+    estado_validacion: "pendiente"
+  }));
+  const ids = pendings.map(p => p.id), keys = pendings.map(p => p.message_key);
+  if (new Set(ids).size !== pendings.length || new Set(keys).size !== pendings.length)
+    return { ok:false, status:409, error:"duplicate_payload" };
+  return {
+    ok: true,
+    payload: {
+      pendings,
+      status: staged.status || "sincronizado",
+      source: staged.source || "hermes_local_initial",
+      note: staged.note || "Sincronizacion operativa inicial (Hermes): 5 pendientes historicos, sin escritura contable.",
+      pendingSyncCount: Number(staged.pendingSyncCount ?? 0)
+    }
+  };
+}
+
 async function ingestSync(store, body, user, meta = {}){
   // authenticated sync from local Hermes agent. Ingest operational state only; no direct Movimientos writes here.
   // Accepts AR firebase user OR device sync token (scope sync_operational) - both resolved to authorized context by routes.
@@ -656,5 +687,5 @@ module.exports = {
   listCorrections, proposeCorrection, applyCorrection, enqueueCorrection,
   ingestSync, getStatus, runTestProbe, isWriteAuthorized, CATALOGS, FINANCE_SS,
   configureControlledWrites, getWriteTarget, productionWriteEnabled, buildMovimientoRow, MovimientosWriter, enqueuePendingResolution,
-  fixturesEnabled
+  fixturesEnabled, buildInitialSyncPayload
 };

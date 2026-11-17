@@ -10,7 +10,7 @@
     pendings: [], selectedPendingId: null,
     closures: [], selectedDate: null,
     corrections: { proposals: [], applied: [] }, audits: [],
-    preview: null, applyResult: null, operation: null, correctionOperation: null,
+    preview: null, applyResult: null, operation: null, correctionOperation: null, syncInitialResult: null,
     form: {}, correctionForm: { row_num: '', mov_id: '', reason: '', changes: {}, before: {} },
     stale: false, offline: false, busy: false
   };
@@ -219,7 +219,13 @@
       const detail = st.fixtures
         ? 'Sin pendientes en este entorno.'
         : 'Sin pendientes sincronizados: la publicación de movimientos reales desde Hermes (WhatsApp) todavía no está habilitada. Aquí aparecerán solo cuando existan y hayan sido verificados; no se inventan datos.';
-      return `<div class="cg-empty">No hay pendientes de validación.<div class="cg-muted" style="margin-top:6px">${esc(detail)}</div></div>`;
+      const syncCard = (!st.fixtures && st.sync?.status==='sin_sincronizacion')
+        ? `<div class="cg-notice" style="margin-top:10px"><strong>Sincronización operativa inicial (Hermes)</strong>
+           <div class="cg-muted" style="margin-top:4px">Publica los 5 pendientes históricos en el estado operativo (Firestore). Solo lectura respecto de Finanzas Edu: no escribe movimientos contables y Aplicar sigue deshabilitado. Ejecución única, con confirmación previa y auditoría.</div>
+           <div class="cg-actions" style="margin-top:8px"><button class="cg-btn primary" data-cg-action="sync-initial" ${state.busy?'disabled':''}>Preparar sincronización inicial</button></div>
+           ${state.syncInitialResult ? `<div class="cg-notice ${state.syncInitialResult.ok?'ok':'err'}" style="margin-top:8px"><strong>Resultado:</strong> ${esc(state.syncInitialResult.note || state.syncInitialResult.error || 'Sincronizado')}</div>`:''}</div>`
+        : '';
+      return `<div class="cg-empty">No hay pendientes de validación.<div class="cg-muted" style="margin-top:6px">${esc(detail)}</div></div>${syncCard}`;
     }
     return `<div class="cg-list">${items.map(p=>{
       const d=p.datos_interpretados||{}; const sel=String(p.id)===String(state.selectedPendingId);
@@ -486,6 +492,22 @@
         before: row ? { fecha_real:row.fecha_real, comercio:row.comercio, descripcion:row.descripcion, importe:row.importe, moneda:row.moneda, categoria:row.categoria, subcategoria:row.subcategoria, titular:row.titular, cuenta:row.cuenta, medio_pago:row.medio_pago, mes_pago:row.mes_pago } : {} };
       render();
     }));
+    root.querySelector('[data-cg-action="sync-initial"]')?.addEventListener('click', async ()=>{
+      if (state.busy) return; setBusy(true);
+      try {
+        const prep = await api('/api/control-gastos/sync/initial-payload');
+        const items = prep.payload?.pendings || [];
+        const resumen = items.map(p=>`- ${p.datos_interpretados?.fecha_real} · ${p.datos_interpretados?.concepto} · ${p.datos_interpretados?.importe} ${p.datos_interpretados?.moneda} · ${p.estado_sincronizacion}`).join('\n');
+        if (!items.length) { alert('No hay pendientes históricos para sincronizar.'); return; }
+        if (!confirm(`Sincronización operativa inicial (ÚNICA EJECUCIÓN):\n\n${resumen}\n\nSolo escribe estado operativo en Firestore. NO escribe en Finanzas Edu → Movimientos. Aplicar sigue deshabilitado. ¿Continuar?`)) return;
+        const result = await api('/api/control-gastos/sync', { method:'POST', body: JSON.stringify(prep.payload) });
+        state.syncInitialResult = { ok:true, note:`Sincronizados ${items.length} pendientes (estado: ${result.syncState?.status||'sincronizado'}). Verificá la lista en esta misma pestaña.` };
+        await loadAll(true); state.tab='pendientes'; render();
+      } catch(e){
+        state.syncInitialResult = e.data || { ok:false, error:e.message };
+        await loadAll(true); state.tab='pendientes'; render();
+      } finally { setBusy(false); }
+    });
   }
 
   function mount(){
