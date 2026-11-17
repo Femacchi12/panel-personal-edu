@@ -2,7 +2,7 @@
 
 const crypto = require("crypto");
 const { nowIso, deepClone, idemKey, hashPayload } = require("./storage");
-const { buildSeed } = require("./fixtures");
+const { buildSeed, FIVE_PENDING } = require("./fixtures");
 const { CATALOGS, validatePendingResolution, validateCorrection, buildBeforeAfter, norm, EDITABLE_FIELDS } = require("./validation");
 const { MovimientosWriter, buildMovimientoRow, buildRowValues, assertTargetAllowed, isProdTarget, productionWriteEnabled, FINANCE_SS, PROD_SHEET } = require("./movimientos-writer");
 
@@ -429,6 +429,30 @@ async function applyCorrection(store, proposalId, body, user, req){
   return result;
 }
 
+// Payload de la sincronizacion operativa inicial: los 5 pendientes historicos
+// reales de Hermes (mismos id/message_key que la cola local del piloto; el
+// fixture se genero desde esa cola). Sin escritura contable; solo estado
+// operativo. Se niega si el store ya tiene pendientes (una sola ejecucion).
+function buildInitialSyncPayload(st){
+  if ((st.pendings || []).length > 0) return { ok:false, status:409, error:"pendings_already_present" };
+  const mapped = FIVE_PENDING.map(x => ({
+    ...x,
+    estado_sincronizacion: "pendiente_validacion",
+    estado_piloto_original: x.estado_sincronizacion,
+    estado_validacion: "pendiente"
+  }));
+  return {
+    ok: true,
+    payload: {
+      pendings: mapped,
+      status: "sincronizado",
+      source: "hermes_local_initial",
+      note: "Sincronizacion operativa inicial (Hermes): 5 pendientes historicos, sin escritura contable.",
+      pendingSyncCount: 0
+    }
+  };
+}
+
 async function ingestSync(store, body, user, meta = {}){
   // authenticated sync from local Hermes agent. Ingest operational state only; no direct Movimientos writes here.
   // Accepts AR firebase user OR device sync token (scope sync_operational) - both resolved to authorized context by routes.
@@ -656,5 +680,5 @@ module.exports = {
   listCorrections, proposeCorrection, applyCorrection, enqueueCorrection,
   ingestSync, getStatus, runTestProbe, isWriteAuthorized, CATALOGS, FINANCE_SS,
   configureControlledWrites, getWriteTarget, productionWriteEnabled, buildMovimientoRow, MovimientosWriter, enqueuePendingResolution,
-  fixturesEnabled
+  fixturesEnabled, buildInitialSyncPayload
 };

@@ -89,6 +89,33 @@ test("pending financial apply fails closed without the isolated queue", async ()
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
 
+test("initial sync payload is AR-only, served once and maps pilot states", async () => {
+  await withEnv({ GCLOUD_PROJECT: "panel-personal-cg-preprod", CONTROL_GASTOS_STORE: "firestore", CONTROL_GASTOS_SEED_TEST: "0" }, async () => {
+    const store = new MemoryStore({ syncState: { status: "sin_sincronizacion" } });
+    const app = express(); app.use(express.json());
+    const authUser = (req, res, next) => { if (req.headers.authorization !== "Bearer synthetic") return res.sendStatus(401); req.user = { email: auth.AR_EMAIL }; next(); };
+    app.use("/api/control-gastos", createRouter({ store, requireAuthorizedUser: authUser }));
+    const server = await new Promise(resolve => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
+    try {
+      const get = path => fetch(`http://127.0.0.1:${server.address().port}/api/control-gastos${path}`, { headers: { authorization: "Bearer synthetic" } });
+      const prep = await (await get("/sync/initial-payload")).json();
+      assert.equal(prep.ok, true);
+      assert.equal(prep.payload.pendings.length, 5);
+      const ids = prep.payload.pendings.map(p => p.id);
+      assert.equal(new Set(ids).size, 5, "ids únicos");
+      assert.equal(new Set(prep.payload.pendings.map(p => p.message_key)).size, 5);
+      prep.payload.pendings.forEach(p => {
+        assert.equal(p.estado_sincronizacion, "pendiente_validacion", "los 5 se presentan como pendientes de validación");
+        assert.ok(["simulado", "pendiente_validacion"].includes(p.estado_piloto_original), "estado del piloto preservado");
+      });
+      // Doble ejecución: con pendientes existentes el endpoint niega (409)
+      await store.saveState({ ...await store.getState(), pendings: prep.payload.pendings });
+      const again = await get("/sync/initial-payload");
+      assert.equal(again.status, 409);
+    } finally { await new Promise(resolve => server.close(resolve)); }
+  });
+});
+
 test("mountControlGastos boots safely with production-like env (memory store, no writer, no fixtures)", async () => {
   await withEnv({ GCLOUD_PROJECT: "panel-personal-cg-preprod", CONTROL_GASTOS_STORE: "memory", CONTROL_GASTOS_PRODUCTION_WRITE_ENABLED: "false" }, async () => {
     const { mountControlGastos } = require("./index");
