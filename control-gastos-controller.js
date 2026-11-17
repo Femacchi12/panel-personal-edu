@@ -148,12 +148,14 @@
 
   function renderBadges(){
     const st=state.status||{}; const sync=st.sync||state.syncInfo||{}; const parts=[];
-    parts.push(`<span class="cg-badge ${st.mode==='test_isolated'?'warn':'ok'}">${esc(st.mode||'estado')}</span>`);
+    const modeLabels={ operational_preprod:'Modo operativo — solo lectura', local_e2e:'Entorno local aislado (pruebas)', test_isolated:'Entorno aislado de prueba', desconocido:'estado' };
+    parts.push(`<span class="cg-badge ${st.mode==='test_isolated'?'warn':'ok'}">${esc(modeLabels[st.mode]||st.mode||'estado')}</span>`);
     parts.push(`<span class="cg-badge ${st.production_write_enabled?'ok':'warn'}">Escritura productiva: ${st.production_write_enabled?'habilitada':'NO habilitada'}</span>`);
     parts.push(`<span class="cg-badge ${st.firestore_configured?'ok':'warn'}">Firestore: ${st.firestore_configured?'configurado':'pendiente'}</span>`);
     parts.push(`<span class="cg-badge ${st.local_queue_available?'ok':'warn'}">Cola local: ${st.local_queue_available?'conectada (mock)':'no disponible'}</span>`);
     const s=String(sync.status||'desconocido');
-    parts.push(`<span class="cg-badge ${/sincron|ok/i.test(s)?'ok':'warn'}">Sync: ${esc(s)}</span>`);
+    const syncLabels={ sin_sincronizacion:'Sin sincronización de Hermes', sincronizado:'Sincronizado con Hermes', sin_conexion:'Sin conexión con el servicio', unknown:'Estado de sincronización desconocido' };
+    parts.push(`<span class="cg-badge ${/sincron/i.test(s)?'ok':'warn'}">${esc(syncLabels[s]||s)}</span>`);
     if (state.offline) parts.push('<span class="cg-badge err">Servicio no disponible</span>');
     if (state.stale) parts.push('<span class="cg-badge warn">Mostrando última información conocida</span>');
     return parts.join('');
@@ -211,6 +213,7 @@
 
   function renderPendingList(){
     const items=state.pendings||[];
+    const stateLabels={ pendiente_validacion:'Pendiente de validación', simulado:'Simulado por el piloto (no registrado)', registrado:'Registrado', pendiente_revision:'Pendiente de revisión' };
     if(!items.length){
       const st=state.status||{};
       const detail = st.fixtures
@@ -225,7 +228,7 @@
         <h4>${esc(d.concepto||p.texto_relevante||'Movimiento pendiente')}</h4>
         <div class="cg-muted">${esc(d.fecha_real||'')} · ${esc(d.moneda||'')} ${esc(d.importe??'')} · ${esc(d.titular||'(titular pendiente)')} · ${esc(d.cuenta_tarjeta||'(cuenta pendiente)')}</div>
         <div>${motivos}</div>
-        <div class="cg-muted" style="margin-top:6px">Estado: ${esc(p.estado_sincronizacion||p.estado_validacion||'pendiente')} · Origen: ${esc(p.message_key||'')}</div>
+        <div class="cg-muted" style="margin-top:6px">Estado: ${esc(stateLabels[p.estado_sincronizacion]||p.estado_sincronizacion||'pendiente')} · Origen: ${esc(p.message_key||'')}</div>
       </div>`;
     }).join('')}</div>`;
   }
