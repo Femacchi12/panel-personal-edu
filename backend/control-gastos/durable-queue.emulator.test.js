@@ -19,6 +19,23 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error("Refusing to run witho
 admin.initializeApp({ projectId:"demo-control-gastos-local" });
 const db = getFirestore();
 
+test("private KV store contract is identical in Memory and Firestore stores", async () => {
+  const prefix = `test_${crypto.randomBytes(6).toString("hex")}`;
+  const payload = { pendings: [{ id: "p1", message_key: "k1", datos_interpretados: { importe: 100 } }], status: "sincronizado" };
+  // MemoryStore
+  const mem = new MemoryStore({});
+  await mem.setPrivate("initial_sync", payload);
+  assert.deepEqual(await mem.getPrivate("initial_sync"), payload);
+  // FirestoreStore contra el emulador (mismo codigo que produccion)
+  const fsStore = new FirestoreStore({ prefix, databaseId: "(default)" });
+  await fsStore.setPrivate("initial_sync", payload);
+  assert.deepEqual(await fsStore.getPrivate("initial_sync"), payload);
+  assert.equal(await fsStore.getPrivate("inexistente"), null);
+  // El documento queda envuelto { value, updated_at } (compatible con la siembra REST)
+  const raw = await fsStore.doc("private", "initial_sync").get();
+  assert.ok(raw.data().value && raw.data().updated_at);
+});
+
 test("persistent queue orders, deduplicates and never steals a claim", async () => {
   const q = new DurableQueue(db, `test_${crypto.randomBytes(6).toString("hex")}`);
   const row = Array(27).fill("");

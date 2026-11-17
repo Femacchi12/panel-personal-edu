@@ -59,8 +59,8 @@ class MemoryStore {
   async setCorrections(c) { this.data.corrections = deepClone(c); return this.data.corrections; }
   async addAudit(entry) { this.data.audits = this.data.audits || []; this.data.audits.push({ id: crypto.randomUUID(), at: nowIso(), ...deepClone(entry) }); return this.data.audits[this.data.audits.length - 1]; }
   async listAudits(limit = 200) { return deepClone((this.data.audits || []).slice(-limit).reverse()); }
-  async getPrivate(key) { return deepClone((this.data.private || {})[key] || null); }
-  async setPrivate(key, value) { this.data.private = this.data.private || {}; this.data.private[key] = deepClone(value); return value; }
+  async getPrivate(key) { return deepClone(((this.data.private || {})[key] || {}).value ?? null); }
+  async setPrivate(key, value) { this.data.private = this.data.private || {}; this.data.private[key] = { value: deepClone(value), updated_at: nowIso() }; return value; }
   async getIdempotency(key) { return deepClone((this.data.idempotency || {})[key] || null); }
   async setIdempotency(key, value) { this.data.idempotency = this.data.idempotency || {}; this.data.idempotency[key] = deepClone(value); return value; }
   async acquireIdempotencyLock(key, opts = {}) {
@@ -363,9 +363,13 @@ class FirestoreStore {
     return next;
   }
   // Espacio privado del store (datos operativos no publicados en repositorio).
+  // Contrato uniforme: setPrivate(key, value) almacena { value, updated_at }
+  // y getPrivate(key) devuelve SIEMPRE el valor desenvuelto (o null).
   async getPrivate(key) {
     const d = await this.doc("private", String(key)).get();
-    return d.exists ? d.data() : null;
+    if (!d.exists) return null;
+    const data = d.data() || {};
+    return data.value !== undefined ? data.value : null;
   }
   async setPrivate(key, value) {
     const rec = { value: deepClone(value), updated_at: nowIso() };
