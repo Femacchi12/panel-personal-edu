@@ -5,7 +5,7 @@ const { google } = require('googleapis');
 admin.initializeApp();
 
 const app = express();
-app.use(express.json({ limit: '16kb' }));
+app.use(express.json({ limit: '256kb' })); // sync operativo envia pendientes+cierres (~25kb hoy; margen para crecer);
 const PORT = Number(process.env.PORT || 8080);
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'https://femacchi12.github.io';
 const FINANCE_SPREADSHEET_ID = process.env.FINANCE_SPREADSHEET_ID || '1ff_dT8kHhiy1THTq1hRHGx2z2VElUQjyq_A4AL_nm4g';
