@@ -89,6 +89,22 @@ test("pending financial apply fails closed without the isolated queue", async ()
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
 
+test("daily sync merge preserves dashboard review decisions", async () => {
+  await withEnv({ GCLOUD_PROJECT: "demo-control-gastos-local" }, async () => {
+    const store = new MemoryStore({});
+    const base = { id: "pend_rev_1", message_key: "KEY:rev1", estado_sincronizacion: "pendiente_validacion", estado_validacion: "pendiente", datos_interpretados: { concepto: "D" } };
+    await store.upsertPending({ ...base, revision: { input: { titular: "Edu" }, estado_validacion: "en_revision", registrada: false }, estado_validacion: "en_revision" });
+    const incoming = { pendings: [{ ...base, estado_sincronizacion: "pendiente_validacion", estado_validacion: "clasificado_preliminar", datos_interpretados: { concepto: "D", importe: 32700, moneda: "COP" } }] };
+    const r = await service.ingestSync(store, incoming, { email: auth.AR_EMAIL }, { authType: "device_sync" });
+    assert.equal(r.ok, true);
+    const saved = (await store.getPendings()).find(p => p.message_key === "KEY:rev1");
+    assert.equal(saved.revision.input.titular, "Edu", "la revision guardada sobrevive a la sync diaria");
+    assert.equal(saved.estado_validacion, "en_revision");
+    assert.equal(saved.datos_interpretados.importe, 32700, "los datos nuevos del mensaje se conservan");
+    assert.equal(saved.estado_sincronizacion, "pendiente_validacion");
+  });
+});
+
 test("initial sync payload is AR-only, private-sourced, served once and maps pilot states", async () => {
   await withEnv({ GCLOUD_PROJECT: "panel-personal-cg-preprod", CONTROL_GASTOS_STORE: "firestore", CONTROL_GASTOS_SEED_TEST: "0" }, async () => {
     const store = new MemoryStore({ syncState: { status: "sin_sincronizacion" } });
