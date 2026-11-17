@@ -23,6 +23,9 @@
       ['expense-interactions-controller.js'],
       ['finance-section-order-controller.js']
     ],
+    'control-gastos': [
+      ['control-gastos-controller.js']
+    ],
     flujo: [
       ['finance-scope-core.js'],
       ['finance-scope-bar-controller.js','payment-method-filters.js','flow-matrix-v3.js'],

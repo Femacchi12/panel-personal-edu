@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log*
+.git
+.gitignore
+*.md
+docs/
+scripts/
+
+# Solo servidor + módulo de control-gastos runtime (sin endpoints de desarrollo)
+backend/control-gastos/e2e/
+backend/control-gastos/*.test.js

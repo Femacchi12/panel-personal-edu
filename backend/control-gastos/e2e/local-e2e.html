@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panel Personal Edu · Control de gastos (E2E local aislado)</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/responsive-layout.css" />
+  <link rel="stylesheet" href="/control-gastos.css" />
+  <style>
+    .local-e2e-banner { margin: 12px 18px 0; padding: 10px 14px; border-radius: 10px; background: #3b2f00; color: #ffe9a3; font: 600 13px/1.4 Inter, sans-serif; }
+    .local-e2e-banner code { color: #fff; }
+  </style>
+</head>
+<body class="auth-authorized">
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-top">
+      <div class="brand">
+        <div class="brand-mark small"><img src="/favicon.svg" alt="EM" /></div>
+        <div class="brand-copy"><strong>Panel Personal</strong><span>Edu · local E2E</span></div>
+      </div>
+      <button id="sidebarToggle" class="icon-btn" aria-label="Contraer menú">‹</button>
+    </div>
+    <nav class="nav">
+      <button class="nav-item" data-view="general"><span class="nav-icon">⌂</span><span class="nav-label">General</span></button>
+      <div class="nav-group-label">FINANZAS</div>
+      <button class="nav-item active" data-view="control-gastos"><span class="nav-icon">☑</span><span class="nav-label">Control de gastos</span></button>
+    </nav>
+    <div class="sidebar-footer"><div class="sync-indicator"><span class="sync-dot"></span><span class="nav-label">Local aislado</span></div></div>
+  </aside>
+  <div class="app-shell">
+    <header class="topbar">
+      <div><span class="eyebrow">FINANZAS</span><h1>Control de gastos</h1></div>
+      <div class="topbar-actions"><div class="account-chip"><span class="status-dot"></span><span>fernandoemacchi@gmail.com</span></div></div>
+    </header>
+    <div class="local-e2e-banner">
+      Harness E2E aislado en <code>127.0.0.1</code> con Firestore Emulator y datos sintéticos.
+      El escritor es <code>MockSheetsClient</code>: no toca Google Sheets, IAM ni Cloud Run.
+    </div>
+    <main class="main"><section id="viewRoot" class="view-root"></section></main>
+  </div>
+  <script src="/backend/control-gastos/e2e/config.local.js"></script>
+  <script src="/view-root-events.js"></script>
+  <script src="/control-gastos-controller.js"></script>
+  <script>
+    (() => {
+      // Isolated harness: mount the real Control de gastos module directly.
+      document.dispatchEvent(new CustomEvent('panel:view-root-changed', { detail: { view: 'control-gastos' } }));
+    })();
+  </script>
+</body>
+</html>
