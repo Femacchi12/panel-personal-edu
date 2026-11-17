@@ -251,11 +251,12 @@
       const d=p.datos_interpretados||{}; const sel=String(p.id)===String(state.selectedPendingId);
       const motivos=(p.motivo_ambiguedad||[]).map(m=>`<span class="cg-pill">${esc(simplifyWarning(m))}</span>`).join('');
       const saved = p.revision?.input ? ' · Revisión guardada' : '';
+      const reg = p.registro?.movId ? ` · ${esc(Array.isArray(p.registro.movIds)?p.registro.movIds.join(' + '):p.registro.movId)}` : '';
       return `<div class="cg-item ${sel?'selected':''}" data-cg-pending="${esc(p.id)}">
         <h4>${esc(cleanConcept(d.concepto||p.texto_relevante))}</h4>
         <div class="cg-muted">${esc(d.fecha_real||'')} · ${esc(d.moneda||'')} ${esc(d.importe??'')} · ${esc(d.titular||'(titular pendiente)')} · ${esc(d.cuenta_tarjeta||'(cuenta pendiente)')}${saved}</div>
         <div>${motivos}</div>
-        <div class="cg-muted" style="margin-top:6px">Estado: ${esc(stateLabels[p.estado_sincronizacion]||p.estado_sincronizacion||'pendiente')} · Origen: ${esc(p.message_key||'')}</div>
+        <div class="cg-muted" style="margin-top:6px">Estado: ${esc(stateLabels[p.estado_sincronizacion]||p.estado_sincronizacion||'pendiente')}${reg} · Origen: ${esc(p.message_key||'')}</div>
       </div>`;
     }).join('')}</div>`;
   }

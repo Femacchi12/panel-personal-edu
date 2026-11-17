@@ -22,9 +22,12 @@ function assertTransition(from, to) {
 }
 
 class DurableQueue {
-  constructor(db, prefix = "control_gastos") {
+  constructor(db, prefix = "control_gastos", destination = null) {
     this.db = db;
-    this.root = db.collection(`${prefix}_writeDestinations`).doc(digest(`${TEST_TARGET.spreadsheetId}:${TEST_TARGET.sheet}`));
+    this.prefix = prefix;
+    const dest = destination || TEST_TARGET;
+    this.destination = dest;
+    this.root = db.collection(`${prefix}_writeDestinations`).doc(digest(`${dest.spreadsheetId}:${dest.sheet}`));
     this.ops = this.root.collection("operations");
     this.keys = this.root.collection("operationKeys");
     this.origins = this.root.collection("origins");

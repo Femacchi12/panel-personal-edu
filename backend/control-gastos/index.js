@@ -90,7 +90,7 @@ function mountControlGastos(app, requireAuthorizedUser) {
           const { SequentialWriter } = require("./sequential-writer");
           const sheetsClient = new GoogleSheetsClient({ auth });
           const writerClient = new SheetsWriterClient({ sheetsClient, allowRealWrites: true });
-          const writer = new SequentialWriter(realQueue || localQueue, writerClient);
+          const writer = new SequentialWriter(realQueue || localQueue, writerClient, { markPendingRegistered: true });
           testConsumer = { queue: realQueue || localQueue, writer, target: { spreadsheetId: targetId, sheet: targetSheet } };
           console.log(`Control de gastos: TEST consumer configured (destino ${targetId}/${targetSheet}, lease de exclusividad).`);
         } catch (e) {
@@ -100,7 +100,32 @@ function mountControlGastos(app, requireAuthorizedUser) {
         console.error("Control de gastos: TEST consumer requiere target TEST forzado (TEST_TARGET_ENFORCED=1).");
       }
     }
-    const router = createRouter({ store, requireAuthorizedUser, queue: localQueue || realQueue, consumer: testConsumer });
+    // Consumidor CANÓNICO (producción): exige escrituras productivas habilitadas
+    // (CONTROL_GASTOS_PRODUCTION_WRITE_ENABLED=true) Y flag explícito
+    // (CONTROL_GASTOS_CANONICAL_CONSUMER=1). El destino es Finanzas Edu →
+    // Movimientos y el adaptador rechaza cualquier otro. Sin canonical nunca.
+    let canonicalConsumer = null;
+    const canonicalEnabled = String(process.env.CONTROL_GASTOS_CANONICAL_CONSUMER || "") === "1";
+    if (canonicalEnabled && service.productionWriteEnabled() && storeType === "firestore") {
+      try {
+        let GoogleAuth;
+        try { ({ GoogleAuth } = require("google-auth-library")); } catch (_) { ({ GoogleAuth } = require("googleapis").google.auth); }
+        const ga = new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
+        const auth = { getAccessToken: async () => ga.getAccessToken() };
+        const { GoogleSheetsClient } = require("./sheets-google-client");
+        const { SheetsWriterClient } = require("./sheets-writer-adapter");
+        const { SequentialWriter } = require("./sequential-writer");
+        const canonicalQueue = new DurableQueue(store.db, process.env.CONTROL_GASTOS_FIRESTORE_PREFIX || "control_gastos", { spreadsheetId: "1ff_dT8kHhiy1THTq1hRHGx2z2VElUQjyq_A4AL_nm4g", sheet: "Movimientos" });
+        const sheetsClient = new GoogleSheetsClient({ auth });
+        const writerClient = new SheetsWriterClient({ sheetsClient, allowRealWrites: true, target: { canonical: true } });
+        const writer = new SequentialWriter(canonicalQueue, writerClient, { markPendingRegistered: true });
+        canonicalConsumer = { queue: canonicalQueue, writer, target: { spreadsheetId: "1ff_dT8kHhiy1THTq1hRHGx2z2VElUQjyq_A4AL_nm4g", sheet: "Movimientos" } };
+        console.log("Control de gastos: CANONICAL consumer configured (Finanzas Edu/Movimientos, lease de exclusividad). Escrituras reales habilitadas por env.");
+      } catch (e) {
+        console.error("Control de gastos: CANONICAL consumer NO configurado:", e && e.message);
+      }
+    }
+    const router = createRouter({ store, requireAuthorizedUser, queue: localQueue || realQueue, consumer: canonicalConsumer || testConsumer });
     // Auth enforced per-route inside router (Firebase AR user and/or device sync token with limited scope)
     app.use("/api/control-gastos", router);
     console.log(`Control de gastos API mounted at /api/control-gastos (store=${storeType}, db=${process.env.CONTROL_GASTOS_FIRESTORE_DATABASE || "(default)"}, production_writes=${service.productionWriteEnabled()}).`);
