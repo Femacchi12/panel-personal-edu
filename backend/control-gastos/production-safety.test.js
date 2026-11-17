@@ -89,7 +89,7 @@ test("pending financial apply fails closed without the isolated queue", async ()
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
 
-test("initial sync payload is AR-only, served once and maps pilot states", async () => {
+test("initial sync payload is AR-only, private-sourced, served once and maps pilot states", async () => {
   await withEnv({ GCLOUD_PROJECT: "panel-personal-cg-preprod", CONTROL_GASTOS_STORE: "firestore", CONTROL_GASTOS_SEED_TEST: "0" }, async () => {
     const store = new MemoryStore({ syncState: { status: "sin_sincronizacion" } });
     const app = express(); app.use(express.json());
@@ -98,20 +98,29 @@ test("initial sync payload is AR-only, served once and maps pilot states", async
     const server = await new Promise(resolve => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
     try {
       const get = path => fetch(`http://127.0.0.1:${server.address().port}/api/control-gastos${path}`, { headers: { authorization: "Bearer synthetic" } });
+      // Sin payload sembrado en el espacio privado: 404 (no se usa el repositorio publico)
+      const unseeded = await get("/sync/initial-payload");
+      assert.equal(unseeded.status, 404);
+      // Siembra privada (replica lo que se escribio en Firestore con identidad autorizada)
+      const { FIVE_PENDING } = require("./fixtures");
+      const stagedPendings = FIVE_PENDING.map(x => ({ ...x, estado_sincronizacion: "pendiente_validacion", estado_piloto_original: x.estado_sincronizacion }));
+      await store.setPrivate("initial_sync", { pendings: stagedPendings, status: "sincronizado", source: "hermes_local_initial", pendingSyncCount: 0 });
       const prep = await (await get("/sync/initial-payload")).json();
       assert.equal(prep.ok, true);
       assert.equal(prep.payload.pendings.length, 5);
-      const ids = prep.payload.pendings.map(p => p.id);
-      assert.equal(new Set(ids).size, 5, "ids únicos");
+      assert.equal(new Set(prep.payload.pendings.map(p => p.id)).size, 5, "ids únicos");
       assert.equal(new Set(prep.payload.pendings.map(p => p.message_key)).size, 5);
       prep.payload.pendings.forEach(p => {
         assert.equal(p.estado_sincronizacion, "pendiente_validacion", "los 5 se presentan como pendientes de validación");
         assert.ok(["simulado", "pendiente_validacion"].includes(p.estado_piloto_original), "estado del piloto preservado");
       });
       // Doble ejecución: con pendientes existentes el endpoint niega (409)
-      await store.saveState({ ...await store.getState(), pendings: prep.payload.pendings });
+      await store.saveState({ ...await store.getState(), pendings: prep.payload.pendings, syncState: { status: "sincronizado" } });
       const again = await get("/sync/initial-payload");
       assert.equal(again.status, 409);
+      // Sin usuario AR: prohibido
+      const noAr = await fetch(`http://127.0.0.1:${server.address().port}/api/control-gastos/sync/initial-payload`, { headers: { authorization: "Bearer synthetic-noar" } });
+      assert.equal(noAr.status, 401);
     } finally { await new Promise(resolve => server.close(resolve)); }
   });
 });

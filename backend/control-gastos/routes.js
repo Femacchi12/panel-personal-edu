@@ -98,7 +98,7 @@ function createRouter(opts = {}) {
   // AR-only. Niega doble ejecucion si ya existen pendientes en el store.
   router.get("/sync/initial-payload", requireFirebaseUser, requireArWrite, asyncH(async (req,res)=>{
     const st=await store.getState();
-    const r=service.buildInitialSyncPayload(st);
+    const r=await service.buildInitialSyncPayload(st, store);
     res.status(r.status||200).json(r);
   }));
 
