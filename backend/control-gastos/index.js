@@ -104,23 +104,37 @@ function mountControlGastos(app, requireAuthorizedUser) {
     // (CONTROL_GASTOS_PRODUCTION_WRITE_ENABLED=true) Y flag explícito
     // (CONTROL_GASTOS_CANONICAL_CONSUMER=1). El destino es Finanzas Edu →
     // Movimientos y el adaptador rechaza cualquier otro. Sin canonical nunca.
+    // Autenticación: identidad dedicada por IMPERSONACIÓN desde la SA runtime
+    // (tokenCreator a nivel de recurso; sin claves JSON).
     let canonicalConsumer = null;
     const canonicalEnabled = String(process.env.CONTROL_GASTOS_CANONICAL_CONSUMER || "") === "1";
-    if (canonicalEnabled && service.productionWriteEnabled() && storeType === "firestore") {
+    const canonicalWriterSa = String(process.env.CONTROL_GASTOS_CANONICAL_WRITER_SA || "").trim();
+    if (canonicalEnabled && service.productionWriteEnabled() && storeType === "firestore" && canonicalWriterSa) {
       try {
-        let GoogleAuth;
-        try { ({ GoogleAuth } = require("google-auth-library")); } catch (_) { ({ GoogleAuth } = require("googleapis").google.auth); }
-        const ga = new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
-        const auth = { getAccessToken: async () => ga.getAccessToken() };
+        const { GoogleAuth } = require("google-auth-library");
+        // Impersonación diferida (sin await en el montaje): generateAccessToken
+        // de la identidad dedicada usando el ADC de la SA runtime.
+        const getWriterToken = async () => {
+          const client = await new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/cloud-platform"] }).getClient();
+          const { token } = await client.getAccessToken();
+          const res = await fetch(`https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${encodeURIComponent(canonicalWriterSa)}:generateAccessToken`, {
+            method: "POST",
+            headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+            body: JSON.stringify({ scope: ["https://www.googleapis.com/auth/spreadsheets"], lifetime: "3600s" })
+          });
+          const j = await res.json();
+          if (!j.accessToken) throw new Error(`impersonation_failed (${res.status})`);
+          return j.accessToken;
+        };
         const { GoogleSheetsClient } = require("./sheets-google-client");
         const { SheetsWriterClient } = require("./sheets-writer-adapter");
         const { SequentialWriter } = require("./sequential-writer");
         const canonicalQueue = new DurableQueue(store.db, process.env.CONTROL_GASTOS_FIRESTORE_PREFIX || "control_gastos", { spreadsheetId: "1ff_dT8kHhiy1THTq1hRHGx2z2VElUQjyq_A4AL_nm4g", sheet: "Movimientos" });
-        const sheetsClient = new GoogleSheetsClient({ auth });
+        const sheetsClient = new GoogleSheetsClient({ auth: { getAccessToken: getWriterToken } });
         const writerClient = new SheetsWriterClient({ sheetsClient, allowRealWrites: true, target: { canonical: true } });
         const writer = new SequentialWriter(canonicalQueue, writerClient, { markPendingRegistered: true });
         canonicalConsumer = { queue: canonicalQueue, writer, target: { spreadsheetId: "1ff_dT8kHhiy1THTq1hRHGx2z2VElUQjyq_A4AL_nm4g", sheet: "Movimientos" } };
-        console.log("Control de gastos: CANONICAL consumer configured (Finanzas Edu/Movimientos, lease de exclusividad). Escrituras reales habilitadas por env.");
+        console.log(`Control de gastos: CANONICAL consumer configured (Finanzas Edu/Movimientos) como identidad dedicada ${canonicalWriterSa} (lease de exclusividad).`);
       } catch (e) {
         console.error("Control de gastos: CANONICAL consumer NO configurado:", e && e.message);
       }
