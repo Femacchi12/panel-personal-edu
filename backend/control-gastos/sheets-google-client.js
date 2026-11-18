@@ -79,7 +79,9 @@ class GoogleSheetsClient {
     const json = await sheetsFetch(this._fetch, token, url, { method: "GET" });
     const values = json && json.values ? json.values : [];
     const { startRow } = parseA1Range(json && json.range ? json.range : range);
-    return { result: valuesToText(values, startRow, range), raw: json };
+    // Devolver el array directo de la API: el texto tabulado no soporta
+    // celdas con saltos de línea internos (rompe el parseo en el readback).
+    return { result: valuesToText(values, startRow, range), raw: json, values, startRow };
   }
 
   async writeRange({ spreadsheetId, range, values, valueInputOption = "RAW" }) {
