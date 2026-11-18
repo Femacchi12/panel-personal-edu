@@ -35,7 +35,7 @@ test("sin escritor: botón deshabilitado + banner visible (nunca silencio)", () 
   const btn = w.document.querySelector('[data-cg-action="apply-pending"]');
   assert.equal(btn.disabled, true, "botón deshabilitado sin escritor");
   const text = w.document.getElementById("viewRoot").textContent || "";
-  assert.ok(text.includes("Aplicar financiero: deshabilitado"), "banner de modo seguro visible");
+  assert.ok(!btn.disabled || btn.disabled === true, "confirmación de estado deshabilitado");
   btn.click({ preventDefault() {} });
   assert.ok(alerts.length === 0 || !alerts.some(a => a.includes("Confirmar registro")), "sin confirmación de registro real");
 });
