@@ -72,8 +72,12 @@ function ensureTestSeed(store){
 async function listPendings(store){
   await ensureTestSeed(store);
   const items = await store.getPendings();
-  // return originals (5 must keep original state); annotate test/non-applied
-  return items.map(p=>({ ...p, _ui: { readonly_original_preserved: true } }));
+  // Solo pendientes que requieren acción del usuario. Los ya registrados,
+  // descartados, archivados o conciliados NO aparecen (están en el historial).
+  const visible = new Set(["pendiente_validacion", "en_revision", "simulado", "clasificado_preliminar"]);
+  return items
+    .filter(p => visible.has(p.estado_sincronizacion || "pendiente_validacion"))
+    .map(p=>({ ...p, _ui: { readonly_original_preserved: true } }));
 }
 
 async function getPending(store, id){

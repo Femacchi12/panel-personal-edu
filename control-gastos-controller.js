@@ -260,14 +260,14 @@
     }
     return `<div class="cg-list">${items.map(p=>{
       const d=p.datos_interpretados||{}; const sel=String(p.id)===String(state.selectedPendingId);
+      const estado = stateLabels[p.estado_sincronizacion]||'Pendiente';
       const motivos=(p.motivo_ambiguedad||[]).map(m=>`<span class="cg-pill">${esc(simplifyWarning(m))}</span>`).join('');
-      const saved = p.revision?.input ? ' · Revisión guardada' : '';
-      const reg = p.registro?.movId ? ` · ${esc(Array.isArray(p.registro.movIds)?p.registro.movIds.join(' + '):p.registro.movId)}` : '';
+      const saved = p.revision?.input ? `<span class="cg-pill" style="border-color:#2f855a;color:#9ae6b4">Revisión guardada</span>` : '';
       return `<div class="cg-item ${sel?'selected':''}" data-cg-pending="${esc(p.id)}">
         <h4>${esc(cleanConcept(d.concepto||p.texto_relevante))}</h4>
-        <div class="cg-muted">${esc(d.fecha_real||'')} · ${esc(d.moneda||'')} ${esc(d.importe??'')} · ${esc(d.titular||'(titular pendiente)')} · ${esc(d.cuenta_tarjeta||'(cuenta pendiente)')}${saved}</div>
-        <div>${motivos}</div>
-        <div class="cg-muted" style="margin-top:6px">Estado: ${esc(stateLabels[p.estado_sincronizacion]||p.estado_sincronizacion||'pendiente')}${reg} · Origen: ${esc(p.message_key||'')}</div>
+        <div class="cg-muted" style="margin:4px 0">${esc(d.fecha_real||'')} · ${esc(d.moneda||'')} ${esc(d.importe??'')} · ${esc(d.titular||'')} · ${esc(d.cuenta_tarjeta||'')}</div>
+        ${motivos?`<div style="margin:4px 0">${motivos}</div>`:''}
+        <div style="margin-top:4px"><span class="cg-pill" style="border-color:#1769ff;color:#90c2ff">${esc(estado)}</span>${saved}</div>
       </div>`;
     }).join('')}</div>`;
   }
@@ -336,13 +336,13 @@
           <button class="cg-btn primary" data-cg-action="apply-pending" ${(!canApply)?'disabled':''}>Aplicar</button>
           ${!canApply ? `<span class="cg-muted">${applyReady() ? 'Aplica solo con validación OK y confirmación.' : 'Aplicar financiero no disponible: el escritor no está configurado en este entorno.'}</span>` : `<span class="cg-muted">Se pedirá confirmación. Destino: Finanzas Edu → Movimientos.</span>`}
         </div>
-        ${p.revision?.at ? `<div class="cg-notice" style="margin-top:10px"><strong>Revisión guardada:</strong> ${esc(p.revision.at)}${p.revision.by?` · ${esc(p.revision.by)}`:''} · Decisiones conservadas como estado de revisión (no registradas en Movimientos).${p.revision.registrada===false?'':''}</div>`:''}
-        ${state.reviewResult ? `<div class="cg-notice ${state.reviewResult.ok?'ok':'err'}" style="margin-top:8px"><strong>Guardar revisión:</strong> ${esc(state.reviewResult.note || state.reviewResult.error || 'OK')}</div>`:''}
-        ${preview ? `<div style="margin-top:12px"><h4>Antes / Después (propuesta)</h4>
+        ${p.revision?.at ? `<div class="cg-pill" style="border-color:#2f855a;color:#9ae6b4;margin-top:8px;display:inline-block">Revisión guardada</div>`:''}
+        ${state.reviewResult ? `<div class="cg-notice ${state.reviewResult.ok?'ok':'err'}" style="margin-top:8px">${esc(state.reviewResult.note || state.reviewResult.error || 'OK')}</div>`:''}
+        ${preview ? `<div style="margin-top:12px"><h4>Antes / Después</h4>
           ${diffRows? `<table class="cg-diff"><thead><tr><th>Campo</th><th>Antes</th><th>Después</th></tr></thead><tbody>${diffRows}</tbody></table>` : '<div class="cg-muted">Sin diferencias detectadas.</div>'}
-          <div class="cg-notice" style="margin-top:8px"><strong>Operación propuesta:</strong> ${esc(preview.operacion_propuesta||'')} · <strong>Destino:</strong> ${applyReady ? 'Finanzas Edu → Movimientos (registro real, confirmación individual, readback 27 columnas)' : 'sin escritura (etapa de prueba aislada)'} · <strong>Confirmación requerida:</strong> Sí</div>
+          <div class="cg-notice" style="margin-top:8px"><strong>Destino:</strong> ${applyReady ? 'Finanzas Edu → Movimientos' : 'sin escritura en esta etapa'}</div>
         </div>`:''}
-        ${state.applyResult ? `<div class="cg-notice ${state.applyResult.ok?'ok':'err'}" style="margin-top:10px"><strong>Resultado:</strong> ${esc(state.applyResult.note || state.applyResult.error || 'OK')} ${state.applyResult.simulated?'<span class="cg-badge warn">simulado</span>':''}</div>`:''}
+        ${state.applyResult ? `<div class="cg-notice ${state.applyResult.ok?'ok':'err'}" style="margin-top:10px">${esc(state.applyResult.note || state.applyResult.error || 'OK')}</div>`:''}
         ${state.operation ? renderOperation(state.operation, 'pending') : ''}
       </div>`;
   }
@@ -410,16 +410,9 @@
     const active = document.querySelector('.nav-item.active')?.dataset.view;
     if (active && active !== 'control-gastos') return;
     const sync = (state.status?.sync)||{};
-        const applyBanner = applyReady()
-          ? `<div class="cg-notice ok" style="margin-top:8px"><strong>Aplicar financiero: activo.</strong><div class="cg-muted" style="margin-top:4px">Destino real: Finanzas Edu → Movimientos. Registro con confirmación individual, validación de catálogos, readback de 27 columnas y auditoría. El registro automático desde WhatsApp sigue deshabilitado.</div></div>`
-          : `<div class="cg-notice" style="margin-top:8px"><strong>Aplicar financiero: deshabilitado en esta etapa.</strong>
-         <div class="cg-muted" style="margin-top:4px">El módulo funciona en modo seguro: lectura, validación y revisión. El botón Aplicar no encola operaciones financieras productivas y ninguna escritura alcanza Finanzas Edu → Movimientos.</div></div>`;
-    const banner = `<div class="cg-notice ${state.offline?'err':'warn'}" style="margin-bottom:12px">
-      <strong>Control de gastos (modo ${esc(state.status?.mode||'operativo')}):</strong> ${esc((state.status?.notes||[])[0] || 'Estado operativo no productivo.')}
-      <div class="cg-muted" style="margin-top:4px">Última sync conocida: ${esc(sync.lastSyncAt || 'n/d')} · Sync pendiente: ${esc(sync.pendingSyncCount ?? 'n/d')} · ${esc(sync.note || '')}</div>
-      ${applyBanner}
-      ${state.error? `<div style="margin-top:6px;color:#feb2b2">Error: ${esc(state.error.message || String(state.error))}</div>`:''}
-    </div>`;
+    const banner = state.error
+      ? `<div class="cg-notice err" style="margin-bottom:12px"><strong>Error:</strong> ${esc(state.error.message || String(state.error))}</div>`
+      : '';
     root.innerHTML = `
       <div class="control-gastos">
         ${banner}
@@ -428,7 +421,6 @@
             <div>
               <span class="eyebrow">FINANZAS</span>
               <h2 style="margin:4px 0 0">Control de gastos</h2>
-              <div class="cg-muted">Hermes (captura/validación) + Finanzas Edu (fuente contable). Uso cotidiano desde el Dashboard.</div>
             </div>
             <div>
               <div class="cg-badges">${renderBadges()}</div>
