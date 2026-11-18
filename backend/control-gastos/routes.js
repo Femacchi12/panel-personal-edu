@@ -133,22 +133,22 @@ function createRouter(opts = {}) {
     } finally {
       await consumer.queue.releaseConsumerLease(holder).catch(()=>{});
     }
-    let lastRows = null;
+    let diagnostico = null;
     try {
       const rows = await consumer.writer.sheets.readAll(consumer.writer.target);
       const filled = rows.filter(r => r[0]);
-      lastRows = filled.slice(-8).map(r => ({ id: r[0], concepto: r[9], filaOrigen: r[20], estado: r[18] }));
-      // Fila completa de la última escritura (diagnóstico de reconciliación)
       const last = filled[filled.length - 1];
+      const listado = filled.slice(-8).map(r => ({ id: r[0], concepto: r[9], filaOrigen: r[20], estado: r[18] }));
+      diagnostico = { listado };
       if (last) {
         const { MOVIMIENTOS_COLUMNS } = require("./movimientos-writer");
-        const full = {};
-        MOVIMIENTOS_COLUMNS.forEach((c, i) => { full[c] = last[i]; });
-        lastRows.diagnostico_ultima_fila = { filaHoja: filled.indexOf(last) + 2, columnas: full };
+        const columnas = {};
+        MOVIMIENTOS_COLUMNS.forEach((c, i) => { columnas[c] = last[i]; });
+        diagnostico.ultima_fila = { filaHoja: filled.indexOf(last) + 2, columnas };
       }
     } catch (_) { /* diagnostico best-effort */ }
     const blocked = await consumer.queue.getDestinationState().catch(()=>null);
-    res.json({ ok:true, holder, processed: results.length, results, destinationBlocked: blocked ? !!blocked.blocked : null, lastRows });
+    res.json({ ok:true, holder, processed: results.length, results, destinationBlocked: blocked ? !!blocked.blocked : null, diagnostico });
   }));
   // Guarda la decision de revision (estado operativo, sin registro contable). AR-only.
   router.post("/pendings/:id/review", requireFirebaseUser, requireArWrite, asyncH(async (req,res)=>{
