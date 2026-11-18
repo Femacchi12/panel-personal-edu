@@ -13,12 +13,15 @@ function createRouter(opts = {}) {
     process.env.CONTROL_GASTOS_LOCAL_QUEUE === "1" && !service.productionWriteEnabled();
   // Cola operativa en entornos reales: SOLO encolado (PENDING). El consumidor
   // secuencial corre en un endpoint con lease de exclusividad (una ejecución
-  // del escritor por destino a la vez), autenticado y con destino TEST forzado.
+  // del escritor por destino a la vez), autenticado: TEST forzado en preprod,
+  // canónico en producción solo con escrituras productivas habilitadas.
   const testConsumer = String(process.env.CONTROL_GASTOS_TEST_CONSUMER || "") === "1";
+  const canonicalConsumer = String(process.env.CONTROL_GASTOS_CANONICAL_CONSUMER || "") === "1" &&
+    service.productionWriteEnabled();
   const queueEnabled = (!localQueue && String(process.env.CONTROL_GASTOS_QUEUE_ENABLED || "") === "1" &&
-    !service.productionWriteEnabled()) || testConsumer;
+    !service.productionWriteEnabled()) || testConsumer || canonicalConsumer;
   const queue = localQueue || queueEnabled ? opts.queue : null;
-  const consumer = queueEnabled && testConsumer ? opts.consumer || null : null;
+  const consumer = (testConsumer || canonicalConsumer) && opts.consumer ? opts.consumer : null;
   const requireAuthorizedUser = opts.requireAuthorizedUser; // Firebase auth middleware (dashboard allowlist)
 
   const asyncH = fn => (req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
