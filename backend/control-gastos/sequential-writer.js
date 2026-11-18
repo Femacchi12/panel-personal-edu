@@ -14,6 +14,37 @@ const COLUMN_INDEX = Object.freeze(Object.fromEntries(MOVIMIENTOS_COLUMNS.map((n
 const normalized = row => Array.from({ length: WIDTH }, (_, i) => String(row[i] ?? ""));
 const equal = (a, b) => JSON.stringify(normalized(a)) === JSON.stringify(normalized(b));
 
+// Comparación semántica de celdas: en hojas reales las columnas de fecha y
+// monto tienen formatos (fecha, moneda). Una escritura RAW de "2026-11-14" se
+// almacena como fecha y su lectura UNFORMATTED_VALUE devuelve el serial
+// (p. ej. 46338); un importe "32700" puede leerse como número. Compara
+// semánticamente fechas (serial Sheets epoch 1899-12-30) y números.
+function sameCellValue(expected, actual) {
+  const e = String(expected ?? "").trim();
+  const a = String(actual ?? "").trim();
+  if (e === a) return true;
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  if (iso.test(e) && /^\d+(\.\d+)?$/.test(a)) {
+    // Serial de Sheets: días desde 1899-12-30
+    const serialDate = new Date(Date.UTC(1899, 11, 30) + Number(a) * 86400000).toISOString().slice(0, 10);
+    if (serialDate === e) return true;
+  }
+  if (iso.test(a) && /^\d+(\.\d+)?$/.test(e)) {
+    const serialDate = new Date(Date.UTC(1899, 11, 30) + Number(e) * 86400000).toISOString().slice(0, 10);
+    if (serialDate === a) return true;
+  }
+  if (/^-?\d+(\.\d+)?$/.test(e) && /^-?\d+(\.\d+)?$/.test(a)) {
+    return Math.abs(Number(e) - Number(a)) < 1e-9;
+  }
+  return false;
+}
+
+function rowsEqual(expected, actual) {
+  const ne = normalized(expected), na = normalized(actual);
+  if (ne.length !== na.length) return false;
+  return ne.every((cell, i) => sameCellValue(cell, na[i]));
+}
+
 // UI field => Movimientos column. Restricted on purpose: a correction cannot
 // rewrite ID, Fila origen or any accounting reference outside this map.
 const PATCH_COLUMNS = Object.freeze({
@@ -74,21 +105,29 @@ class SequentialWriter {
   }
 
   // Marca el pendiente como registrado SOLO cuando la escritura quedó
-  // COMMITTED (verificada por readback). Best-effort: el estado de la
-  // operación ya es la fuente de verdad si esto falla.
+  // COMMITTED (verificada por readback). Best-effort con reintentos cortos: el
+  // estado de la operación ya es la fuente de verdad si esto falla.
   async _markPendingRegistered(op, result) {
     if (!this.markPendingRegistered || !this.queue.prefix || !result?.ids?.length) return;
-    try {
-      const base = String(op.filaOrigen || "").split("#")[0];
-      const col = this.queue.db.collection(`${this.queue.prefix}_pendings`);
-      const snap = await col.where("message_key", "==", base).limit(1).get();
-      const now = new Date().toISOString();
-      snap.forEach(doc => doc.ref.set({
-        estado_sincronizacion: "registrado",
-        registro: { operationId: op.id, movIds: result.ids, movId: result.ids[0], at: now, verified: true },
-        updated_at: now
-      }, { merge: true }));
-    } catch (_) { /* best-effort */ }
+    const base = String(op.filaOrigen || "").split("#")[0];
+    const col = this.queue.db.collection(`${this.queue.prefix}_pendings`);
+    const now = new Date().toISOString();
+    const patch = {
+      estado_sincronizacion: "registrado",
+      registro: { operationId: op.id, movIds: result.ids, movId: result.ids[0], at: now, verified: true },
+      updated_at: now
+    };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const snap = await col.where("message_key", "==", base).limit(1).get();
+        if (snap.empty) return;
+        await Promise.all(snap.docs.map(doc => doc.ref.set(patch, { merge: true })));
+        return;
+      } catch (e) {
+        if (attempt === 2) return; // best-effort
+        await new Promise(r => setTimeout(r, 400));
+      }
+    }
   }
 
   async runOne() {
@@ -149,7 +188,7 @@ class SequentialWriter {
     try {
       await this.sheets.write(this.target, offset, rows);
       const readback = await this.sheets.readAll(this.target);
-      if (!rows.every((row, i) => readback[offset + i] && equal(row, readback[offset + i])))
+      if (!rows.every((row, i) => readback[offset + i] && rowsEqual(row, readback[offset + i])))
         return this.queue.finish(op.id, claimId, STATUS.UNCERTAIN, { reason: "readback_mismatch", backup });
       const result = { ids: rows.map(r => r[0]), backup, verifiedColumns: WIDTH };
       const finished = await this.queue.finish(op.id, claimId, STATUS.COMMITTED, result);
