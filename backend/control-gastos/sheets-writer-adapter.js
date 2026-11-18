@@ -43,11 +43,17 @@ class SheetsWriterClient {
     this.sheets = sheetsClient;
   }
 
-  // Reads data rows only (A2:AA), matching the mock client contract.
+  // Reads data rows only (A2:AA). Usa el array directo de la API cuando está
+  // disponible (soporta celdas con saltos de línea internos); fallback al
+  // texto tabulado para compatibilidad con clientes antiguos.
   async readAll(target) {
     this.assertTarget(target);
     const range = `${this.target.sheet}!A2:AA`;
     const res = await this.sheets.readRange({ spreadsheetId: this.target.spreadsheetId, range });
+    if (res && Array.isArray(res.values)) {
+      // Array directo de la API (sin corruptión por saltos de línea internos)
+      return res.values.map(row => normalized(Array.isArray(row) ? row : []));
+    }
     const text = res?.result ?? res?.text ?? res;
     return parseReadRows(text).map(row => normalized(row.cells));
   }
