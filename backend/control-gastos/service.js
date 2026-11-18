@@ -337,25 +337,12 @@ function reconcileClosureSnapshot(closure, pendings){
   }
   if (!reconciled.length) return closure;
   const out = { ...closure, pendientes_validacion: still, pendientes_reconciliados: reconciled, _reconciliado_en_lectura: true };
-  // Totales: solo se suman movimientos con monto COP conocido y verificado.
-  const regsConMonto = reconciled.filter(r => r.resultado === "registrado" && r.monto_cop > 0);
-  const regsTot = reconciled.filter(r => r.resultado === "registrado");
-  const tot = { ...(closure.totales || {}) };
-  if (regsConMonto.length) {
-    const addCop = regsConMonto.reduce((s, r) => s + r.monto_cop, 0);
-    const baseCop = Number(tot.gastos_registrados_cop ?? tot.total_cop ?? 0) || 0;
-    tot.gastos_registrados_cop = +(baseCop + addCop).toFixed(2);
-    tot.total_cop = tot.gastos_registrados_cop;
-  }
-  const nMovs = regsTot.reduce((s, r) => s + (r.mov_ids.length || 1), 0);
-  if (nMovs) tot.cantidad_movimientos_gasto = (Number(tot.cantidad_movimientos_gasto ?? 0) || 0) + nMovs;
-  tot.cantidad_pendientes = still.length;
-  tot.pendientes_cop_estimado = +still.reduce((s, p) => s + (Number(p.monto_cop_estimado ?? p.monto_cop ?? 0) || 0), 0).toFixed(2);
-  tot.total_potencial_cop = +((tot.gastos_registrados_cop ?? tot.total_cop ?? 0) + tot.pendientes_cop_estimado).toFixed(2);
-  out.totales = tot;
   // resumen_gastos: anexar movimientos registrados después del snapshot,
   // solo si no están ya presentes (por movId o fila origen) → sin duplicar.
+  // Los totales SOLO suman lo efectivamente anexado: si el snapshot ya fue
+  // regenerado desde la fuente oficial y contiene el MOV, no se cuenta dos veces.
   const regs = reconciled.filter(r => r.resultado === "registrado");
+  const appended = [];
   if (regs.length) {
     let rows = Array.isArray(closure.resumen_gastos) ? closure.resumen_gastos.slice() : [];
     const present = new Set();
@@ -363,19 +350,22 @@ function reconcileClosureSnapshot(closure, pendings){
     for (const r of regs) {
       const cur = byId.get(String(r.id || "")) || byKey.get(String(r.message_key || "")) || null;
       const di = (cur && cur.datos_interpretados) || {};
+      const fechaReal = di.fecha_real || closure.fecha || "";
       r.mov_ids.forEach((movId, i) => {
         const fk = r.mov_ids.length > 1 ? `${r.message_key}#${i + 1}` : r.message_key;
         if (present.has(String(movId)) || (fk && present.has(String(fk)))) return;
-        rows.push({
-          id: movId, fecha_real: di.fecha_real || pe_fecha(r) || closure.fecha || "",
+        const rowMonto = Number(di.monto_cop);
+        const row = {
+          id: movId, fecha_real: fechaReal,
           comercio: di.concepto || r.concepto || "", descripcion: r.concepto || "",
           categoria: di.categoria || "", subcategoria: di.subcategoria || "",
           titular: di.titular || "", cuenta: di.cuenta_tarjeta || "",
           medio_pago: di.modalidad_pago || "", mes_pago: di.mes_pago || "",
           importe: di.importe ?? r.importe ?? null, moneda: di.moneda || r.moneda || "",
-          monto_cop: di.monto_cop ?? null, estado_sheets: "Registrado", fila: null,
+          monto_cop: Number.isFinite(rowMonto) ? rowMonto : null, estado_sheets: "Registrado", fila: null,
           fila_origen: fk || null, grupo: "registrado_reconciliado"
-        });
+        };
+        rows.push(row); appended.push(row);
         present.add(String(movId)); if (fk) present.add(String(fk));
       });
     }
@@ -388,8 +378,19 @@ function reconcileClosureSnapshot(closure, pendings){
     }, {});
     out.subtotales = { por_titular_cop: sumBy("titular"), por_categoria_cop: sumBy("categoria"), por_cuenta_tarjeta_cop: sumBy("cuenta"), por_modalidad_pago_cop: sumBy("medio_pago") };
   }
+  // Totales solo sobre lo anexado (sin doble conteo con snapshots regenerados).
+  const tot = { ...(closure.totales || {}) };
+  if (appended.length) {
+    const addCop = appended.reduce((s, r) => s + (Number(r.monto_cop) || 0), 0);
+    const baseCop = Number(tot.gastos_registrados_cop ?? tot.total_cop ?? 0) || 0;
+    if (addCop > 0) { tot.gastos_registrados_cop = +(baseCop + addCop).toFixed(2); tot.total_cop = tot.gastos_registrados_cop; }
+    tot.cantidad_movimientos_gasto = (Number(tot.cantidad_movimientos_gasto ?? 0) || 0) + appended.length;
+  }
+  tot.cantidad_pendientes = still.length;
+  tot.pendientes_cop_estimado = +still.reduce((s, p) => s + (Number(p.monto_cop_estimado ?? p.monto_cop ?? 0) || 0), 0).toFixed(2);
+  tot.total_potencial_cop = +((tot.gastos_registrados_cop ?? tot.total_cop ?? 0) + tot.pendientes_cop_estimado).toFixed(2);
+  out.totales = tot;
   return out;
-  function pe_fecha(r){ const cur2 = byId.get(String(r.id || "")); return (cur2 && cur2.datos_interpretados && cur2.datos_interpretados.fecha_real) || null; }
 }
 
 async function listClosures(store, opts={}){
