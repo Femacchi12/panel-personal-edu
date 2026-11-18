@@ -193,6 +193,12 @@
     return parts.join('');
   }
 
+  function subLines(obj){
+    const entries = Object.entries(obj||{}).filter(([,v])=>Number(v)>0);
+    if (!entries.length) return '<div class="cg-muted">Sin datos.</div>';
+    return '<div>' + entries.sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div style="display:flex;justify-content:space-between;gap:12px"><span>${esc(k)}</span><span>${fmtCop(v)}</span></div>`).join('') + '</div>';
+  }
+
   function renderTabs(){
     const tabs=[['cierre','Cierre diario'],['pendientes','Pendientes de validación'],['historial','Historial y correcciones']];
     return `<div class="cg-tabs">${tabs.map(([k,l])=>`<button class="cg-tab ${state.tab===k?'active':''}" data-cg-tab="${k}">${l}</button>`).join('')}</div>`;
@@ -204,6 +210,7 @@
     const opts = dates.length ? dates.map(d=>`<option value="${esc(d)}" ${d===state.selectedDate?'selected':''}>${esc(d)}</option>`).join('') : `<option value="" selected>Sin fechas sincronizadas</option>`;
     const tot=closure?.totales||{}; const subs=closure?.subtotales||{}; const rows=closure?.resumen_gastos||[]; const splits=closure?.compras_divididas||[];
     const pendientes=(closure?.pendientes_validacion||[]);
+    const reconciliados=(closure?.pendientes_reconciliados||[]);
     const kpis = closure ? `
       <div class="cg-kpis">
         <div class="cg-kpi"><div class="label">Total registrado (COP)</div><div class="value">${fmtCop(tot.gastos_registrados_cop ?? tot.total_cop)}</div></div>
@@ -216,13 +223,16 @@
     </tbody></table></div>` : '';
     const sub = closure ? `
       <div class="cg-split">
-        <div><h4>Subtotales por titular</h4><div class="cg-code">${esc(JSON.stringify(subs.por_titular_cop||{}, null, 2))}</div></div>
-        <div><h4>Subtotales por categoría</h4><div class="cg-code">${esc(JSON.stringify(subs.por_categoria_cop||{}, null, 2))}</div></div>
-        <div><h4>Por cuenta/tarjeta</h4><div class="cg-code">${esc(JSON.stringify(subs.por_cuenta_tarjeta_cop||{}, null, 2))}</div></div>
-        <div><h4>Por modalidad</h4><div class="cg-code">${esc(JSON.stringify(subs.por_modalidad_pago_cop||{}, null, 2))}</div></div>
+        <div><h4>Subtotales por titular</h4>${subLines(subs.por_titular_cop)}</div>
+        <div><h4>Subtotales por categoría</h4>${subLines(subs.por_categoria_cop)}</div>
+        <div><h4>Por cuenta/tarjeta</h4>${subLines(subs.por_cuenta_tarjeta_cop)}</div>
+        <div><h4>Por modalidad</h4>${subLines(subs.por_modalidad_pago_cop)}</div>
       </div>` : '';
     const splitsHtml = splits.length ? `<div class="cg-notice warn"><strong>Compras divididas (sin duplicar):</strong> ${splits.map(s=>esc((s.ids||[]).join(', ') + ' = ' + fmtCop(s.importe_total_cop))).join(' · ')}</div>` : '';
     const reviewLabel = rev.label || rev.status || 'Pendiente de revisión';
+    const pendDetalle = pendientes.length ? `<div class="cg-notice warn" style="margin-top:10px"><strong>Pendiente(s) de validación en esta fecha:</strong><ul style="margin:6px 0 0 18px">${pendientes.map(p=>`<li><strong>${esc(cleanConcept(p.concepto||''))}</strong> — ${esc(p.moneda||'')} ${esc(p.importe??'')} (${fmtCop(p.monto_cop_estimado??p.monto_cop)} COP est.)${p.titular?` · ${esc(p.titular)}`:''}${p.cuenta?` · ${esc(p.cuenta)}`:''}</li>`).join('')}</ul><div class="cg-muted" style="margin-top:6px">El total registrado NO los incluye.</div></div>`
+      : `<div class="cg-notice ok" style="margin-top:10px">Sin pendientes de validación en esta fecha.</div>`;
+    const reconcHtml = reconciliados.length ? `<div class="cg-notice" style="margin-top:10px"><strong>Resueltos después de generar el cierre (conciliación automática):</strong><ul style="margin:6px 0 0 18px">${reconciliados.map(r=>`<li>${esc(cleanConcept(r.concepto||''))} — ${r.resultado==='registrado'?`registrado como <strong>${esc((r.mov_ids||[]).join(', '))}</strong>`:'descartado (sin registro contable)'}</li>`).join('')}</ul><div class="cg-muted" style="margin-top:6px">El snapshot histórico del cierre no se modificó; esta vista refleja el estado actual.</div></div>` : '';
     return `
       <div class="cg-card">
         <div class="cg-header"><div>
@@ -236,7 +246,8 @@
         </div></div>
         <div class="cg-badges" style="margin:8px 0 12px"><span class="cg-badge">${esc(reviewLabel)}</span>${closure?.trigger?`<span class="cg-badge">trigger: ${esc(closure.trigger)}</span>`:''}</div>
         ${kpis}
-        ${tot.cantidad_pendientes ? `<div class="cg-notice warn" style="margin-top:10px">Hay ${esc(tot.cantidad_pendientes)} pendiente(s) de validación en esta fecha (estimado ${fmtCop(tot.pendientes_cop_estimado||0)}). El total registrado NO los incluye.</div>`:''}
+        ${pendDetalle}
+        ${reconcHtml}
         ${splitsHtml}
       </div>
       <div class="cg-card"><h3>Movimientos registrados</h3>${table || '<div class="cg-empty">Sin movimientos registrados para la fecha.</div>'}</div>
