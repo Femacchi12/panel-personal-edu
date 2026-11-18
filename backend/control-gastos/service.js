@@ -295,13 +295,114 @@ async function enqueuePendingResolution(store, queue, id, body, user, req, opts 
   }
 }
 
+// Conciliación de cierres a nivel de LECTURA: los cierres son snapshots
+// generados por Hermes al momento de la sincronización. Si un pendiente
+// incluido en el snapshot fue registrado o descartado DESPUÉS, se refleja
+// aquí sin mutar el snapshot histórico guardado en Firestore. Sin inventar
+// datos: los montos solo se suman cuando el pendiente tiene registro con
+// movIds verificados y monto en COP conocido.
+function reconcileClosureSnapshot(closure, pendings){
+  const pendList = Array.isArray(closure?.pendientes_validacion) ? closure.pendientes_validacion : [];
+  if (!pendList.length) return closure;
+  const byId = new Map(), byKey = new Map();
+  for (const p of (pendings || [])) {
+    if (p && p.id) byId.set(String(p.id), p);
+    if (p && p.message_key) byKey.set(String(p.message_key), p);
+  }
+  const RESUELTO_SIN_MONTO = new Set(["descartado", "descartado_duplicado", "descartado_duplicado_test"]);
+  const still = [], reconciled = [];
+  for (const pe of pendList) {
+    const cur = byId.get(String(pe.id || "")) || byKey.get(String(pe.origen || pe.message_key || "")) || null;
+    const estado = cur ? String(cur.estado_sincronizacion || "") : "";
+    const reg = (cur && cur.registro) || null;
+    const movIds = reg ? (Array.isArray(reg.movIds) && reg.movIds.length ? reg.movIds : (reg.movId ? [reg.movId] : [])) : [];
+    if (estado === "registrado") {
+      const di = (cur && cur.datos_interpretados) || {};
+      reconciled.push({
+        id: (cur && cur.id) || pe.id || null,
+        message_key: (cur && cur.message_key) || pe.origen || null,
+        mov_ids: movIds,
+        concepto: di.concepto || pe.concepto || "",
+        importe: di.importe ?? pe.importe ?? null,
+        moneda: di.moneda || pe.moneda || null,
+        monto_cop: movIds.length ? (Number(di.monto_cop ?? 0) || 0) : 0,
+        resultado: movIds.length ? "registrado" : "registrado_conciliacion_manual"
+      });
+    } else if (RESUELTO_SIN_MONTO.has(estado)) {
+      const di = (cur && cur.datos_interpretados) || {};
+      reconciled.push({ id: (cur && cur.id) || pe.id || null, message_key: (cur && cur.message_key) || pe.origen || null, mov_ids: [], concepto: di.concepto || pe.concepto || "", importe: di.importe ?? pe.importe ?? null, moneda: di.moneda || pe.moneda || null, monto_cop: 0, resultado: "descartado" });
+    } else {
+      still.push(pe);
+    }
+  }
+  if (!reconciled.length) return closure;
+  const out = { ...closure, pendientes_validacion: still, pendientes_reconciliados: reconciled, _reconciliado_en_lectura: true };
+  // Totales: solo se suman movimientos con monto COP conocido y verificado.
+  const regsConMonto = reconciled.filter(r => r.resultado === "registrado" && r.monto_cop > 0);
+  const regsTot = reconciled.filter(r => r.resultado === "registrado");
+  const tot = { ...(closure.totales || {}) };
+  if (regsConMonto.length) {
+    const addCop = regsConMonto.reduce((s, r) => s + r.monto_cop, 0);
+    const baseCop = Number(tot.gastos_registrados_cop ?? tot.total_cop ?? 0) || 0;
+    tot.gastos_registrados_cop = +(baseCop + addCop).toFixed(2);
+    tot.total_cop = tot.gastos_registrados_cop;
+  }
+  const nMovs = regsTot.reduce((s, r) => s + (r.mov_ids.length || 1), 0);
+  if (nMovs) tot.cantidad_movimientos_gasto = (Number(tot.cantidad_movimientos_gasto ?? 0) || 0) + nMovs;
+  tot.cantidad_pendientes = still.length;
+  tot.pendientes_cop_estimado = +still.reduce((s, p) => s + (Number(p.monto_cop_estimado ?? p.monto_cop ?? 0) || 0), 0).toFixed(2);
+  tot.total_potencial_cop = +((tot.gastos_registrados_cop ?? tot.total_cop ?? 0) + tot.pendientes_cop_estimado).toFixed(2);
+  out.totales = tot;
+  // resumen_gastos: anexar movimientos registrados después del snapshot,
+  // solo si no están ya presentes (por movId o fila origen) → sin duplicar.
+  const regs = reconciled.filter(r => r.resultado === "registrado");
+  if (regs.length) {
+    let rows = Array.isArray(closure.resumen_gastos) ? closure.resumen_gastos.slice() : [];
+    const present = new Set();
+    rows.forEach(r => { if (r.id) present.add(String(r.id)); if (r.fila_origen) present.add(String(r.fila_origen)); });
+    for (const r of regs) {
+      const cur = byId.get(String(r.id || "")) || byKey.get(String(r.message_key || "")) || null;
+      const di = (cur && cur.datos_interpretados) || {};
+      r.mov_ids.forEach((movId, i) => {
+        const fk = r.mov_ids.length > 1 ? `${r.message_key}#${i + 1}` : r.message_key;
+        if (present.has(String(movId)) || (fk && present.has(String(fk)))) return;
+        rows.push({
+          id: movId, fecha_real: di.fecha_real || pe_fecha(r) || closure.fecha || "",
+          comercio: di.concepto || r.concepto || "", descripcion: r.concepto || "",
+          categoria: di.categoria || "", subcategoria: di.subcategoria || "",
+          titular: di.titular || "", cuenta: di.cuenta_tarjeta || "",
+          medio_pago: di.modalidad_pago || "", mes_pago: di.mes_pago || "",
+          importe: di.importe ?? r.importe ?? null, moneda: di.moneda || r.moneda || "",
+          monto_cop: di.monto_cop ?? null, estado_sheets: "Registrado", fila: null,
+          fila_origen: fk || null, grupo: "registrado_reconciliado"
+        });
+        present.add(String(movId)); if (fk) present.add(String(fk));
+      });
+    }
+    out.resumen_gastos = rows;
+    // Subtotales recalculados sobre el resumen actualizado (montos conocidos).
+    const sumBy = (key) => rows.reduce((acc, r) => {
+      const k = String(r[key] || "(sin dato)").trim() || "(sin dato)";
+      const m = Number(r.monto_cop); if (!Number.isFinite(m)) return acc;
+      acc[k] = +(((acc[k] || 0) + m).toFixed(2)); return acc;
+    }, {});
+    out.subtotales = { por_titular_cop: sumBy("titular"), por_categoria_cop: sumBy("categoria"), por_cuenta_tarjeta_cop: sumBy("cuenta"), por_modalidad_pago_cop: sumBy("medio_pago") };
+  }
+  return out;
+  function pe_fecha(r){ const cur2 = byId.get(String(r.id || "")); return (cur2 && cur2.datos_interpretados && cur2.datos_interpretados.fecha_real) || null; }
+}
+
 async function listClosures(store, opts={}){
   await ensureTestSeed(store);
   const closures = await store.getClosures();
   const reviews = await store.getReviews();
+  const pendings = await store.getPendings();
   let dates = Object.keys(closures).sort();
   if (opts.date) dates = dates.filter(d=>d===opts.date);
-  const items = dates.map(d=>({ date:d, closure: closures[d], review: reviews[d] || { state: (reviews[d]?.reviewed?"revisado":"pendiente_revision"), label: (reviews[d]?.reviewed?"Revisado":"Pendiente de revisión") } }));
+  const items = dates.map(d=>{
+    const c = reconcileClosureSnapshot(closures[d], pendings);
+    return { date:d, closure: c, review: reviews[d] || { state: (reviews[d]?.reviewed?"revisado":"pendiente_revision"), label: (reviews[d]?.reviewed?"Revisado":"Pendiente de revisión") } };
+  });
   return { items, sync: await store.getSyncState() };
 }
 
