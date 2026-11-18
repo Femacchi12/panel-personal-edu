@@ -22,6 +22,20 @@ function withEnv(env, fn) {
   });
 }
 
+test("regla de efectivo: titular Común por defecto, obligatorio en tarjetas", async () => {
+  await withEnv({ GCLOUD_PROJECT: "demo-control-gastos-local" }, async () => {
+    const validation = require("./validation");
+    const cash = validation.validatePendingResolution({ fecha_real: "2026-11-18", concepto: "Gasto efectivo", importe: 5000, moneda: "COP", categoria: "Supermercado", cuenta: "Efectivo", medio_pago: "Efectivo" });
+    assert.equal(cash.ok, true, "efectivo sin titular es válido (Común)");
+    assert.ok((cash.input ? cash.input.titular : null) !== "Edu", "no infiere Edu");
+    const card = validation.validatePendingResolution({ fecha_real: "2026-11-18", concepto: "Gasto tarjeta", importe: 5000, moneda: "COP", categoria: "Supermercado", cuenta: "Nu Edu", medio_pago: "Crédito" });
+    assert.equal(card.ok, false, "tarjeta sin titular sigue siendo obligatorio");
+    assert.ok(card.errors.some(e => e.includes("titular")));
+    const cardOk = validation.validatePendingResolution({ fecha_real: "2026-11-18", concepto: "Gasto tarjeta", importe: 5000, moneda: "COP", titular: "Rocío", categoria: "Supermercado", cuenta: "Nu Ro", medio_pago: "Débito" });
+    assert.equal(cardOk.ok, true);
+  });
+});
+
 test("fixtures stay off for real projects, on only for explicit local contexts", async () => {
   await withEnv({ GCLOUD_PROJECT: "panel-personal-cg-preprod" }, async () => {
     assert.equal(service.fixturesEnabled("memory"), false);

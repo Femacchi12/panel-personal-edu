@@ -18,7 +18,7 @@ const CATALOGS = {
     "Actividades": ["Fútbol", "Deporte", "Ocio"],
     "Odontología": ["Consulta", "Ortodoncia", "Procedimiento"]
   },
-  titulares: ["Edu", "Rocío", "Pía"],
+  titulares: ["Edu", "Rocío", "Pía", "Común"],
   cuentas: ["Nu Edu", "Nu Ro", "Nequi Edu", "Nequi Ro", "Efectivo", "ARQ Edu", "Mercado Pago Edu Argentina", "Efectivo/Débito"],
   medios_pago: ["Crédito", "Débito", "Transferencia", "Efectivo"],
   modalidades_por_cuenta: {
@@ -58,11 +58,18 @@ function isValidSubcategory(cat, sub){
 }
 function modalitiesFor(cuenta){ return CATALOGS.modalidades_por_cuenta[norm(cuenta)] || CATALOGS.medios_pago; }
 
+const TITULAR_COMUN = "Común";
+const isCashPayment = input => norm(input.cuenta) === "Efectivo" || norm(input.medio_pago) === "Efectivo";
+
 function validatePendingResolution(input){
+  // REGLA DEFINITIVA (2026-11-18): en pagos en EFECTIVO no se exige identificar
+  // si el dinero corresponde a Edu o Rocío; se registra titular "Común".
+  // Para tarjetas/cuentas identificadas el titular sigue siendo obligatorio.
+  if (isCashPayment(input) && !norm(input.titular)) input.titular = TITULAR_COMUN;
   const errors = []; const warnings = [];
   const required = ["fecha_real","concepto","importe","moneda","titular","categoria","cuenta","medio_pago"];
   for (const f of required) { if (!norm(input[f])) errors.push(`Falta campo obligatorio: ${f}`); }
-  if (norm(input.titular) && !CATALOGS.titulares.includes(norm(input.titular))) errors.push("Titular no válido (debe ser Edu, Rocío o Pía)");
+  if (norm(input.titular) && !CATALOGS.titulares.includes(norm(input.titular))) errors.push("Titular no válido (debe ser Edu, Rocío, Pía o Común)");
   if (!isValidCategory(input.categoria)) errors.push("Categoría no oficial");
   if (!isValidSubcategory(input.categoria, input.subcategoria)) warnings.push("Subcategoría no corresponde a la categoría seleccionada (verificar Manual/Matriz)");
   if (norm(input.cuenta) && !CATALOGS.cuentas.includes(norm(input.cuenta))) warnings.push("Cuenta/tarjeta no está en catálogo conocido (verificar)");

@@ -25,7 +25,7 @@
   function simplifyWarning(t){
     const s = norm(t);
     const rules = [
-      [/no se identific[oó] persona/i, 'Falta definir: titular (Edu, Rocío o Pía)'],
+      [/no se identific[oó] persona/i, 'Sin titular identificado: en efectivo se registra como Común; en cuentas, elegir titular'],
       [/categor[ií]a\/subcategor[ií]a no determinada/i, 'Falta definir: categoría y subcategoría oficiales'],
       [/posible pago\/saldo de compra previamente contabilizada/i, 'Posible duplicado o saldo: confirmar antes de registrar'],
       [/titular y cuenta nu espec[ií]fica no identificados/i, 'Falta definir: titular y cuenta (Nu)'],
@@ -155,7 +155,11 @@
     const errs=[]; const warns=[]; const f=state.form; const cats=state.catalogs||{};
     const req = [['fecha_real','Fecha'],['concepto','Comercio/concepto'],['importe','Importe'],['moneda','Moneda'],['titular','Titular'],['categoria','Categoría'],['cuenta','Cuenta/tarjeta'],['medio_pago','Medio de pago']];
     req.forEach(([k,l])=>{ if(!norm(f[k])) errs.push(`Falta ${l}`); });
-    if (norm(f.titular) && !(cats.titulares||[]).includes(norm(f.titular))) errs.push('Titular no válido (Edu, Rocío o Pía)');
+    // REGLA DEFINITIVA: en pagos en EFECTIVO no se exige identificar titular;
+    // se registra "Común". Para tarjetas/cuentas el titular sigue obligatorio.
+    const esEfectivo = norm(f.cuenta)==='Efectivo' || norm(f.medio_pago)==='Efectivo';
+    if (esEfectivo && !norm(f.titular)) f.titular = 'Común';
+    if (norm(f.titular) && !(cats.titulares||[]).includes(norm(f.titular))) errs.push('Titular no válido (Edu, Rocío, Pía o Común)');
     if (norm(f.categoria) && !(cats.categorias||[]).includes(norm(f.categoria))) errs.push('Categoría no oficial');
     const byCat=(cats.subcategorias_por_categoria||{})[norm(f.categoria)]||[];
     if (norm(f.subcategoria) && byCat.length && !byCat.includes(norm(f.subcategoria))) warns.push('Subcategoría no corresponde a la categoría (verificar)');
