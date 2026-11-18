@@ -661,6 +661,13 @@ async function getStatus(store){
     String(process.env.GCLOUD_PROJECT || "") === "demo-control-gastos-local" &&
     /^(127\.0\.0\.1|localhost):\d+$/.test(String(process.env.FIRESTORE_EMULATOR_HOST || "")) &&
     !productionWriteEnabled();
+  // Aplicar financiero disponible cuando existe cola + consumidor con destino
+  // configurado: local aislado (mock) o canónico (PRODUCTION_WRITE_ENABLED=true
+  // + CANONICAL_CONSUMER=1 + identidad dedicada).
+  const canonicalReady = String(process.env.CONTROL_GASTOS_CANONICAL_CONSUMER || "") === "1" &&
+    productionWriteEnabled() &&
+    !!String(process.env.CONTROL_GASTOS_CANONICAL_WRITER_SA || "").trim() &&
+    String(process.env.CONTROL_GASTOS_STORE || "") === "firestore";
   const mode = localQueue ? "local_e2e" : (firestoreConfigured ? "operational_preprod" : "test_isolated");
   const fixedTarget = getFixedTestTarget();
   const effectiveTarget = getWriteTarget();
@@ -684,7 +691,8 @@ async function getStatus(store){
     finance_source: `${FINANCE_SS}/Movimientos`,
     write_target_enforced: !!fixedTarget,
     local_queue_available: localQueue,
-    apply_financiero_enabled: localQueue, // el escritor serializado solo existe en el entorno local aislado
+    apply_financiero_enabled: localQueue || canonicalReady, // escritor disponible (mock local o canónico)
+    canonical_ready: canonicalReady,
     effective_write_target: effectiveTarget ? { spreadsheetId: effectiveTarget.spreadsheetId, sheet: effectiveTarget.sheet } : null,
     canonical_write_route_available: productionWriteEnabled() && !fixedTarget,
     catalogs: CATALOGS,

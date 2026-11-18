@@ -125,10 +125,13 @@
   function initFormFromPending(p){
     const d = p?.datos_interpretados || {}; const f = p?.fila_simulada || {}; const rev = p?.revision?.input || {};
     const pick = (a, b, c) => norm(a ?? b ?? c ?? '');
+    // El concepto editable se presenta SIN prefijos técnicos ([owner reply]);
+    // el mensaje original completo queda preservado en descripción/texto original.
+    const conceptoLimpio = pick(d.concepto, f['Descripción / Comercio']).replace(/^\[owner reply\]\s*/i, '').replace(/\s{2,}/g, ' ');
     state.form = {
       fecha_real: pick(rev.fecha_real, d.fecha_real, f['Fecha real']),
-      concepto: pick(rev.concepto, d.concepto, f['Descripción / Comercio']),
-      comercio: pick(rev.concepto, d.concepto, f['Descripción / Comercio']),
+      concepto: rev.concepto ?? conceptoLimpio,
+      comercio: rev.concepto ?? conceptoLimpio,
       descripcion: pick(rev.descripcion, d.texto_original, f['Descripción original']),
       importe: rev.importe ?? d.importe ?? f['Monto original'] ?? '',
       moneda: pick(rev.moneda, d.moneda, f['Moneda original']) || 'COP',
@@ -273,9 +276,10 @@
     const byCat=cats.subcategorias_por_categoria||{}; const subs=byCat[norm(f.categoria)]||cats.subcategorias||[];
     const modalities=(cats.modalidades_por_cuenta||{})[norm(f.cuenta)]||cats.medios_pago||[];
     const v=computeValidation(); const preview=state.preview;
+    const applyReady = state.status?.apply_financiero_enabled !== false;
     const motivos=(p.motivo_ambiguedad||[]).map(m=>`<li>${esc(simplifyWarning(m))}</li>`).join('');
     const diffRows = preview?.comparison?.diff ? Object.entries(preview.comparison.diff).map(([k,val])=>`<tr><th>${esc(k)}</th><td class="old">${esc(val.antes)}</td><td class="new">${esc(val.despues)}</td></tr>`).join('') : '';
-    const canApply = !!preview && preview.canApply && !state.busy && !state.operation;
+    const canApply = !!preview && preview.canApply && applyReady && !state.busy && !state.operation;
     return `
       <div class="cg-card">
         <h3>Ficha de resolución</h3>
@@ -323,13 +327,13 @@
           <button class="cg-btn" data-cg-action="preview-pending" ${state.busy?'disabled':''}>Previsualizar Antes/Después</button>
           <button class="cg-btn" data-cg-action="save-review" ${state.busy?'disabled':''}>Guardar revisión (sin registrar)</button>
           <button class="cg-btn primary" data-cg-action="apply-pending" ${(!canApply)?'disabled':''}>Aplicar</button>
-          <span class="cg-muted">${!canApply ? 'Aplica solo con validación OK y confirmación.' : 'Se pedirá confirmación antes de ejecutar.'}</span>
+          ${!canApply ? `<span class="cg-muted">${applyReady ? 'Aplica solo con validación OK y confirmación.' : 'Aplicar financiero no disponible: el escritor no está configurado en este entorno.'}</span>` : `<span class="cg-muted">Se pedirá confirmación. Destino: Finanzas Edu → Movimientos.</span>`}
         </div>
         ${p.revision?.at ? `<div class="cg-notice" style="margin-top:10px"><strong>Revisión guardada:</strong> ${esc(p.revision.at)}${p.revision.by?` · ${esc(p.revision.by)}`:''} · Decisiones conservadas como estado de revisión (no registradas en Movimientos).${p.revision.registrada===false?'':''}</div>`:''}
         ${state.reviewResult ? `<div class="cg-notice ${state.reviewResult.ok?'ok':'err'}" style="margin-top:8px"><strong>Guardar revisión:</strong> ${esc(state.reviewResult.note || state.reviewResult.error || 'OK')}</div>`:''}
         ${preview ? `<div style="margin-top:12px"><h4>Antes / Después (propuesta)</h4>
           ${diffRows? `<table class="cg-diff"><thead><tr><th>Campo</th><th>Antes</th><th>Después</th></tr></thead><tbody>${diffRows}</tbody></table>` : '<div class="cg-muted">Sin diferencias detectadas.</div>'}
-          <div class="cg-notice" style="margin-top:8px"><strong>Operación propuesta:</strong> ${esc(preview.operacion_propuesta||'')} · <strong>Confirmación requerida:</strong> Sí · <strong>Escritura productiva Movimientos:</strong> NO (etapa de prueba aislada)</div>
+          <div class="cg-notice" style="margin-top:8px"><strong>Operación propuesta:</strong> ${esc(preview.operacion_propuesta||'')} · <strong>Destino:</strong> ${applyReady ? 'Finanzas Edu → Movimientos (registro real, confirmación individual, readback 27 columnas)' : 'sin escritura (etapa de prueba aislada)'} · <strong>Confirmación requerida:</strong> Sí</div>
         </div>`:''}
         ${state.applyResult ? `<div class="cg-notice ${state.applyResult.ok?'ok':'err'}" style="margin-top:10px"><strong>Resultado:</strong> ${esc(state.applyResult.note || state.applyResult.error || 'OK')} ${state.applyResult.simulated?'<span class="cg-badge warn">simulado</span>':''}</div>`:''}
         ${state.operation ? renderOperation(state.operation, 'pending') : ''}
@@ -398,12 +402,12 @@
     const root = document.getElementById('viewRoot'); if(!root) return;
     const active = document.querySelector('.nav-item.active')?.dataset.view;
     if (active && active !== 'control-gastos') return;
+    const applyReady = state.status?.apply_financiero_enabled !== false;
     const sync = (state.status?.sync)||{};
-    const applyEnabled = !!state.status?.apply_financiero_enabled;
-    const applyBanner = !applyEnabled
-      ? `<div class="cg-notice" style="margin-top:8px"><strong>Aplicar financiero: deshabilitado en esta etapa.</strong>
-         <div class="cg-muted" style="margin-top:4px">El módulo funciona en modo seguro: lectura, validación y revisión. El botón Aplicar no encola operaciones financieras productivas y ninguna escritura alcanza Finanzas Edu → Movimientos.</div></div>`
-      : `<div class="cg-notice ok" style="margin-top:8px"><strong>Aplicar financiero: disponible solo en entorno local aislado (escritor mock).</strong><div class="cg-muted" style="margin-top:4px">No hay escrituras en Finanzas Edu real.</div></div>`;
+        const applyBanner = applyReady
+          ? `<div class="cg-notice ok" style="margin-top:8px"><strong>Aplicar financiero: activo.</strong><div class="cg-muted" style="margin-top:4px">Destino real: Finanzas Edu → Movimientos. Registro con confirmación individual, validación de catálogos, readback de 27 columnas y auditoría. El registro automático desde WhatsApp sigue deshabilitado.</div></div>`
+          : `<div class="cg-notice" style="margin-top:8px"><strong>Aplicar financiero: deshabilitado en esta etapa.</strong>
+         <div class="cg-muted" style="margin-top:4px">El módulo funciona en modo seguro: lectura, validación y revisión. El botón Aplicar no encola operaciones financieras productivas y ninguna escritura alcanza Finanzas Edu → Movimientos.</div></div>`;
     const banner = `<div class="cg-notice ${state.offline?'err':'warn'}" style="margin-bottom:12px">
       <strong>Control de gastos (modo ${esc(state.status?.mode||'operativo')}):</strong> ${esc((state.status?.notes||[])[0] || 'Estado operativo no productivo.')}
       <div class="cg-muted" style="margin-top:4px">Última sync conocida: ${esc(sync.lastSyncAt || 'n/d')} · Sync pendiente: ${esc(sync.pendingSyncCount ?? 'n/d')} · ${esc(sync.note || '')}</div>
@@ -504,8 +508,9 @@
     root.querySelector('[data-cg-action="apply-pending"]')?.addEventListener('click', async ()=>{
       if (state.busy || state.operation) return;
       const p=getSelectedPending(); if(!p) return; readPendingForm(root);
+      if (!applyReady) { alert('Aplicar financiero no está disponible en este entorno (sin escritor configurado). No se creó ninguna operación.'); return; }
       if(!state.preview || !state.preview.canApply){ alert('Primero genera una previsualización válida.'); return; }
-      if(!confirm('Confirmar operación propuesta (se ejecutará en modo de prueba aislada, sin modificar Finanzas Edu). ¿Continuar?')) return;
+      if(!confirm('Confirmar registro en FINANZAS EDU → Movimientos.\n\nDestino real: Finanzas Edu → Movimientos (27 columnas, lectura posterior verificada, auditoría).\nOperación individual: no se registra nada automáticamente.\n¿Continuar?')) return;
       setBusy(true);
       try { const result = await api(`/api/control-gastos/pendings/${encodeURIComponent(p.id)}/apply`, {method:'POST', body: JSON.stringify({...state.form, approved:true, confirm:true, idempotencyKey: `ui:${p.id}:${stableHash(state.form)}`})}); state.operation={operationId:result.operationId,status:result.operationStatus,type:'insert'}; state.applyResult=null; }
       catch(e){ state.applyResult = e.data || {ok:false, error:e.message}; render(); }

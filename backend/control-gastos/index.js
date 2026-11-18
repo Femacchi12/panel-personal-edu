@@ -67,9 +67,12 @@ function mountControlGastos(app, requireAuthorizedUser) {
       /^(127\.0\.0\.1|localhost):\d+$/.test(String(process.env.FIRESTORE_EMULATOR_HOST || "")) &&
       storeType === "firestore" && !service.productionWriteEnabled()
       ? new DurableQueue(store.db, "cg_local_test") : null;
-    // Cola operativa real (solo encolado; el consumidor corre localmente):
+    // Cola operativa real: almacena operaciones PENDING (encolado). La cola es
+    // segura en cualquier modo: la escritura la decide el CONSUMIDOR, que solo
+    // se configura con destino forzado (TEST en preprod; canónico en producción
+    // con PRODUCTION_WRITE_ENABLED=true + CANONICAL_CONSUMER=1).
     const queueEnabled = !localQueue && String(process.env.CONTROL_GASTOS_QUEUE_ENABLED || "") === "1" &&
-      storeType === "firestore" && !service.productionWriteEnabled();
+      storeType === "firestore";
     const realQueue = queueEnabled ? new DurableQueue(store.db, process.env.CONTROL_GASTOS_FIRESTORE_PREFIX || "control_gastos") : null;
     // Consumidor TEST (solo preprod): escritor secuencial con ADC de la SA runtime,
     // destino TEST FORZADO por env. Nunca en producción y sin canonical.
