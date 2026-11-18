@@ -636,6 +636,8 @@ async function ingestSync(store, body, user, meta = {}){
       // La revision guardada en el Dashboard prevalece sobre el estado local:
       // la sync diaria no debe regresar decisiones ya tomadas por el usuario.
       if (prev?.revision) { next.revision = prev.revision; if (prev.estado_validacion === "en_revision") next.estado_validacion = prev.estado_validacion; }
+      // REGLA: estados que el escritor ya confirmó no se revierten por sync.
+      if (prev.estado_sincronizacion === "registrado") { next.estado_sincronizacion = "registrado"; next.registro = prev.registro; }
       byKey.set(k, { ...next, _merged_at: nowIso() });
     } }
     st.pendings = Array.from(byKey.values());
