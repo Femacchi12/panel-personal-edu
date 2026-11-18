@@ -136,7 +136,16 @@ function createRouter(opts = {}) {
     let lastRows = null;
     try {
       const rows = await consumer.writer.sheets.readAll(consumer.writer.target);
-      lastRows = rows.filter(r => r[0]).slice(-8).map(r => ({ id: r[0], concepto: r[9], filaOrigen: r[20], estado: r[18] }));
+      const filled = rows.filter(r => r[0]);
+      lastRows = filled.slice(-8).map(r => ({ id: r[0], concepto: r[9], filaOrigen: r[20], estado: r[18] }));
+      // Fila completa de la última escritura (diagnóstico de reconciliación)
+      const last = filled[filled.length - 1];
+      if (last) {
+        const { MOVIMIENTOS_COLUMNS } = require("./movimientos-writer");
+        const full = {};
+        MOVIMIENTOS_COLUMNS.forEach((c, i) => { full[c] = last[i]; });
+        lastRows.diagnostico_ultima_fila = { filaHoja: filled.indexOf(last) + 2, columnas: full };
+      }
     } catch (_) { /* diagnostico best-effort */ }
     const blocked = await consumer.queue.getDestinationState().catch(()=>null);
     res.json({ ok:true, holder, processed: results.length, results, destinationBlocked: blocked ? !!blocked.blocked : null, lastRows });
