@@ -36,6 +36,70 @@ test("private KV store contract is identical in Memory and Firestore stores", as
   assert.ok(raw.data().value && raw.data().updated_at);
 });
 
+test("consumer lease grants exclusive runs (preprod consumer)", async () => {
+  const q = new DurableQueue(db, `test_${crypto.randomBytes(6).toString("hex")}`);
+  const a = await q.acquireConsumerLease("device:A", 60000);
+  assert.equal(a.ok, true);
+  const b = await q.acquireConsumerLease("device:B", 60000);
+  assert.equal(b.ok, false);
+  assert.equal(b.reason, "consumer_busy");
+  const a2 = await q.acquireConsumerLease("device:A", 60000);
+  assert.equal(a2.ok, true, "el mismo holder puede re-adquirir");
+  await q.releaseConsumerLease("device:B");
+  const a3 = await q.acquireConsumerLease("device:A", 60000);
+  assert.equal(a3.ok, true);
+  await q.releaseConsumerLease("device:A");
+  const c = await q.acquireConsumerLease("device:C", 60000);
+  assert.equal(c.ok, true, "tras liberar el holder correcto, otro puede tomar el lease");
+});
+
+test("writer marks the pending registered only after verified commit", async () => {
+  const prefix = `test_${crypto.randomBytes(6).toString("hex")}`;
+  const q = new DurableQueue(db, prefix);
+  const row = origin => { const r = Array(27).fill(""); r[9] = "concepto X"; r[20] = origin; return r; };
+  // Pendiente ya sincronizado (como en prod), sin revision guardada
+  await db.collection(`${prefix}_pendings`).doc("pend-1").set({ id: "pend-1", message_key: "MK:one", estado_sincronizacion: "pendiente_validacion", datos_interpretados: { concepto: "concepto X" } });
+  await q.enqueue({ operationKey: "mk1", filaOrigen: "MK:one", type: "insert", rows: [row("MK:one")], confirmed: true });
+  const sheets = new MockSheetsClient();
+  const writer = new SequentialWriter(q, sheets, { markPendingRegistered: true });
+  const done = await writer.runOne();
+  assert.equal(done.status, "COMMITTED");
+  assert.deepEqual(done.result.ids, ["MOV-00001"]);
+  const saved = (await db.collection(`${prefix}_pendings`).doc("pend-1").get()).data();
+  assert.equal(saved.estado_sincronizacion, "registrado");
+  assert.equal(saved.registro.movId, "MOV-00001");
+  assert.equal(saved.registro.verified, true);
+  assert.equal(saved.datos_interpretados.concepto, "concepto X", "datos originales intactos");
+  // UNCERTAIN no marca registrado
+  await db.collection(`${prefix}_pendings`).doc("pend-2").set({ id: "pend-2", message_key: "MK:two", estado_sincronizacion: "pendiente_validacion" });
+  class Ambiguous extends MockSheetsClient { async write(...a) { await super.write(...a); throw new Error("x"); } }
+  await q.enqueue({ operationKey: "mk2", filaOrigen: "MK:two", type: "insert", rows: [row("MK:two")], confirmed: true });
+  const amb = await new SequentialWriter(q, new Ambiguous(), { markPendingRegistered: true }).runOne();
+  assert.equal(amb.status, "UNCERTAIN");
+  const p2 = (await db.collection(`${prefix}_pendings`).doc("pend-2").get()).data();
+  assert.equal(p2.estado_sincronizacion, "pendiente_validacion", "incierto NO marca registrado");
+});
+
+test("canonical consumer requires both flags and rejects any other destination", async () => {
+  process.env.CONTROL_GASTOS_CANONICAL_CONSUMER = "1";
+  process.env.CONTROL_GASTOS_PRODUCTION_WRITE_ENABLED = "true";
+  try {
+    const duck = { readRange: async () => ({ result: "" }), writeRange: async () => ({}) };
+    const canonical = new SheetsWriterClient({ sheetsClient: duck, allowRealWrites: true, target: { canonical: true } });
+    assert.deepEqual(canonical.target, { spreadsheetId: "1ff_dT8kHhiy1THTq1hRHGx2z2VElUQjyq_A4AL_nm4g", sheet: "Movimientos" });
+    await assert.rejects(canonical.readAll({ spreadsheetId: "1nB7Qc8hBnipTemceTEQeNZqteRhRULAZJwM9Js01GUY", sheet: "Movimientos_Test" }), /target_rejected/, "el canónico rechaza el destino TEST");
+    await assert.rejects(canonical.write({ spreadsheetId: "otra-hoja", sheet: "Movimientos" }, 0, [Array(27).fill("")]), /target_rejected/);
+    delete process.env.CONTROL_GASTOS_CANONICAL_CONSUMER;
+    assert.throws(() => new SheetsWriterClient({ sheetsClient: duck, allowRealWrites: true, target: { canonical: true } }), /canonical_consumer_disabled/, "sin flag explícito no hay consumidor canónico");
+    process.env.CONTROL_GASTOS_CANONICAL_CONSUMER = "1";
+    delete process.env.CONTROL_GASTOS_PRODUCTION_WRITE_ENABLED;
+    assert.throws(() => new SheetsWriterClient({ sheetsClient: duck, allowRealWrites: true, target: { canonical: true } }), /canonical_consumer_disabled/, "sin escritura productiva habilitada no hay consumidor canónico");
+  } finally {
+    delete process.env.CONTROL_GASTOS_CANONICAL_CONSUMER;
+    delete process.env.CONTROL_GASTOS_PRODUCTION_WRITE_ENABLED;
+  }
+});
+
 test("persistent queue orders, deduplicates and never steals a claim", async () => {
   const q = new DurableQueue(db, `test_${crypto.randomBytes(6).toString("hex")}`);
   const row = Array(27).fill("");

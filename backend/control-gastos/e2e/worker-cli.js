@@ -1,14 +1,23 @@
 "use strict";
 
-// Local sequential-consumer CLI. Runs the queue with a mock client only.
-// Optional --file keeps the mock sheet in a JSON file so a process restart can
-// be exercised. --fail-write writes then throws to simulate an ambiguous result.
+// Local sequential-consumer CLI.
+// Modes:
+//   (default)  MockSheetsClient in memory
+//   --file     FileMockSheetsClient (persistent mock sheet)
+//   --sheets   REAL Google Sheets TEST via GoogleSheetsClient + SheetsWriterClient.
+//              Token: env CONTROL_GASTOS_SHEETS_TOKEN o gcloud (print-access-token).
+//              Escrituras SOLO al destino TEST fijo; identidad del usuario autorizado.
+//   --fail-write  writes then throws (simula resultado ambiguo; para --sheets envuelve el adaptador)
+// Queue: Firestore Emulator (loopback) siempre; nunca la base productiva.
 const fs = require("fs");
 const path = require("path");
+const { execSync } = require("child_process");
 const admin = require("firebase-admin");
-const { DurableQueue } = require("../durable-queue");
+const { DurableQueue, TEST_TARGET } = require("../durable-queue");
 const { MockSheetsClient } = require("../mock-sequential-worker");
-const { SequentialWriter } = require("../sequential-writer");
+const { SequentialWriter, WIDTH } = require("../sequential-writer");
+const { GoogleSheetsClient } = require("../sheets-google-client");
+const { SheetsWriterClient } = require("../sheets-writer-adapter");
 
 function arg(name, fallback = null) {
   const i = process.argv.indexOf(name);
@@ -17,6 +26,7 @@ function arg(name, fallback = null) {
 const file = arg("--file");
 const all = process.argv.includes("--all");
 const failWrite = process.argv.includes("--fail-write");
+const sheets = process.argv.includes("--sheets");
 const prefix = String(arg("--prefix", process.env.CONTROL_GASTOS_LOCAL_PREFIX || "cg_e2e"));
 
 class FileMockSheetsClient extends MockSheetsClient {
@@ -44,6 +54,18 @@ class FailAfterWriteClient extends (file ? FileMockSheetsClient : MockSheetsClie
   }
 }
 
+function gcloudSheetsToken() {
+  if (process.env.CONTROL_GASTOS_SHEETS_TOKEN) return process.env.CONTROL_GASTOS_SHEETS_TOKEN;
+  return execSync("gcloud.cmd auth print-access-token", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+}
+
+class AmbiguousSheetsWriter extends SheetsWriterClient {
+  async write(target, offset, rows) {
+    await super.write(target, offset, rows);
+    throw new Error("synthetic_timeout_after_write_sheets");
+  }
+}
+
 async function main() {
   const emulator = String(process.env.FIRESTORE_EMULATOR_HOST || "");
   if (!/^(127\.0\.0\.1|localhost):\d+$/.test(emulator)) throw new Error("loopback emulator required");
@@ -53,8 +75,17 @@ async function main() {
   admin.initializeApp({ projectId: "demo-control-gastos-local" });
   const db = admin.firestore();
   const queue = new DurableQueue(db, prefix);
-  const Client = failWrite ? FailAfterWriteClient : (file ? FileMockSheetsClient : MockSheetsClient);
-  const sheets = file ? new Client(file) : new Client();
+  let sheets, mode;
+  if (sheets) {
+    const google = new GoogleSheetsClient({ getAccessToken: async () => gcloudSheetsToken() });
+    sheets = new SheetsWriterClient({ sheetsClient: google, allowRealWrites: true });
+    if (failWrite) sheets = new AmbiguousSheetsWriter({ sheetsClient: google, allowRealWrites: true });
+    mode = failWrite ? "sheets_fail_after_write" : "sheets_real_test";
+  } else {
+    const Client = failWrite ? FailAfterWriteClient : (file ? FileMockSheetsClient : MockSheetsClient);
+    sheets = file ? new Client(file) : new Client();
+    mode = failWrite ? "mock_fail_after_write" : "mock";
+  }
   const worker = new SequentialWriter(queue, sheets);
   const results = [];
   do {
@@ -62,7 +93,7 @@ async function main() {
     results.push(result);
     if (!all || !result.ok && result.reason !== "empty") break;
   } while (all);
-  console.log(JSON.stringify({ prefix, mode: failWrite ? "mock_fail_after_write" : "mock", rows:sheets.rows.length, results }, null, 2));
+  console.log(JSON.stringify({ prefix, mode, target: sheets ? TEST_TARGET : "mock", width: WIDTH, results }, null, 2));
 }
 
 main().catch(error => { console.error(JSON.stringify({ ok:false, error:String(error && error.message || error) })); process.exit(1); });

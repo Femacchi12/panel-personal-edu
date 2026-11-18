@@ -58,7 +58,7 @@ function applyPatch(backupRow, patch) {
 }
 
 class SequentialWriter {
-  constructor(queue, client) {
+  constructor(queue, client, { markPendingRegistered = false } = {}) {
     if (!queue || typeof queue.claim !== "function") throw new Error("queue_required");
     if (!client || typeof client.readAll !== "function" || typeof client.write !== "function")
       throw new Error("writer_client_required");
@@ -67,6 +67,28 @@ class SequentialWriter {
     if (client.kind !== "mock" && client.kind !== "sheets") throw new Error("unsupported_writer_client");
     this.queue = queue;
     this.sheets = client;
+    // Destino de lectura/escritura: el configurado en el cliente (Sheets TEST o
+    // canónico); el mock usa el TEST.
+    this.target = client.target || TEST_TARGET;
+    this.markPendingRegistered = markPendingRegistered === true;
+  }
+
+  // Marca el pendiente como registrado SOLO cuando la escritura quedó
+  // COMMITTED (verificada por readback). Best-effort: el estado de la
+  // operación ya es la fuente de verdad si esto falla.
+  async _markPendingRegistered(op, result) {
+    if (!this.markPendingRegistered || !this.queue.prefix || !result?.ids?.length) return;
+    try {
+      const base = String(op.filaOrigen || "").split("#")[0];
+      const col = this.queue.db.collection(`${this.queue.prefix}_pendings`);
+      const snap = await col.where("message_key", "==", base).limit(1).get();
+      const now = new Date().toISOString();
+      snap.forEach(doc => doc.ref.set({
+        estado_sincronizacion: "registrado",
+        registro: { operationId: op.id, movIds: result.ids, movId: result.ids[0], at: now, verified: true },
+        updated_at: now
+      }, { merge: true }));
+    } catch (_) { /* best-effort */ }
   }
 
   async runOne() {
@@ -74,7 +96,7 @@ class SequentialWriter {
     if (!claim.ok) return claim;
     const { operation: op, claimId } = claim;
     let sheet;
-    try { sheet = await this.sheets.readAll(TEST_TARGET); }
+    try { sheet = await this.sheets.readAll(this.target); }
     catch (_) { return this.queue.finish(op.id, claimId, STATUS.CONFIRMED_FAILED, { reason: "read_failed_before_send" }); }
     const queuedRows = (op.rows || []).map(r => normalized(r.cells));
     const origins = queuedRows.map(r => r[20]);
@@ -125,12 +147,14 @@ class SequentialWriter {
     // Once intent is durable, any failure (including a failed readback) is
     // ambiguous and permanently blocks the destination. Never retry here.
     try {
-      await this.sheets.write(TEST_TARGET, offset, rows);
-      const readback = await this.sheets.readAll(TEST_TARGET);
+      await this.sheets.write(this.target, offset, rows);
+      const readback = await this.sheets.readAll(this.target);
       if (!rows.every((row, i) => readback[offset + i] && equal(row, readback[offset + i])))
         return this.queue.finish(op.id, claimId, STATUS.UNCERTAIN, { reason: "readback_mismatch", backup });
-      return this.queue.finish(op.id, claimId, STATUS.COMMITTED,
-        { ids: rows.map(r => r[0]), backup, verifiedColumns: WIDTH });
+      const result = { ids: rows.map(r => r[0]), backup, verifiedColumns: WIDTH };
+      const finished = await this.queue.finish(op.id, claimId, STATUS.COMMITTED, result);
+      await this._markPendingRegistered(op, result);
+      return finished;
     } catch (_) {
       return this.queue.finish(op.id, claimId, STATUS.UNCERTAIN, { reason: "write_or_readback_ambiguous", backup });
     }

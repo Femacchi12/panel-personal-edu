@@ -16,6 +16,21 @@
   };
 
   function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  const stateLabels={ pendiente_validacion:'Pendiente de validación', simulado:'Simulado por el piloto (no registrado)', registrado:'Registrado', pendiente_revision:'Pendiente de revisión', en_revision:'En revisión' };
+  const cleanConcept = t => norm(t).replace(/^\[owner reply\]\s*/i, '').replace(/\s{2,}/g, ' ') || 'Movimiento pendiente';
+  function simplifyWarning(t){
+    const s = norm(t);
+    const rules = [
+      [/no se identific[oó] persona/i, 'Falta definir: titular (Edu, Rocío o Pía)'],
+      [/categor[ií]a\/subcategor[ií]a no determinada/i, 'Falta definir: categoría y subcategoría oficiales'],
+      [/posible pago\/saldo de compra previamente contabilizada/i, 'Posible duplicado o saldo: confirmar antes de registrar'],
+      [/titular y cuenta nu espec[ií]fica no identificados/i, 'Falta definir: titular y cuenta (Nu)'],
+      [/categor[ií]a oficial a confirmar/i, 'Confirmar categoría oficial según Manual/Matriz'],
+      [/requiere confirmaci[oó]n antes de registrar/i, 'Requiere confirmación antes de registrar']
+    ];
+    for (const [re, msg] of rules) if (re.test(s)) return msg;
+    return s;
+  }
   function fmtCop(n){ const v=Number(n); if(!Number.isFinite(v)) return '-'; return '$' + v.toLocaleString('es-CO',{maximumFractionDigits:2}); }
   function todayBogota(){ try { return new Date().toLocaleDateString('en-CA',{timeZone:'America/Bogota'}); } catch { return new Date().toISOString().slice(0,10); } }
   function norm(v){ return v==null?'':String(v).trim(); }
@@ -144,6 +159,11 @@
     if (p && (p.motivo_ambiguedad||[]).some(m=>/duplic|parcial|saldo/i.test(m)) && !f.resolucion) {
       warns.push('Posible duplicado/saldo parcial: elige una resolución explícita antes de aplicar.');
     }
+    if (f.resolucion==='compra_dividida') {
+      const parts=(f.partes_divididas||[]).filter(x=>norm(x.concepto)&&Number(x.importe)>0);
+      if (parts.length<2) warns.push('Compra dividida: define al menos 2 partes con concepto e importe antes de aplicar.');
+      else warns.push(`Compra dividida en ${parts.length} partes (suma ${parts.reduce((s,x)=>s+Number(x.importe),0)}). Cada parte será un movimiento separado con el mismo titular/cuenta/categoría y fila origen vinculada.`);
+    }
     return { ok: errs.length===0, errs, warns };
   }
 
@@ -214,21 +234,6 @@
 
   function renderPendingList(){
     const items=state.pendings||[];
-    const stateLabels={ pendiente_validacion:'Pendiente de validación', simulado:'Simulado por el piloto (no registrado)', registrado:'Registrado', pendiente_revision:'Pendiente de revisión', en_revision:'En revisión' };
-    const cleanConcept = t => norm(t).replace(/^\[owner reply\]\s*/i, '').replace(/\s{2,}/g, ' ') || 'Movimiento pendiente';
-    const simplifyWarning = t => {
-      const s = norm(t);
-      const rules = [
-        [/no se identific[oó] persona/i, 'Falta definir: titular (Edu, Rocío o Pía)'],
-        [/categor[ií]a\/subcategor[ií]a no determinada/i, 'Falta definir: categoría y subcategoría oficiales'],
-        [/posible pago\/saldo de compra previamente contabilizada/i, 'Posible duplicado o saldo: confirmar antes de registrar'],
-        [/titular y cuenta nu espec[ií]fica no identificados/i, 'Falta definir: titular y cuenta (Nu)'],
-        [/categor[ií]a oficial a confirmar/i, 'Confirmar categoría oficial según Manual/Matriz'],
-        [/requiere confirmaci[oó]n antes de registrar/i, 'Requiere confirmación antes de registrar']
-      ];
-      for (const [re, msg] of rules) if (re.test(s)) return msg;
-      return s;
-    };
     if(!items.length){
       const st=state.status||{};
       const detail = st.fixtures
@@ -246,11 +251,12 @@
       const d=p.datos_interpretados||{}; const sel=String(p.id)===String(state.selectedPendingId);
       const motivos=(p.motivo_ambiguedad||[]).map(m=>`<span class="cg-pill">${esc(simplifyWarning(m))}</span>`).join('');
       const saved = p.revision?.input ? ' · Revisión guardada' : '';
+      const reg = p.registro?.movId ? ` · ${esc(Array.isArray(p.registro.movIds)?p.registro.movIds.join(' + '):p.registro.movId)}` : '';
       return `<div class="cg-item ${sel?'selected':''}" data-cg-pending="${esc(p.id)}">
         <h4>${esc(cleanConcept(d.concepto||p.texto_relevante))}</h4>
         <div class="cg-muted">${esc(d.fecha_real||'')} · ${esc(d.moneda||'')} ${esc(d.importe??'')} · ${esc(d.titular||'(titular pendiente)')} · ${esc(d.cuenta_tarjeta||'(cuenta pendiente)')}${saved}</div>
         <div>${motivos}</div>
-        <div class="cg-muted" style="margin-top:6px">Estado: ${esc(stateLabels[p.estado_sincronizacion]||p.estado_sincronizacion||'pendiente')} · Origen: ${esc(p.message_key||'')}</div>
+        <div class="cg-muted" style="margin-top:6px">Estado: ${esc(stateLabels[p.estado_sincronizacion]||p.estado_sincronizacion||'pendiente')}${reg} · Origen: ${esc(p.message_key||'')}</div>
       </div>`;
     }).join('')}</div>`;
   }
@@ -300,12 +306,16 @@
               <select name="resolucion">
                 <option value="" ${!f.resolucion?'selected':''}>Seleccionar acción</option>
                 <option value="es_nuevo" ${f.resolucion==='es_nuevo'?'selected':''}>Es un gasto nuevo (registrar)</option>
+                <option value="compra_dividida" ${f.resolucion==='compra_dividida'?'selected':''}>Compra dividida / varios conceptos (partes separadas)</option>
                 <option value="ya_registrado" ${f.resolucion==='ya_registrado'?'selected':''}>Ya está registrado (descartar duplicado)</option>
                 <option value="necesita_revision" ${f.resolucion==='necesita_revision'?'selected':''}>Necesita revisión</option>
               </select>
             </div>
           </div>
           <div class="cg-field"><label>Aclaración adicional (opcional)</label><textarea name="aclaracion" rows="2">${esc(f.aclaracion||'')}</textarea></div>
+          ${f.resolucion==='compra_dividida' ? `<div class="cg-field"><label>Partes (cada una será un movimiento separado, con su concepto e importe)</label>
+            <div id="cg-partes">${(f.partes_divididas||[]).map((p,i)=>`<div class="cg-split" data-cg-parte="${i}"><input name="parte_concepto" value="${esc(p.concepto||'')}" placeholder="Concepto de la parte ${i+1}"><input name="parte_importe" type="number" step="0.01" value="${esc(p.importe??'')}" placeholder="Importe"></div>`).join('')}</div>
+            <div class="cg-actions" style="margin-top:6px"><button type="button" class="cg-btn" data-cg-action="add-parte">Agregar parte</button><span class="cg-muted">Mínimo 2 partes. Cada parte conserva la fecha, titular, categoría y cuenta del formulario.</span></div></div>`:''}
         </div>
         ${v.errs.length? `<div class="cg-notice err" style="margin-top:10px"><strong>Faltan datos o hay inconsistencias:</strong><ul style="margin:6px 0 0 18px">${v.errs.map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>`:''}
         ${v.warns.length? `<div class="cg-notice warn" style="margin-top:10px"><strong>Revisar:</strong><ul style="margin:6px 0 0 18px">${v.warns.map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>`:''}
@@ -430,6 +440,16 @@
     // The form edits "concepto"; keep "comercio" in sync so a stale parsed
     // value never overrides what the user typed.
     if (norm(f.concepto)) f.comercio = f.concepto;
+    // Partes de compra dividida: pares concepto/importe en el DOM
+    if (f.resolucion === 'compra_dividida') {
+      const partes = [...root.querySelectorAll('#cg-partes [data-cg-parte]')].map(row => ({
+        concepto: norm(row.querySelector('[name="parte_concepto"]')?.value),
+        importe: Number(row.querySelector('[name="parte_importe"]')?.value) || null
+      })).filter(p => p.concepto || p.importe);
+      f.partes_divididas = partes;
+    } else {
+      delete f.partes_divididas;
+    }
   }
   function readCorrectionForm(root){
     const g=id=>root.querySelector(id)?.value||'';
@@ -459,7 +479,22 @@
       finally{ setBusy(false); }
     });
     root.querySelectorAll('[data-cg-pending]').forEach(el=>el.addEventListener('click', ()=>{ state.selectedPendingId = el.dataset.cgPending; state.preview=null; state.applyResult=null; state.operation=null; initFormFromPending(getSelectedPending()); render(); }));
-    root.querySelectorAll('#cg-pending-form [name]').forEach(el=>el.addEventListener('change', ()=>{ readPendingForm(root); state.preview=null; state.applyResult=null; render(); }));
+    root.querySelectorAll('#cg-pending-form [name]').forEach(el=>el.addEventListener('change', ()=>{ readPendingForm(root); state.preview=null; state.applyResult=null; state.reviewResult=null;
+      const f=state.form;
+      if (f.resolucion==='compra_dividida' && !(f.partes_divididas||[]).length) {
+        const p=getSelectedPending(); const d=p?.datos_interpretados||{};
+        // Sugerencia desde el mensaje (sin inventar): parte 1 con el concepto/importe detectados; el resto los define el usuario.
+        f.partes_divididas = [{ concepto: norm(d.concepto||'').replace(/^\[owner reply\]\s*/i,''), importe: d.importe ?? '' }, { concepto: '', importe: '' }];
+      }
+      render();
+    }));
+    root.querySelector('[data-cg-action="add-parte"]')?.addEventListener('click', () => {
+      readPendingForm(root);
+      const f = state.form;
+      f.partes_divididas = f.partes_divididas || [];
+      f.partes_divididas.push({ concepto: '', importe: '' });
+      render();
+    });
     root.querySelector('[data-cg-action="preview-pending"]')?.addEventListener('click', async ()=>{
       const p=getSelectedPending(); if(!p) return; readPendingForm(root); setBusy(true);
       try { state.preview = await api(`/api/control-gastos/pendings/${encodeURIComponent(p.id)}/preview`, {method:'POST', body: JSON.stringify(state.form)}); }

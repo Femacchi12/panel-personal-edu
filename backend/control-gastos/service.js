@@ -125,7 +125,14 @@ async function previewPendingResolution(store, id, body){
   const amounts = recalcAmounts(after.moneda, after.importe);
   const comparison = buildBeforeAfter(before, { ...after, importe: after.importe });
   const operacion = input.resolucion === 'ya_registrado' ? 'descartar_duplicado' : (input.resolucion === 'necesita_revision' ? 'mantener_pendiente' : 'registrar_nuevo');
-  const canApply = v.ok && input.resolucion !== 'necesita_revision' && !duplicateHints.some(d=>d.action_required && !input.resolucion);
+  // Compra dividida: partes con concepto e importe propios (cada una una fila).
+  const partes = Array.isArray(input.partes_divididas) ? input.partes_divididas.filter(p => p && typeof p === "object") : [];
+  const partesValidas = partes.map(p => ({ concepto: norm(p.concepto || p.comercio), importe: Number(p.importe) }));
+  const partesOk = partesValidas.length >= 2 && partesValidas.every(p => p.concepto && p.importe > 0);
+  const partesResumen = partesValidas.map(p => ({ ...p, montos: recalcAmounts(after.moneda, p.importe) }));
+  const sumaPartes = partesValidas.reduce((s, p) => s + (p.importe > 0 ? p.importe : 0), 0);
+  let canApply = v.ok && input.resolucion !== 'necesita_revision' && !duplicateHints.some(d=>d.action_required && !input.resolucion);
+  if (input.resolucion === 'compra_dividida' && !partesOk) canApply = false;
   return {
     ok:true,
     pending: item,
@@ -135,6 +142,10 @@ async function previewPendingResolution(store, id, body){
     amounts,
     comparison,
     operacion_propuesta: operacion,
+    compra_dividida: input.resolucion === 'compra_dividida',
+    partes: partesResumen,
+    partes_ok: partesOk,
+    suma_partes: sumaPartes,
     confirmation_required: true,
     canApply,
     note: "Preview aislado. Ninguna escritura en Finanzas Edu Movimientos durante esta etapa."
@@ -241,11 +252,15 @@ async function applyPendingResolution(store, id, body, user, req){
   return result;
 }
 
-// Emulator-only adapter. No Sheets calls and no mutation of the pending item.
-async function enqueuePendingResolution(store, queue, id, body, user, req) {
+// Emulator-only adapter by default. No Sheets calls and no mutation of the pending item.
+// With allowReal (CONTROL_GASTOS_QUEUE_ENABLED=1 y escrituras productivas
+// deshabilitadas), pendientes REALES pueden encolarse: la operacion queda
+// PENDING y solo la consume el escritor secuencial local autorizado.
+async function enqueuePendingResolution(store, queue, id, body, user, req, opts = {}) {
   if (!isWriteAuthorized(user)) return {ok:false,status:403,error:"forbidden"};
   if (!queue) return {ok:false,status:503,error:"isolated_queue_unavailable"};
-  if (!String(id).startsWith("cgtest_")) return {ok:false,status:403,error:"synthetic_pending_required"};
+  const allowReal = opts.allowReal === true;
+  if (!String(id).startsWith("cgtest_") && !allowReal) return {ok:false,status:403,error:"synthetic_pending_required"};
   if (body?.approved !== true || body?.confirm !== true) return {ok:false,status:400,error:"confirmation_required"};
   const preview = await previewPendingResolution(store,id,body);
   if (!preview.ok) return preview;
@@ -253,7 +268,7 @@ async function enqueuePendingResolution(store, queue, id, body, user, req) {
     return {ok:false,status:400,error:"invalid_or_unsupported_resolution"};
   const inp=preview.input, item=await store.getPendingById(id);
   const origin = String(item.message_key || item.id || id);
-  if (!origin.startsWith("CGTEST:")) return {ok:false,status:403,error:"synthetic_origin_required"};
+  if (!allowReal && !origin.startsWith("CGTEST:")) return {ok:false,status:403,error:"synthetic_origin_required"};
   const parts = inp.resolucion === "compra_dividida" ? inp.partes_divididas : null;
   if (inp.resolucion === "compra_dividida" && (!parts || parts.length < 2 || parts.length > 20))
     return {ok:false,status:400,error:"invalid_split"};
@@ -502,6 +517,109 @@ async function savePendingReview(store, id, body, user){
   return { ok:true, revision, pending: await store.getPendingById(id) };
 }
 
+async function splitPending(store, id, body, user){
+  if (!isWriteAuthorized(user)) return { ok:false, status:403, error:"forbidden" };
+  const item = await store.getPendingById(id);
+  if (!item) return { ok:false, status:404, error:"not_found" };
+  // Idempotente: si ya existe el hermano, devolverlo sin crear otro (jamás duplicar gasto).
+  if (item.split_sibling_id) {
+    const sibling = await store.getPendingById(item.split_sibling_id);
+    return { ok:true, already_split:true, original_id:item.id, sibling_id:item.split_sibling_id, sibling:sibling || null };
+  }
+  if (item.split_from) return { ok:false, status:409, error:"pending_is_split_part" };
+  const estado = String(item.estado_validacion || "");
+  if (!["pendiente_revision","en_revision"].includes(estado)) {
+    return { ok:false, status:409, error:"split_not_allowed_for_state", estado };
+  }
+  const text = String(item.texto_relevante || "");
+  // Parseo conservador: línea de concepto seguida de importe con AR$/US$/símbolo o número.
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const found = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(AR\$|US\$)?\s?([\d.,]+)$/.exec(lines[i]);
+    if (!m) continue;
+    const raw = m[2].replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) continue;
+    const simbolo = m[1] || null;
+    let moneda = null;
+    if (simbolo === "AR$") moneda = "ARS";
+    else if (simbolo === "US$") moneda = "USD";
+    // El concepto es la línea previa no-numérica más cercana.
+    let concepto = null;
+    for (let j = i - 1; j >= 0; j--) {
+      if (/^(AR\$|US\$)?\s?[\d.,]+$/.test(lines[j])) continue;
+      concepto = lines[j].replace(/^\[owner reply\]\s*/, "");
+      break;
+    }
+    found.push({ concepto, importe: n, moneda, simbolo });
+  }
+  // Dedup por importe repetido en el texto (mismo concepto repetido).
+  const distinct = [];
+  for (const f of found) {
+    if (!distinct.some(d => d.importe === f.importe && d.moneda === f.moneda)) distinct.push(f);
+  }
+  if (distinct.length < 2) {
+    return { ok:false, status:409, error:"split_requires_two_amounts", found: distinct.length };
+  }
+  // Parte A = primera; Parte B (hermano nuevo) = segunda. Ambas quedan para validación del formulario.
+  const partA = distinct[0], partB = distinct[1];
+  const crypto = require("crypto");
+  const siblingId = crypto.randomUUID();
+  const now = nowIso();
+  const clone = deepClone(item);
+  delete clone._merged_at; delete clone.split_sibling_id;
+  const origenBase = String((clone.fila_simulada || {})["Fila origen"] || clone.message_key);
+  const filaB = { ...(clone.fila_simulada || {}) };
+  filaB["ID"] = (filaB["ID"] ? String(filaB["ID"]) + "-b" : siblingId);
+  filaB["Monto original"] = partB.importe;
+  filaB["Moneda original"] = partB.moneda || filaB["Moneda original"] || "";
+  filaB["Descripción / Comercio"] = partB.concepto || (filaB["Descripción / Comercio"] ? String(filaB["Descripción / Comercio"]) + " (B)" : "Concepto B");
+  filaB["Descripción original"] = text;
+  filaB["Fila origen"] = origenBase + ":b";
+  filaB["Observaciones"] = "División controlada del pendiente " + item.id + " (parte B): ambos conceptos requieren validación en formulario. No registrado en Movimientos.";
+  filaB["Estado"] = "Pendiente de revisión";
+  const di = { ...(clone.datos_interpretados || {}) };
+  di.importe = partB.importe; di.moneda = partB.moneda || null; di.moneda_fuente = partB.moneda ? ("explicit:" + partB.moneda) : null;
+  di.concepto = partB.concepto || di.concepto || null;
+  di.split_from = item.id; di.split_part = "B";
+  const conv = recalcAmounts(partB.moneda || "ARS", partB.importe);
+  di.monto_cop = conv.monto_cop ?? null; di.monto_ars = conv.monto_ars ?? null; di.monto_usd = conv.monto_usd ?? null;
+  const sibling = {
+    ...clone,
+    id: siblingId,
+    fila_simulada: filaB,
+    datos_interpretados: di,
+    estado_validacion: "pendiente_revision",
+    revision: null,
+    notas_revision: null,
+    motivo_ambiguedad: ["Pendiente dividido en dos conceptos (parte B): confirmar categoría/moneda/medio en el formulario"],
+    split_from: item.id,
+    split_part: "B",
+    created_at: now,
+    updated_at: now,
+  };
+  const convA = recalcAmounts(partA.moneda || "ARS", partA.importe);
+  const diA = { ...(item.datos_interpretados || {}) };
+  diA.split_from = item.id; diA.split_part = "A"; diA.split_sibling_id = siblingId;
+  await store.upsertPending(sibling);
+  await store.upsertPending({
+    id: item.id,
+    message_key: item.message_key,
+    datos_interpretados: diA,
+    split_sibling_id: siblingId,
+    split_part: "A",
+    estado_validacion: item.estado_validacion === "en_revision" ? "en_revision" : "pendiente_revision",
+    updated_at: now,
+  });
+  await store.addAudit({ type:"pending_split", original_id:item.id, sibling_id:siblingId, message_key:item.message_key,
+    by:user?.email || null, partA:{ concepto:partA.concepto, importe:partA.importe, moneda:partA.moneda, monto_cop:convA.monto_cop },
+    partB:{ concepto:partB.concepto, importe:partB.importe, moneda:partB.moneda, monto_cop:conv.monto_cop } });
+  return { ok:true, split:true, original_id:item.id, sibling_id:siblingId,
+    parts:[ { part:"A", ...partA }, { part:"B", ...partB } ],
+    original: await store.getPendingById(item.id), sibling: await store.getPendingById(siblingId) };
+}
+
 async function ingestSync(store, body, user, meta = {}){
   // authenticated sync from local Hermes agent. Ingest operational state only; no direct Movimientos writes here.
   // Accepts AR firebase user OR device sync token (scope sync_operational) - both resolved to authorized context by routes.
@@ -736,5 +854,5 @@ module.exports = {
   listCorrections, proposeCorrection, applyCorrection, enqueueCorrection,
   ingestSync, getStatus, runTestProbe, isWriteAuthorized, CATALOGS, FINANCE_SS,
   configureControlledWrites, getWriteTarget, productionWriteEnabled, buildMovimientoRow, MovimientosWriter, enqueuePendingResolution,
-  fixturesEnabled, buildInitialSyncPayload, savePendingReview
+  fixturesEnabled, buildInitialSyncPayload, savePendingReview, splitPending
 };

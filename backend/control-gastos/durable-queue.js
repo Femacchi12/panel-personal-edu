@@ -22,9 +22,12 @@ function assertTransition(from, to) {
 }
 
 class DurableQueue {
-  constructor(db, prefix = "control_gastos") {
+  constructor(db, prefix = "control_gastos", destination = null) {
     this.db = db;
-    this.root = db.collection(`${prefix}_writeDestinations`).doc(digest(`${TEST_TARGET.spreadsheetId}:${TEST_TARGET.sheet}`));
+    this.prefix = prefix;
+    const dest = destination || TEST_TARGET;
+    this.destination = dest;
+    this.root = db.collection(`${prefix}_writeDestinations`).doc(digest(`${dest.spreadsheetId}:${dest.sheet}`));
     this.ops = this.root.collection("operations");
     this.keys = this.root.collection("operationKeys");
     this.origins = this.root.collection("origins");
@@ -117,6 +120,36 @@ class DurableQueue {
     const d = doc.data();
     return { blocked: !!d.blocked, active: d.active || null, nextSequence: d.nextSequence || 1,
       lastSequence: d.lastSequence || 0, lastReservedId: d.lastReservedId || 0 };
+  }
+
+  // Lease de exclusividad del consumidor: una sola ejecucion del escritor por
+  // destino a la vez (transaccional, vale para multiples instancias).
+  // El lease vence solo (ttlMs) y la liberacion es condicional al holder.
+  async acquireConsumerLease(holder, ttlMs = 120000) {
+    const now = Date.now();
+    return this.db.runTransaction(async tx => {
+      const doc = await tx.get(this.root);
+      const d = doc.exists ? doc.data() || {} : {};
+      const lease = d.consumerLease || null;
+      if (lease && lease.expiresAt && now < Number(new Date(lease.expiresAt).getTime())) {
+        if (lease.holder === holder) return { ok: true, reacquired: true };
+        return { ok: false, reason: "consumer_busy", holder: lease.holder, expiresAt: lease.expiresAt };
+      }
+      const next = { holder, acquiredAt: new Date(now).toISOString(), expiresAt: new Date(now + ttlMs).toISOString() };
+      tx.set(this.root, { consumerLease: next }, { merge: true });
+      return { ok: true, lease: next };
+    });
+  }
+
+  async releaseConsumerLease(holder) {
+    return this.db.runTransaction(async tx => {
+      const doc = await tx.get(this.root);
+      const d = doc.exists ? doc.data() || {} : {};
+      const lease = d.consumerLease || null;
+      if (!lease || lease.holder !== holder) return { ok: false, reason: "not_holder" };
+      tx.set(this.root, { consumerLease: null }, { merge: true });
+      return { ok: true };
+    });
   }
 
   async prepare(id, claimId, observedMax, count, intent) {
