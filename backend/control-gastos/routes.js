@@ -109,7 +109,10 @@ function createRouter(opts = {}) {
   // y el escritor se configuro con destino TEST forzado; nunca toca el canónico.
   router.post("/consumer/run", requireSyncAuth, asyncH(async (req,res)=>{
     if (!consumer) return res.status(503).json({ ok:false, error:"consumer_not_configured" });
-    const holder = (req.syncAuth && req.user?.deviceId) ? `device:${req.user.deviceId}` : `fb:${req.user?.email}`;
+    // Holder POR EJECUCIÓN (no por dispositivo): dos ejecuciones simultáneas
+    // (aunque sean del mismo dispositivo) no comparten lease.
+    const who = (req.syncAuth && req.user?.deviceId) ? `device:${req.user.deviceId}` : `fb:${req.user?.email}`;
+    const holder = `${who}:${crypto.randomUUID()}`;
     const lease = await consumer.queue.acquireConsumerLease(holder, Number(process.env.CONTROL_GASTOS_CONSUMER_LEASE_MS || 120000));
     if (!lease.ok) return res.status(409).json({ ok:false, error:"consumer_busy", reason: lease.reason, holder: lease.holder });
     const maxOps = Math.min(Number(req.body?.maxOps) || 20, 20);
@@ -118,15 +121,20 @@ function createRouter(opts = {}) {
       for (let i = 0; i < maxOps; i++) {
         const r = await consumer.writer.runOne();
         results.push(r);
-        if (!r.ok || r.status === "COMMITTED" || r.status === "ALREADY_REGISTERED" || r.status === "UNCERTAIN" || r.status === "NEEDS_INFORMATION" || r.status === "CONFIRMED_FAILED" || r.reason === "empty") {
-          if (r.reason === "empty") break;
-        }
+        // Cortar al agotar la cola o cuando el destino está ocupado/bloqueado
+        // (otro consumidor procesando): no girar en falso.
+        if (r.reason === "empty" || r.reason === "manual_review_required" || r.reason === "unexpected_state") break;
       }
     } finally {
       await consumer.queue.releaseConsumerLease(holder).catch(()=>{});
     }
+    let lastRows = null;
+    try {
+      const rows = await consumer.writer.sheets.readAll(consumer.writer.target);
+      lastRows = rows.filter(r => r[0]).slice(-8).map(r => ({ id: r[0], concepto: r[9], filaOrigen: r[20], estado: r[18] }));
+    } catch (_) { /* diagnostico best-effort */ }
     const blocked = await consumer.queue.getDestinationState().catch(()=>null);
-    res.json({ ok:true, holder, processed: results.length, results, destinationBlocked: blocked ? !!blocked.blocked : null });
+    res.json({ ok:true, holder, processed: results.length, results, destinationBlocked: blocked ? !!blocked.blocked : null, lastRows });
   }));
   // Guarda la decision de revision (estado operativo, sin registro contable). AR-only.
   router.post("/pendings/:id/review", requireFirebaseUser, requireArWrite, asyncH(async (req,res)=>{
