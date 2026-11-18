@@ -18,10 +18,10 @@ function createRouter(opts = {}) {
   const testConsumer = String(process.env.CONTROL_GASTOS_TEST_CONSUMER || "") === "1";
   const canonicalConsumer = String(process.env.CONTROL_GASTOS_CANONICAL_CONSUMER || "") === "1" &&
     service.productionWriteEnabled();
-  const queueEnabled = (!localQueue && String(process.env.CONTROL_GASTOS_QUEUE_ENABLED || "") === "1" &&
-    !service.productionWriteEnabled()) || testConsumer || canonicalConsumer;
+  const consumerReady = !!(testConsumer || canonicalConsumer) && !!opts.consumer;
+  const queueEnabled = (!localQueue && String(process.env.CONTROL_GASTOS_QUEUE_ENABLED || "") === "1") || consumerReady;
   const queue = localQueue || queueEnabled ? opts.queue : null;
-  const consumer = (testConsumer || canonicalConsumer) && opts.consumer ? opts.consumer : null;
+  const consumer = consumerReady ? opts.consumer : null;
   const requireAuthorizedUser = opts.requireAuthorizedUser; // Firebase auth middleware (dashboard allowlist)
 
   const asyncH = fn => (req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
@@ -73,7 +73,9 @@ function createRouter(opts = {}) {
   // Fail closed until the durable queue is integrated end-to-end. Do not fall
   // back to the legacy simulated-apply path, which can mutate pending state.
   router.post("/pendings/:id/apply", requireFirebaseUser, requireArWrite, asyncH(async (req,res)=>{
-    const r=await service.enqueuePendingResolution(store, queue, req.params.id, req.body||{}, req.user, req, { allowReal: queueEnabled });
+    // Aplicar solo encola cuando hay cola Y consumidor con destino configurado
+    // (writer disponible); si no, falla cerrado antes de crear operaciones.
+    const r=await service.enqueuePendingResolution(store, queue, req.params.id, req.body||{}, req.user, req, { allowReal: consumerReady });
     res.status(r.status||200).json(r);
   }));
   router.get("/operations/:id", requireFirebaseUser, requireArWrite, asyncH(async (req,res)=>{
