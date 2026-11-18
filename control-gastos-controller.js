@@ -17,6 +17,10 @@
 
   function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   const stateLabels={ pendiente_validacion:'Pendiente de validación', simulado:'Simulado por el piloto (no registrado)', registrado:'Registrado', pendiente_revision:'Pendiente de revisión', en_revision:'En revisión' };
+  // Escritor disponible (mock local o consumidor canónico): calculado SIEMPRE
+  // desde state.status para que cualquier handler lo consulte sin depender
+  // de variables locales de render.
+  function applyReady(){ return (state.status?.apply_financiero_enabled) !== false; }
   const cleanConcept = t => norm(t).replace(/^\[owner reply\]\s*/i, '').replace(/\s{2,}/g, ' ') || 'Movimiento pendiente';
   function simplifyWarning(t){
     const s = norm(t);
@@ -276,10 +280,9 @@
     const byCat=cats.subcategorias_por_categoria||{}; const subs=byCat[norm(f.categoria)]||cats.subcategorias||[];
     const modalities=(cats.modalidades_por_cuenta||{})[norm(f.cuenta)]||cats.medios_pago||[];
     const v=computeValidation(); const preview=state.preview;
-    const applyReady = state.status?.apply_financiero_enabled !== false;
     const motivos=(p.motivo_ambiguedad||[]).map(m=>`<li>${esc(simplifyWarning(m))}</li>`).join('');
     const diffRows = preview?.comparison?.diff ? Object.entries(preview.comparison.diff).map(([k,val])=>`<tr><th>${esc(k)}</th><td class="old">${esc(val.antes)}</td><td class="new">${esc(val.despues)}</td></tr>`).join('') : '';
-    const canApply = !!preview && preview.canApply && applyReady && !state.busy && !state.operation;
+    const canApply = !!preview && preview.canApply && applyReady() && !state.busy && !state.operation;
     return `
       <div class="cg-card">
         <h3>Ficha de resolución</h3>
@@ -327,7 +330,7 @@
           <button class="cg-btn" data-cg-action="preview-pending" ${state.busy?'disabled':''}>Previsualizar Antes/Después</button>
           <button class="cg-btn" data-cg-action="save-review" ${state.busy?'disabled':''}>Guardar revisión (sin registrar)</button>
           <button class="cg-btn primary" data-cg-action="apply-pending" ${(!canApply)?'disabled':''}>Aplicar</button>
-          ${!canApply ? `<span class="cg-muted">${applyReady ? 'Aplica solo con validación OK y confirmación.' : 'Aplicar financiero no disponible: el escritor no está configurado en este entorno.'}</span>` : `<span class="cg-muted">Se pedirá confirmación. Destino: Finanzas Edu → Movimientos.</span>`}
+          ${!canApply ? `<span class="cg-muted">${applyReady() ? 'Aplica solo con validación OK y confirmación.' : 'Aplicar financiero no disponible: el escritor no está configurado en este entorno.'}</span>` : `<span class="cg-muted">Se pedirá confirmación. Destino: Finanzas Edu → Movimientos.</span>`}
         </div>
         ${p.revision?.at ? `<div class="cg-notice" style="margin-top:10px"><strong>Revisión guardada:</strong> ${esc(p.revision.at)}${p.revision.by?` · ${esc(p.revision.by)}`:''} · Decisiones conservadas como estado de revisión (no registradas en Movimientos).${p.revision.registrada===false?'':''}</div>`:''}
         ${state.reviewResult ? `<div class="cg-notice ${state.reviewResult.ok?'ok':'err'}" style="margin-top:8px"><strong>Guardar revisión:</strong> ${esc(state.reviewResult.note || state.reviewResult.error || 'OK')}</div>`:''}
@@ -402,9 +405,8 @@
     const root = document.getElementById('viewRoot'); if(!root) return;
     const active = document.querySelector('.nav-item.active')?.dataset.view;
     if (active && active !== 'control-gastos') return;
-    const applyReady = state.status?.apply_financiero_enabled !== false;
     const sync = (state.status?.sync)||{};
-        const applyBanner = applyReady
+        const applyBanner = applyReady()
           ? `<div class="cg-notice ok" style="margin-top:8px"><strong>Aplicar financiero: activo.</strong><div class="cg-muted" style="margin-top:4px">Destino real: Finanzas Edu → Movimientos. Registro con confirmación individual, validación de catálogos, readback de 27 columnas y auditoría. El registro automático desde WhatsApp sigue deshabilitado.</div></div>`
           : `<div class="cg-notice" style="margin-top:8px"><strong>Aplicar financiero: deshabilitado en esta etapa.</strong>
          <div class="cg-muted" style="margin-top:4px">El módulo funciona en modo seguro: lectura, validación y revisión. El botón Aplicar no encola operaciones financieras productivas y ninguna escritura alcanza Finanzas Edu → Movimientos.</div></div>`;
@@ -506,15 +508,27 @@
       finally{ setBusy(false); }
     });
     root.querySelector('[data-cg-action="apply-pending"]')?.addEventListener('click', async ()=>{
-      if (state.busy || state.operation) return;
-      const p=getSelectedPending(); if(!p) return; readPendingForm(root);
-      if (!applyReady) { alert('Aplicar financiero no está disponible en este entorno (sin escritor configurado). No se creó ninguna operación.'); return; }
-      if(!state.preview || !state.preview.canApply){ alert('Primero genera una previsualización válida.'); return; }
-      if(!confirm('Confirmar registro en FINANZAS EDU → Movimientos.\n\nDestino real: Finanzas Edu → Movimientos (27 columnas, lectura posterior verificada, auditoría).\nOperación individual: no se registra nada automáticamente.\n¿Continuar?')) return;
-      setBusy(true);
-      try { const result = await api(`/api/control-gastos/pendings/${encodeURIComponent(p.id)}/apply`, {method:'POST', body: JSON.stringify({...state.form, approved:true, confirm:true, idempotencyKey: `ui:${p.id}:${stableHash(state.form)}`})}); state.operation={operationId:result.operationId,status:result.operationStatus,type:'insert'}; state.applyResult=null; }
-      catch(e){ state.applyResult = e.data || {ok:false, error:e.message}; render(); }
-      finally{ setBusy(false); }
+      if (state.busy) { alert('Hay una operación en curso; esperá unos segundos e intentá de nuevo.'); return; }
+      if (state.operation) { alert(`Ya existe una operación en curso para este pendiente (${state.operation.operationId || 'sin id'} — ${state.operation.status || 'en proceso'}). Consultá su estado en el panel de operación.`); return; }
+      const p=getSelectedPending(); if(!p) { alert('Seleccioná un gasto pendiente antes de aplicar.'); return; }
+      try {
+        readPendingForm(root);
+        if (!applyReady()) { alert('Aplicar financiero no está disponible en este entorno (sin escritor configurado). No se creó ninguna operación.'); return; }
+        const v=computeValidation();
+        if(!v.ok){ alert('Faltan datos obligatorios:\n- ' + v.errs.join('\n- ') + (v.warns.length? '\n\nAdvertencias:\n- ' + v.warns.join('\n- ') : '') + '\n\nCorregí los campos y generá nuevamente el Antes/Después.'); return; }
+        if(!state.preview || !state.preview.canApply){ alert('Generá la previsualización con "Previsualizar Antes/Después" y revisala antes de aplicar.' + (v.warns.length? '\n\nAdvertencias pendientes:\n- ' + v.warns.join('\n- ') : '')); return; }
+        if(!confirm('Confirmar registro en FINANZAS EDU → Movimientos.\n\nDestino real: Finanzas Edu → Movimientos (27 columnas, lectura posterior verificada, auditoría).\nOperación individual: no se registra nada automáticamente.\n¿Continuar?')) return;
+        setBusy(true);
+        const result = await api(`/api/control-gastos/pendings/${encodeURIComponent(p.id)}/apply`, {method:'POST', body: JSON.stringify({...state.form, approved:true, confirm:true, idempotencyKey: `ui:${p.id}:${stableHash(state.form)}`})});
+        state.operation={operationId:result.operationId,status:result.operationStatus,type:'insert'};
+        state.applyResult=null;
+        render();
+        alert(`Operación encolada: ${result.operationId}\nEstado: ${result.operationStatus==='PENDING' ? 'En proceso (PENDING)' : result.operationStatus}\nSe registrará en Finanzas Edu y se verificará por lectura posterior.`);
+      } catch(e){
+        state.applyResult = e.data || {ok:false, error:e.message};
+        render();
+        alert('No se pudo aplicar: ' + (e.data?.error || e.message));
+      } finally { setBusy(false); }
     });
     root.querySelector('[data-cg-action="save-review"]')?.addEventListener('click', async ()=>{
       if (state.busy) return;
